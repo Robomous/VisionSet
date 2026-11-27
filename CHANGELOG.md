@@ -13,6 +13,17 @@ nothing was being distributed. This is the first version that is.
 
 ### Added
 
+- **Imports carry attribute values and definitions.** An importer may define attributes on a class and give each
+  label values. With no schema, the version an import creates declares the source's definitions; every value is
+  judged against the class it lands under, so a value the class does not declare or does not accept is an
+  `attribute` loss counted per class and attribute name, the label kept, and a label lacking a required attribute is
+  a `label` loss rather than refusing the whole import. A label already on its asset with other values is not
+  updated and is an `attribute` loss. `cvat-images` and `cvat-video` read `<meta>` attribute definitions and
+  per-shape values, so a CVAT export reads back with the same values, options and non-empty defaults (`required` and
+  an empty-string default have no place in CVAT); `coco` reads the values its exporter writes (or the row's own
+  `attributes`), defining each by its first value's type; `openlane-2d` carries a lane's `attribute` 1 to 4 as
+  `position_role`, ignoring only the exporter's own echo of the category. `inspect_import` and
+  `import --dry-run --json` list each class's attribute definitions (#1198).
 - **Manifest version 9: sources' frames, and timing that may be unknown.** A release holding an asset of an
   image-sequence source lists that source under `sources` with every occurrence whose asset it holds -
   `position`, `timestamp`, `asset_id`, in position order - so `cvat-video` and `mot` write every held frame of a

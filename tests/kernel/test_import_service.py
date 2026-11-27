@@ -29,6 +29,7 @@ from visionset.kernel import (
 from visionset.kernel.domain import (
     Annotation,
     AssetProgress,
+    Attribute,
     BatchApproved,
     BatchState,
     BboxGeometry,
@@ -37,8 +38,10 @@ from visionset.kernel.domain import (
     ImportConsent,
     ImportedClass,
     ImportedDataset,
+    ImportedFrame,
     ImportedImage,
     ImportedLabel,
+    ImportedSequence,
     ImportLoss,
     ImportLossKind,
     LabelClass,
@@ -293,6 +296,214 @@ def test_an_unused_class_the_schema_lacks_is_a_class_loss(world: World) -> None:
     plan = world.imports.inspect(world.project.id, FakeImporter(dataset), world.src)
 
     assert [(loss.kind, loss.subject) for loss in plan.losses] == [(ImportLossKind.CLASS, "lane")]
+
+
+# --- attributes ---------------------------------------------------------------
+
+COLOR = Attribute(name="color", kind="select", options=("red", "blue"))
+SPEED = Attribute(name="speed", kind="number")
+
+
+def _attributed(**attributes: bool | float | str) -> ImportedLabel:
+    return ImportedLabel(class_name="car", geometry=BOX, attributes=attributes)
+
+
+def _attribute_losses(losses: tuple[ImportLoss, ...]) -> dict[tuple[str, str, str], int]:
+    return {(one.kind.value, one.subject, one.reason): one.count for one in losses}
+
+
+def test_with_no_schema_the_source_definitions_are_published_and_judge_its_values(
+    world: World,
+) -> None:
+    dataset = ImportedDataset(
+        classes=(
+            ImportedClass(name="car", geometries=(GeometryType.BBOX,), attributes=(COLOR, SPEED)),
+        ),
+        images=(
+            _image("a.png", _attributed(color="blue", speed=2.5)),
+            _image("b.png", _attributed(color="green", weight=3.0), _attributed(speed="fast")),
+        ),
+    )
+    consent = ImportConsent(kinds=frozenset({ImportLossKind.ATTRIBUTE}))
+    run = world.imports.commit(world.project.id, FakeImporter(dataset), world.src, consent=consent)
+
+    (schema,) = world.schemas.list_versions(world.project.id)
+    (car,) = schema.classes
+    assert car.attributes == (COLOR, SPEED)
+    assert sorted((label.attributes for label in world.labels()), key=len) == sorted(
+        [{"color": "blue", "speed": 2.5}, {}, {}], key=len
+    )
+    rejects = "holds a value its {} definition rejects; the value is not imported"
+    assert _attribute_losses(run.losses) == {
+        ("attribute", "car", "attribute 'color' " + rejects.format("select")): 1,
+        (
+            "attribute",
+            "car",
+            "attribute 'weight' is not one its class declares; the value is not imported",
+        ): 1,
+        ("attribute", "car", "attribute 'speed' " + rejects.format("number")): 1,
+    }
+
+    again = world.imports.commit(
+        world.project.id, FakeImporter(dataset), world.src, consent=consent
+    )
+    assert (again.batch_id, again.annotations_written) == (None, 0)
+    assert again.losses == run.losses
+
+
+def test_an_active_schema_judges_each_value_and_drops_a_label_lacking_a_required_one(
+    world: World,
+) -> None:
+    required = COLOR.model_copy(update={"required": True})
+    world.schemas.create_version(
+        world.project.id,
+        [LabelClass(name="car", geometries=(GeometryType.BBOX,), attributes=(required, SPEED))],
+    )
+    elsewhere = BboxGeometry(x=4, y=4, width=6, height=6)
+    dataset = ImportedDataset(
+        classes=(
+            ImportedClass(
+                name="car",
+                geometries=(GeometryType.BBOX,),
+                attributes=(Attribute(name="color", kind="string"),),
+            ),
+        ),
+        images=(
+            _image("a.png", _attributed(color="red", speed=3.0)),
+            _image(
+                "b.png",
+                _attributed(color="green"),
+                ImportedLabel(class_name="car", geometry=elsewhere),
+                ImportedLabel(
+                    class_name="car",
+                    geometry=elsewhere,
+                    attributes={"color": "blue", "weight": "heavy"},
+                ),
+            ),
+        ),
+    )
+    importer = FakeImporter(dataset)
+    plan = world.imports.inspect(world.project.id, importer, world.src)
+
+    assert plan.conflicts == ()
+    assert not plan.creates_schema
+    assert plan.new_annotations == 2
+    lacking = (
+        "it has no value its class accepts for the required attribute 'color'; "
+        "the label is not imported"
+    )
+    assert _attribute_losses(plan.losses) == {
+        ("label", "car", lacking): 2,
+        (
+            "attribute",
+            "car",
+            "attribute 'weight' is not one its class declares; the value is not imported",
+        ): 1,
+    }
+
+    with pytest.raises(ImportNotConsented, match="attribute, label"):
+        world.imports.commit(world.project.id, importer, world.src)
+    assert not world.ingest.assets(world.project.id)
+
+    consent = ImportConsent(kinds=frozenset({ImportLossKind.ATTRIBUTE, ImportLossKind.LABEL}))
+    run = world.imports.commit(world.project.id, importer, world.src, consent=consent)
+    assert run.annotations_written == 2
+    assert sorted((label.attributes for label in world.labels()), key=len) == sorted(
+        [{"color": "red", "speed": 3.0}, {"color": "blue"}], key=len
+    )
+    assert [s.version for s in world.schemas.list_versions(world.project.id)] == [1]
+
+
+def test_a_label_dropped_for_a_required_attribute_does_not_claim_its_track(
+    world: World,
+) -> None:
+    world.schemas.create_version(
+        world.project.id,
+        [
+            LabelClass(
+                name="car",
+                geometries=(GeometryType.BBOX,),
+                attributes=(COLOR.model_copy(update={"required": True}),),
+            ),
+            LabelClass(name="lane", geometries=(GeometryType.BBOX,)),
+        ],
+    )
+    dataset = ImportedDataset(
+        classes=(
+            ImportedClass(name="car", geometries=(GeometryType.BBOX,)),
+            ImportedClass(name="lane", geometries=(GeometryType.BBOX,)),
+        ),
+        images=(
+            _image("a.png", ImportedLabel(class_name="car", geometry=BOX, track="1")),
+            _image("b.png", ImportedLabel(class_name="lane", geometry=BOX, track="1")),
+        ),
+        sequences=(
+            ImportedSequence(
+                name="drive",
+                frames=(
+                    ImportedFrame(path="images/a.png", timestamp=None),
+                    ImportedFrame(path="images/b.png", timestamp=None),
+                ),
+            ),
+        ),
+    )
+    plan = world.imports.inspect(world.project.id, FakeImporter(dataset), world.src)
+
+    assert [(one.kind, one.subject) for one in plan.losses] == [(ImportLossKind.LABEL, "car")]
+    assert (plan.new_annotations, plan.tracks) == (1, 1)
+    assert [label.track for image in plan.images for label in image.labels] == ["1"]
+
+
+STALE = "it is already on its asset with other attribute values; the values are not updated"
+
+
+def test_a_re_run_with_other_attribute_values_reports_them_not_updated(world: World) -> None:
+    def source(color: str) -> FakeImporter:
+        return FakeImporter(
+            ImportedDataset(
+                classes=(
+                    ImportedClass(name="car", geometries=(GeometryType.BBOX,), attributes=(COLOR,)),
+                ),
+                images=(_image("a.png", _attributed(color=color)),),
+            )
+        )
+
+    world.imports.commit(world.project.id, source("red"), world.src)
+    same = world.imports.inspect(world.project.id, source("red"), world.src)
+    assert (same.annotations_already_present, same.losses) == (1, ())
+
+    changed = world.imports.inspect(world.project.id, source("blue"), world.src)
+    assert changed.annotations_already_present == 1
+    assert _attribute_losses(changed.losses) == {("attribute", "car", STALE): 1}
+    assert [label.attributes for label in world.labels()] == [{"color": "red"}]
+
+
+def test_a_repeated_frame_with_other_attribute_values_reports_them_not_updated(
+    world: World,
+) -> None:
+    frames = ("a.png", "a2.png", "a3.png")
+    for name in frames:
+        write_image(world.src / "images" / name, size=SIZE, seed=0)
+    dataset = ImportedDataset(
+        classes=(ImportedClass(name="car", geometries=(GeometryType.BBOX,), attributes=(COLOR,)),),
+        images=(
+            _image("a.png", _attributed(color="red")),
+            _image("a2.png", _attributed(color="red")),
+            _image("a3.png", _attributed(color="blue")),
+        ),
+        sequences=(
+            ImportedSequence(
+                name="still",
+                frames=tuple(
+                    ImportedFrame(path=f"images/{name}", timestamp=None) for name in frames
+                ),
+            ),
+        ),
+    )
+    plan = world.imports.inspect(world.project.id, FakeImporter(dataset), world.src)
+
+    assert (plan.new_annotations, plan.annotations_already_present) == (1, 2)
+    assert _attribute_losses(plan.losses) == {("attribute", "car", STALE): 1}
 
 
 # --- idempotency and atomicity -------------------------------------------------

@@ -134,7 +134,7 @@ def test_what_the_domain_cannot_hold_is_reported_by_kind(tmp_path: Path) -> None
     lanes = [
         _lane(xyz=[[1, 2, 3], [4, 5, 6], [7, 8, 9]]),
         _lane(track_id=7),
-        _lane(track_id="lane_2", attribute=3),
+        _lane(track_id="lane_2", attribute=5),
     ]
     src = _write(tmp_path, lanes, intrinsic=[[1, 0, 0], [0, 1, 0], [0, 0, 1]])
 
@@ -379,7 +379,7 @@ def test_a_symlinked_labels_directory_is_refused(tmp_path: Path) -> None:
 
 @pytest.mark.parametrize(
     ("category", "attribute"),
-    [(1, 0), (1, True), (1, 1.0), (0, False), (2, 3)],
+    [(1, 0), (1, True), (1, 2.0), (0, False), (2, 5)],
 )
 def test_a_lane_attribute_other_than_the_exporter_s_echo_is_an_attribute_loss(
     tmp_path: Path, category: int, attribute: Any
@@ -389,6 +389,48 @@ def test_a_lane_attribute_other_than_the_exporter_s_echo_is_an_attribute_loss(
     assert [(kind, count) for kind, _, count in _losses(src)] == [(ImportLossKind.ATTRIBUTE, 1)]
 
 
+def test_the_lane_attribute_is_carried_as_its_position_role(tmp_path: Path) -> None:
+    lanes = [
+        _lane(attribute=4),
+        _lane(category=8, attribute=1, track_id="lane_1"),
+        _lane(category=8, attribute=8, track_id="lane_2"),
+        _lane(category=2, attribute=2, track_id="lane_3"),
+        _lane(category=2, attribute=2, track_id=None),
+        _lane(category=3, attribute=3, track_id=None),
+    ]
+    dataset = OpenLane2dImporter().read(_write(tmp_path, lanes))
+
+    assert [label.attributes for label in dataset.images[0].labels] == [
+        {"position_role": "adjacent_right"},
+        {"position_role": "adjacent_left"},
+        {},
+        {},
+        {"position_role": "ego_left"},
+        {"position_role": "ego_right"},
+    ]
+    (position,) = (one for one in declare_lane_attributes() if one.name == "position_role")
+    assert [(one.name, one.attributes) for one in dataset.classes] == [
+        ("white-dash", (position,)),
+        ("white-solid", (position,)),
+        ("double-white-dash", (position,)),
+        ("yellow-solid", (position,)),
+    ]
+    assert dataset.losses == ()
+
+
 @pytest.mark.parametrize("category", [0, 1, 13])
 def test_the_exporter_s_attribute_echo_is_not_a_loss(tmp_path: Path, category: int) -> None:
-    assert _losses(_write(tmp_path, [_lane(category=category, attribute=category)])) == []
+    echo = _lane(category=category, attribute=category, track_id="lane_0")
+    assert _losses(_write(tmp_path, [echo])) == []
+
+
+@pytest.mark.parametrize("track_id", [None, 7, "lane_1"])
+def test_an_attribute_equal_to_the_category_without_the_exporter_s_marker_is_read(
+    tmp_path: Path, track_id: object
+) -> None:
+    dataset = OpenLane2dImporter().read(
+        _write(tmp_path, [_lane(category=13, attribute=13, track_id=track_id)])
+    )
+    assert ("road_edge", "a lane attribute other than 1 to 4 is not imported") in {
+        (loss.subject, loss.reason) for loss in dataset.losses
+    }

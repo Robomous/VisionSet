@@ -51,7 +51,6 @@ def _lane(track_id: object, *, category: int = 1, uv: list[list[float]] = LEFT) 
         "category": category,
         "visibility": [1] * len(uv),
         "uv": uv,
-        "attribute": category,
         "track_id": track_id,
     }
 

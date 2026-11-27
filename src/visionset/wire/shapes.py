@@ -740,6 +740,7 @@ class ImportLoss(TypedDict):
 class ImportedClass(TypedDict):
     name: str
     geometries: list[str]
+    attributes: list[Attribute]
 
 
 @closed

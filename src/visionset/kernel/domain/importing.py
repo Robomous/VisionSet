@@ -25,7 +25,7 @@ from visionset.kernel.domain.calibration import (
 )
 from visionset.kernel.domain.geometry import Geometry
 from visionset.kernel.domain.names import normalize_name
-from visionset.kernel.domain.schema import GeometryType
+from visionset.kernel.domain.schema import Attribute, AttributeValue, GeometryType
 from visionset.kernel.errors import InvalidName
 
 
@@ -66,10 +66,17 @@ def _class_name(value: str) -> str:
 
 
 class ImportedClass(BaseModel):
+    """A class the source declares, and the attributes it defines for its labels.
+
+    ``attributes`` become the class's definitions when the import derives the
+    project's first schema; against an existing schema they are not consulted.
+    """
+
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     name: str
     geometries: tuple[GeometryType, ...] = Field(min_length=1)
+    attributes: tuple[Attribute, ...] = ()
 
     _named = field_validator("name")(_class_name)
 
@@ -78,9 +85,21 @@ class ImportedClass(BaseModel):
     def _a_set_in_a_fixed_order(cls, value: tuple[GeometryType, ...]) -> tuple[GeometryType, ...]:
         return tuple(sorted(set(value), key=lambda geometry: geometry.value))
 
+    @model_validator(mode="after")
+    def _attribute_names_unique(self) -> ImportedClass:
+        names = [attribute.name.casefold() for attribute in self.attributes]
+        if len(set(names)) != len(names):
+            raise ValueError(f"class {self.name!r} has two attributes with the same name")
+        return self
+
 
 class ImportedLabel(BaseModel):
-    """One label. ``track`` is the identity the dataset gives its object within a sequence."""
+    """One label. ``track`` is the identity the dataset gives its object within a sequence.
+
+    ``attributes`` are the values the source gives it, keyed by attribute name,
+    as the source spells them: the import judges each against the schema the
+    labels land under and drops what that schema would refuse.
+    """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
@@ -88,8 +107,19 @@ class ImportedLabel(BaseModel):
     geometry: Geometry
     confidence: float | None = Field(default=None, ge=0.0, le=1.0)
     track: str | None = None
+    attributes: dict[str, AttributeValue] = Field(default_factory=dict)
 
     _named = field_validator("class_name")(_class_name)
+
+    @field_validator("attributes")
+    @classmethod
+    def _named_attributes(cls, value: dict[str, AttributeValue]) -> dict[str, AttributeValue]:
+        named = {name.strip(): one for name, one in value.items()}
+        if "" in named:
+            raise ValueError("an attribute name must contain at least one non-blank character")
+        if len(named) != len(value):
+            raise ValueError("two attribute values name the same attribute")
+        return named
 
     @field_validator("track")
     @classmethod
@@ -376,9 +406,16 @@ class ImportPlan(BaseModel):
     repeats within a frame, or names a track of another class, is kept
     untracked and reported as an ``attribute`` loss.
 
+    Attribute values are judged against the classes the labels land under, the
+    active schema's or the ones a commit derives: a value its class does not
+    declare or accept is taken off the label in ``images``, ``repeats`` and
+    ``scans`` as an ``attribute`` loss, and a label then lacking a required
+    attribute is left out as a ``label`` loss.
+
     ``conflicts`` are refusals a commit would raise even with full consent: a
-    label the active schema cannot accept, classes that cannot form a schema,
-    or a label that would land on an asset another batch or the trunk holds.
+    label whose class or geometry the active schema cannot accept, classes that
+    cannot form a schema, or a label that would land on an asset another batch
+    or the trunk holds.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")

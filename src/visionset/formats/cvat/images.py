@@ -11,9 +11,11 @@ from the picture's top-left corner as CVAT writes them, so a ``<box>`` is
 become the geometry of the same name, and an image-level ``<tag>`` a
 classification tag. What the domain has no geometry for (``<points>``,
 ``<ellipse>``, ``<cuboid>``, ``<mask>``, ``<skeleton>``, a rotated box) is a
-``label`` loss; ``occluded``, a non-zero ``z_order``, a ``group_id``, attribute
-values and a ``subset`` other than ``default`` are ``attribute`` losses, the
-shape kept. Every label becomes ``import`` provenance, whatever its ``source``.
+``label`` loss; ``occluded``, a non-zero ``z_order``, a ``group_id`` and a
+``subset`` other than ``default`` are ``attribute`` losses, the shape kept. A
+label's ``<meta>`` attributes are its class's definitions and each shape's
+``<attribute>`` values its label's, read as their definition's kind. Every
+label becomes ``import`` provenance, whatever its ``source``.
 A document holding ``<track>`` elements is CVAT for video and is refused here.
 
 **Out.** ``annotations.xml`` and the pictures under ``images/``, named by content
@@ -21,8 +23,10 @@ hash, the layout the importer reads back. Each picture is an ``<image>`` whose
 ``subset`` is its fold, or ``default`` for a release without a split recipe;
 boxes, polygons, polylines and tags are written whole with their attribute
 values, and the release's classes and attribute definitions become ``<meta>``.
-``lossy``: confidence, a polyline's per-vertex visibility and the model behind a
-label have nowhere to go, and provenance survives only as CVAT's ``source``.
+``lossy``: confidence, a polyline's per-vertex visibility, the model behind a
+label, an attribute's ``required`` and an empty-string default have nowhere to
+go, and provenance survives only as CVAT's ``source``. An option that is empty
+or spans lines cannot be a line of ``<values>`` and refuses the export.
 """
 
 from __future__ import annotations
@@ -97,7 +101,7 @@ class CvatImagesImporter:
         losses: Losses = Counter()
         for path in documents(src, _LABEL):
             document = parse(path, relative(src, path))
-            labels = meta(document)
+            labels = meta(document, losses)
             declared.append(labels)
             prefix = path.parent.relative_to(src).as_posix()
             base = (
@@ -161,17 +165,21 @@ def _image(
             if class_name in tagged:
                 losses[(ImportLossKind.LABEL, class_name, REPEATED_TAG)] += 1
                 continue
-            extras(document, shape, losses, class_name)
+            values = extras(document, shape, losses, class_name, declared)
             tagged.add(class_name)
             used.setdefault(class_name, set()).add(GeometryType.CLASSIFICATION_TAG)
-            labels.append(ImportedLabel(class_name=class_name, geometry=ClassificationGeometry()))
+            labels.append(
+                ImportedLabel(
+                    class_name=class_name, geometry=ClassificationGeometry(), attributes=values
+                )
+            )
             continue
         drawn = geometry(document, shape, losses, class_name)
         if drawn is None:
             continue
-        extras(document, shape, losses, class_name)
+        values = extras(document, shape, losses, class_name, declared)
         used.setdefault(class_name, set()).add(DRAWN[shape.tag])
-        labels.append(ImportedLabel(class_name=class_name, geometry=drawn))
+        labels.append(ImportedLabel(class_name=class_name, geometry=drawn, attributes=values))
     return ImportedImage(path=path, width=width, height=height, labels=tuple(labels))
 
 

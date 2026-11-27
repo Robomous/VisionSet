@@ -19,8 +19,9 @@ marked ``keyframe="0"`` (CVAT's interpolated frame) is imported as an ordinary
 label and the mark is an ``attribute`` loss, and the frames CVAT would
 interpolate between two stored shapes, or carry from a track's last stored shape
 to the task's end, are counted as one. A track of a shape the domain has no
-geometry for is a ``label`` loss per stored shape; shape fields and attribute
-values are reported as for :mod:`visionset.formats.cvat.images`. A ``<tag
+geometry for is a ``label`` loss per stored shape; shape fields are reported,
+and attribute definitions and values read, as for
+:mod:`visionset.formats.cvat.images`, each frame's shape giving its own values. A ``<tag
 frame>`` becomes an untracked classification tag on that frame. A document holding
 ``<image>`` elements is CVAT for images and is refused here.
 
@@ -37,7 +38,9 @@ and a track that does not continue to the next frame gets an ``outside="1"``
 keyframe there, so CVAT does not carry it across a gap or to the task's end. A
 track's observations must share one shape type, as a CVAT track's do. Nothing a
 track does not observe is written (``tracked_only``); ``lossy`` besides, for
-confidence, per-vertex visibility and the model behind a label.
+confidence, per-vertex visibility, the model behind a label, an attribute's
+``required`` and an empty-string default; options are written as for
+:mod:`visionset.formats.cvat.images`.
 """
 
 from __future__ import annotations
@@ -160,7 +163,7 @@ class CvatVideoImporter:
         for path in documents(src, _LABEL):
             where = relative(src, path)
             document = parse(path, where)
-            labels = meta(document)
+            labels = meta(document, losses)
             declared.append(labels)
             task = _task(document, labels, path.parent, src)
             earlier = named.setdefault(task.name, where)
@@ -304,11 +307,13 @@ def _labels(
             if (frame, class_name) in tagged:
                 losses[(ImportLossKind.LABEL, class_name, REPEATED_TAG)] += 1
                 continue
-            extras(document, element, losses, class_name, _TRACK_FIELDS)
+            values = extras(document, element, losses, class_name, declared, _TRACK_FIELDS)
             tagged.add((frame, class_name))
             used.setdefault(class_name, set()).add(GeometryType.CLASSIFICATION_TAG)
             by_frame.setdefault(frame, []).append(
-                ImportedLabel(class_name=class_name, geometry=ClassificationGeometry())
+                ImportedLabel(
+                    class_name=class_name, geometry=ClassificationGeometry(), attributes=values
+                )
             )
             continue
         if element.tag != "track":
@@ -325,7 +330,7 @@ def _labels(
         for field in sorted(set(element.keys()) - _TRACK_READ):
             reason = f"the track's {field[:40]} field is not imported; the track is kept"
             losses[(ImportLossKind.ATTRIBUTE, class_name, reason)] += 1
-        for frame, label in _track(document, element, class_name, task, losses):
+        for frame, label in _track(document, element, class_name, declared, task, losses):
             used.setdefault(class_name, set()).add(GeometryType(label.geometry.type))
             by_frame.setdefault(frame, []).append(label.model_copy(update={"track": str(identity)}))
     return by_frame
@@ -344,6 +349,7 @@ def _track(
     document: Document,
     element: ElementTree.Element,
     class_name: str,
+    declared: Meta,
     task: _Task,
     losses: Losses,
 ) -> Iterable[tuple[int, ImportedLabel]]:
@@ -375,10 +381,12 @@ def _track(
         following = ordered[index + 1][0] if index + 1 < len(ordered) else task.size
         if following - frame > 1:
             losses[(ImportLossKind.ATTRIBUTE, class_name, _NOT_EXPANDED)] += following - frame - 1
-        extras(document, shape, losses, class_name, _TRACK_FIELDS)
+        values = extras(document, shape, losses, class_name, declared, _TRACK_FIELDS)
         if not flag(document, shape, "keyframe", "1"):
             losses[(ImportLossKind.ATTRIBUTE, class_name, _INTERPOLATED)] += 1
-        present.append((frame, ImportedLabel(class_name=class_name, geometry=drawn)))
+        present.append(
+            (frame, ImportedLabel(class_name=class_name, geometry=drawn, attributes=values))
+        )
     return present
 
 

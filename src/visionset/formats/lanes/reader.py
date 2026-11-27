@@ -19,10 +19,19 @@ units of 10 ns, and each lane's ``track_id`` becomes the ``track`` of its label.
 An id written as the name ``"7"`` in a segment that also has the integer ``7``
 is a loss rather than a merge: the two spellings are not assumed to be one lane.
 
+A lane's ``attribute``, OpenLane's left-to-right position, is carried as the
+``position_role`` lane attribute: ``1`` (left-left) is ``adjacent_left``, ``2``
+(left) ``ego_left``, ``3`` (right) ``ego_right`` and ``4`` (right-right)
+``adjacent_right``. A class carrying one defines ``position_role`` as
+:func:`._core.declare_lane_attributes` does. The exporter writes the lane's
+category there instead, beside its ``lane_<n>`` track id, so an ``attribute``
+equal to the category on a lane whose track id is ``lane_<n>`` at its own
+position ``n`` is that echo and is neither carried nor reported; on any other
+lane it is read like any other value.
+
 What the domain cannot hold is counted into ``losses`` by kind: 3D points, a
-camera calibration, a track id outside a sequence, a position ``attribute`` that
-says more than the exporter's own echo of the lane's category, and a visibility
-array that is not one ``0`` or ``1`` per point. The exporter's ``lane_<n>`` track
+camera calibration, a track id outside a sequence, any other ``attribute``, and
+a visibility array that is not one ``0`` or ``1`` per point. The exporter's ``lane_<n>`` track
 id is its echo of the lane's order, not an identity, and is neither carried nor
 reported. Upstream OpenLane's column-major
 ``uv`` (``[[u...], [v...]]``) is a different layout and is refused, not guessed.
@@ -39,6 +48,7 @@ from typing import Any, Final
 
 from pydantic import ValidationError
 
+from visionset.formats.lanes._core import POSITION, declare_lane_attributes
 from visionset.kernel.domain import (
     GeometryType,
     ImportedClass,
@@ -92,6 +102,15 @@ CATEGORY_NAMES: Final[Mapping[int, str]] = {
     21: "right-curbside",
 }
 
+#: OpenLane's left-to-right ``attribute`` as the ``position_role`` it names.
+POSITIONS: Final[Mapping[int, str]] = {
+    1: "adjacent_left",
+    2: "ego_left",
+    3: "ego_right",
+    4: "adjacent_right",
+}
+_POSITION: Final = next(one for one in declare_lane_attributes() if one.name == POSITION)
+
 _VISIBILITY: Final[Mapping[int, VertexVisibility]] = {
     0: VertexVisibility.OCCLUDED,
     1: VertexVisibility.VISIBLE,
@@ -143,8 +162,15 @@ class OpenLane2dImporter:
                 losses[(ImportLossKind.ATTRIBUTE, label.class_name, _SPELLED_TWICE)] += 1
                 labels[index] = label.model_copy(update={"track": None})
 
+        positioned = {
+            label.class_name for labels in images.values() for label in labels if label.attributes
+        }
         classes = tuple(
-            ImportedClass(name=name, geometries=(GeometryType.POLYLINE,))
+            ImportedClass(
+                name=name,
+                geometries=(GeometryType.POLYLINE,),
+                attributes=(_POSITION,) if name in positioned else (),
+            )
             for name, _ in sorted(categories.items(), key=lambda item: item[1])
         )
         try:
@@ -323,8 +349,19 @@ def _label(
         ] += 1
     track = _track(lane.get("track_id"), position, class_name, losses, sequenced=sequenced)
     attribute = lane.get("attribute")
-    if attribute is not None and not (_is_integer(attribute) and attribute == category):
-        losses[(ImportLossKind.ATTRIBUTE, class_name, "the lane attribute is not imported")] += 1
+    echo = (
+        _is_integer(attribute)
+        and attribute == category
+        and lane.get("track_id") == f"lane_{position}"
+    )
+    role = (
+        POSITIONS.get(attribute)
+        if isinstance(attribute, int) and not isinstance(attribute, bool) and not echo
+        else None
+    )
+    if attribute is not None and not echo and role is None:
+        reason = "a lane attribute other than 1 to 4 is not imported"
+        losses[(ImportLossKind.ATTRIBUTE, class_name, reason)] += 1
 
     categories.setdefault(class_name, category)
     geometry = (
@@ -332,7 +369,12 @@ def _label(
         if visibility is None
         else PolylineGeometry(points=points, visibility=visibility)
     )
-    return ImportedLabel(class_name=class_name, geometry=geometry, track=track)
+    return ImportedLabel(
+        class_name=class_name,
+        geometry=geometry,
+        track=track,
+        attributes={} if role is None else {POSITION: role},
+    )
 
 
 def _track(
@@ -391,4 +433,4 @@ def _is_number(value: object) -> bool:
         ) from None
 
 
-__all__ = ["CATEGORY_NAMES", "LABELS_DIRNAME", "SEGMENT_PREFIX", "OpenLane2dImporter"]
+__all__ = ["CATEGORY_NAMES", "LABELS_DIRNAME", "POSITIONS", "SEGMENT_PREFIX", "OpenLane2dImporter"]

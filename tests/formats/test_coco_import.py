@@ -20,8 +20,10 @@ from visionset.kernel.domain import (
     GeometryType,
     ImportConsent,
     ImportLossKind,
+    LabelClass,
     PolygonGeometry,
 )
+from visionset.kernel.domain.schema import Attribute
 from visionset.kernel.ports import Importer
 from visionset.kernel.services import ImportService, ProjectService, SchemaService, WorkspaceService
 
@@ -99,7 +101,7 @@ def test_boxes_and_single_ring_polygons_are_read_without_loss(tmp_path: Path) ->
             1,
         ),
         (
-            {"category_id": 1, "bbox": [1, 1, 4, 4], "attributes": {"occluded": True}},
+            {"category_id": 1, "bbox": [1, 1, 4, 4], "attributes": {"occluded": [True]}},
             "attribute",
             1,
         ),
@@ -211,6 +213,94 @@ def test_a_coco_export_of_boxes_and_polygons_imports_back_without_loss(tmp_path:
     assert [(c.name, c.geometries) for c in schema.classes] == [
         (c.name, c.geometries) for c in classes
     ]
+    workspace.close()
+
+
+def test_attribute_values_are_carried_and_define_their_class(tmp_path: Path) -> None:
+    box = [1, 1, 4, 4]
+    dataset = CocoImporter().read(
+        _write(
+            tmp_path,
+            _document(
+                [
+                    {
+                        "category_id": 1,
+                        "bbox": box,
+                        "visionset": {"attributes": {"speed": 3, "lit": True, " note ": "x"}},
+                    },
+                    {"category_id": 1, "bbox": box, "attributes": {"occluded": False, "Speed": 2}},
+                    {
+                        "category_id": 1,
+                        "bbox": box,
+                        "attributes": {"occluded": True},
+                        "visionset": {"attributes": {"speed": "fast", "gone": None}},
+                    },
+                ]
+            ),
+        )
+    )
+
+    car = next(one for one in dataset.classes if one.name == "car")
+    assert car.attributes == (
+        Attribute(name="speed", kind="number"),
+        Attribute(name="lit", kind="boolean"),
+        Attribute(name="note", kind="string"),
+        Attribute(name="occluded", kind="boolean"),
+    )
+    ((first, second, third),) = [image.labels for image in dataset.images]
+    assert first.attributes == {"speed": 3.0, "lit": True, "note": "x"}
+    assert second.attributes == {"occluded": False, "Speed": 2.0}
+    assert third.attributes == {"speed": "fast"}
+    assert {(one.subject, one.reason) for one in dataset.losses} == {
+        ("car", "the row's own attributes are not imported beside the visionset ones"),
+        ("car", "attribute 'gone' is not a string, a boolean or a number; it is not imported"),
+    }
+
+
+def test_attribute_values_round_trip_through_a_coco_export(tmp_path: Path) -> None:
+    sign = LabelClass(
+        name="sign",
+        geometries=(GeometryType.BBOX,),
+        attributes=(
+            Attribute(name="shape", kind="select", options=("round", "square")),
+            Attribute(name="lit", kind="boolean"),
+            Attribute(name="height", kind="number"),
+        ),
+    )
+    fixture = Fixture(tmp_path / "origin", classes=(sign,))
+    values = [{"shape": "round", "lit": True, "height": 2.5}, {"lit": False}]
+    fixture.label(
+        {
+            0: [_box(x=8, y=12, width=16, height=24).model_copy(update={"attributes": values[0]})],
+            1: [_box(x=1, y=2, width=10, height=8).model_copy(update={"attributes": values[1]})],
+        }
+    )
+    exported = tmp_path / "exported"
+    fixture.releases.export(fixture.publish(), CocoExporter(), exported)
+    fixture.close()
+
+    workspace = WorkspaceService.init(tmp_path / "copy")
+    projects = ProjectService(workspace)
+    inferred = projects.create("inferred")
+    matching = projects.create("matching")
+    SchemaService(workspace).create_version(matching.id, [sign])
+    imports = ImportService(workspace)
+    for project in (inferred, matching):
+        run = imports.commit(project.id, CocoImporter(), exported, consent=ImportConsent())
+        assert run.losses == ()
+        with workspace.unit_of_work() as uow:
+            written = [
+                label.attributes
+                for asset in uow.assets.list(project.id)
+                for label in uow.annotations.list(asset.id)
+            ]
+        assert sorted(written, key=len) == sorted(values, key=len)
+    (schema,) = SchemaService(workspace).list_versions(inferred.id)
+    assert {one.name: one.kind for one in schema.classes[0].attributes} == {
+        "shape": "string",
+        "lit": "boolean",
+        "height": "number",
+    }
     workspace.close()
 
 

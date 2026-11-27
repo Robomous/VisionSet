@@ -52,6 +52,7 @@ from visionset.kernel.services import (
     JobService,
     ProjectService,
     ReleaseService,
+    SchemaService,
     SourceService,
     TrackService,
     WorkspaceService,
@@ -185,9 +186,9 @@ def test_what_the_domain_cannot_hold_is_declared(tmp_path: Path) -> None:
     dataset = CvatImagesImporter().read(_images_source(tmp_path / "src", body))
 
     (image,) = dataset.images
-    assert [label.geometry.type for label in image.labels] == [
-        GeometryType.BBOX,
-        GeometryType.CLASSIFICATION_TAG,
+    assert [(label.geometry.type, label.attributes) for label in image.labels] == [
+        (GeometryType.BBOX, {"color": "red"}),
+        (GeometryType.CLASSIFICATION_TAG, {}),
     ]
     no_geometry = "has no canonical geometry; it is not imported"
     assert _losses(dataset) == UNTYPED | {
@@ -199,7 +200,6 @@ def test_what_the_domain_cannot_hold_is_declared(tmp_path: Path) -> None:
         ("attribute", "car", "occluded is not carried; the shape is kept"): 1,
         ("attribute", "car", "z_order is not carried; the shape is kept"): 1,
         ("attribute", "car", "group_id is not carried; the shape is kept"): 1,
-        ("attribute", "car", "attribute 'color' is not imported"): 1,
         ("attribute", "subset", "the subset is not imported; the picture is kept"): 1,
         (
             "label",
@@ -553,6 +553,14 @@ class World:
         dataset_id = self.projects.get_dataset(project_id).id
         return self.releases.publish(dataset_id, "v1").id
 
+    def attributes(self, run: ImportRun) -> list[dict[str, object]]:
+        with self.workspace.unit_of_work() as uow:
+            return [
+                dict(annotation.attributes)
+                for asset_id in run.asset_ids
+                for annotation in uow.annotations.list(asset_id)
+            ]
+
     def sequences(self, run: ImportRun) -> dict[str, dict[str, list[tuple[object, ...]]]]:
         found: dict[str, dict[str, list[tuple[object, ...]]]] = {}
         for source_id in run.source_ids:
@@ -793,6 +801,242 @@ def test_an_image_task_round_trips_through_a_release(world: World) -> None:
     assert _drawn(CvatImagesImporter().read(dest)) == _drawn(CvatImagesImporter().read(src))
 
 
+SPECS = """
+<label><name>car</name><type>rectangle</type><attributes>
+<attribute><name>color</name><mutable>False</mutable><input_type>radio</input_type>
+<default_value>red</default_value><values>red
+blue</values></attribute>
+<attribute><name>speed</name><mutable>True</mutable><input_type>number</input_type>
+<default_value>0</default_value><values>0
+100
+1</values></attribute>
+<attribute><name>parked</name><input_type>checkbox</input_type>
+<default_value>false</default_value><values>false</values></attribute>
+<attribute><name>note</name><input_type>text</input_type><default_value></default_value>
+<values></values></attribute>
+<attribute><name>kind</name><input_type>select</input_type><default_value>van</default_value>
+<values>sedan
+truck</values></attribute>
+<attribute><name>size</name><input_type>slider</input_type></attribute>
+<attribute><name>Color</name><input_type>text</input_type></attribute>
+</attributes></label>
+"""
+
+VALUES = (
+    '<attribute name="color">blue</attribute><attribute name="speed">12.5</attribute>'
+    '<attribute name="parked">True</attribute><attribute name="note"> as typed </attribute>'
+    '<attribute name="kind">sedan</attribute><attribute name="weight">3</attribute>'
+    '<attribute name="speed">7</attribute>'
+)
+
+
+def test_attribute_definitions_and_values_are_read_as_their_kinds(tmp_path: Path) -> None:
+    body = _image("a.png", f'<box label="car" xtl="0" ytl="0" xbr="4" ybr="4">{VALUES}</box>')
+    dataset = CvatImagesImporter().read(_images_source(tmp_path / "src", body, labels=SPECS))
+
+    (car,) = dataset.classes
+    assert car.attributes == (
+        Attribute(name="color", kind="select", options=("red", "blue"), default="red"),
+        Attribute(name="speed", kind="number", default=0.0),
+        Attribute(name="parked", kind="boolean", default=False),
+        Attribute(name="note", kind="string"),
+        Attribute(name="kind", kind="select", options=("sedan", "truck")),
+    )
+    ((label,),) = [image.labels for image in dataset.images]
+    assert label.attributes == {
+        "color": "blue",
+        "speed": 12.5,
+        "parked": True,
+        "note": " as typed ",
+        "kind": "sedan",
+        "weight": "3",
+    }
+    assert _losses(dataset) == {
+        (
+            "attribute",
+            "car",
+            "attribute 'speed''s range and step are not carried; the attribute is kept",
+        ): 1,
+        (
+            "attribute",
+            "car",
+            "attribute 'kind''s default is not one it accepts; the default is not imported",
+        ): 1,
+        ("attribute", "car", "attribute 'size' is a slider input, which is not imported"): 1,
+        ("attribute", "car", "attribute 'Color' is defined twice; the first definition is kept"): 1,
+        ("attribute", "car", "attribute 'speed' is given twice on one shape; the first is kept"): 1,
+    }
+
+
+def test_a_value_the_definition_cannot_read_is_judged_by_the_import(world: World) -> None:
+    values = (
+        '<attribute name="speed">fast</attribute><attribute name="parked">yes</attribute>'
+        '<attribute name="weight">3</attribute><attribute name="color">blue</attribute>'
+    )
+    body = _image("a.png", f'<box label="car" xtl="0" ytl="0" xbr="4" ybr="4">{values}</box>')
+    src = _images_source(world.root / "src", body, labels=SPECS)
+    project_id, run = world.run("cvat", CvatImagesImporter(), src)
+
+    (schema,) = SchemaService(world.workspace).list_versions(project_id)
+    assert [one.name for one in schema.classes[0].attributes] == [
+        "color",
+        "speed",
+        "parked",
+        "note",
+        "kind",
+    ]
+    assert world.attributes(run) == [{"color": "blue"}]
+    judged = {(one.subject, one.reason) for one in run.losses if one.kind == "attribute"}
+    assert {
+        (
+            "car",
+            "attribute 'speed' holds a value its number definition rejects; "
+            "the value is not imported",
+        ),
+        (
+            "car",
+            "attribute 'parked' holds a value its boolean definition rejects; "
+            "the value is not imported",
+        ),
+        ("car", "attribute 'weight' is not one its class declares; the value is not imported"),
+    } <= judged
+
+
+def test_attribute_values_round_trip_through_an_image_release(world: World) -> None:
+    body = _image(
+        "a.png",
+        f'<box label="car" xtl="0" ytl="0" xbr="4" ybr="4">{VALUES}</box>'
+        '<box label="car" xtl="1" ytl="1" xbr="5" ybr="5">'
+        '<attribute name="parked">false</attribute><attribute name="note"></attribute></box>',
+    )
+    src = _images_source(world.root / "src", body, labels=SPECS)
+    project_id, run = world.run("cvat", CvatImagesImporter(), src)
+    written = world.attributes(run)
+    assert sorted(written, key=len) == sorted(
+        [
+            {"color": "blue", "speed": 12.5, "parked": True, "note": " as typed ", "kind": "sedan"},
+            {"parked": False, "note": ""},
+        ],
+        key=len,
+    )
+
+    dest = world.root / "out"
+    world.releases.export(
+        world.release(project_id, run), CvatImagesExporter(), dest, allow_lossy=True
+    )
+    again_id, again = world.run("again", CvatImagesImporter(), dest)
+    assert sorted(world.attributes(again), key=len) == sorted(written, key=len)
+    assert not [one for one in again.losses if one.kind is ImportLossKind.ATTRIBUTE]
+    (first,) = SchemaService(world.workspace).list_versions(project_id)
+    (second,) = SchemaService(world.workspace).list_versions(again_id)
+    assert second.classes[0].attributes == first.classes[0].attributes
+
+
+def test_a_schema_s_attributes_round_trip_through_cvat_except_what_cvat_cannot_hold(
+    world: World,
+) -> None:
+    schema = SchemaService(world.workspace)
+    color = Attribute(name="color", kind="select", options=(" red", "blue "), required=True)
+    defined = (
+        color,
+        Attribute(name="note", kind="string", default=""),
+        Attribute(name="tag", kind="string", default=" x "),
+        Attribute(name="speed", kind="number", default=2.5),
+        Attribute(name="lit", kind="boolean", default=True),
+    )
+    project = world.projects.create("authored")
+    schema.create_version(
+        project.id,
+        [LabelClass(name="car", geometries=(GeometryType.BBOX,), attributes=defined)],
+    )
+    values = (
+        '<attribute name="color"> red</attribute><attribute name="tag">  </attribute>'
+        '<attribute name="speed">4</attribute><attribute name="lit">false</attribute>'
+    )
+    body = _image("a.png", f'<box label="car" xtl="0" ytl="0" xbr="4" ybr="4">{values}</box>')
+    labels = (
+        "<label><name>car</name><type>rectangle</type><attributes>"
+        "<attribute><name>speed</name><input_type>number</input_type></attribute>"
+        "<attribute><name>lit</name><input_type>checkbox</input_type></attribute>"
+        "</attributes></label>"
+    )
+    src = _images_source(world.root / "src", body, labels=labels)
+    run = world.imports.commit(
+        project.id, CvatImagesImporter(), src, consent=ImportConsent(kinds=frozenset(EVERY_LOSS))
+    )
+    written = world.attributes(run)
+    assert written == [{"color": " red", "tag": "  ", "speed": 4.0, "lit": False}]
+
+    dest = world.root / "out"
+    world.releases.export(
+        world.release(project.id, run), CvatImagesExporter(), dest, allow_lossy=True
+    )
+    again_id, again = world.run("again", CvatImagesImporter(), dest)
+    assert world.attributes(again) == written
+    assert not [one for one in again.losses if one.kind is ImportLossKind.ATTRIBUTE]
+    (read,) = schema.list_versions(again_id)
+    assert read.classes[0].attributes == (
+        color.model_copy(update={"required": False}),
+        Attribute(name="note", kind="string"),
+        *defined[2:],
+    )
+
+
+def test_an_option_cvat_cannot_hold_refuses_the_export(tmp_path: Path) -> None:
+    for option in ("two\nlines", ""):
+        car = LabelClass(
+            name="car",
+            geometries=(GeometryType.BBOX,),
+            attributes=(Attribute(name="color", kind="select", options=("red", option)),),
+        )
+        manifest = Manifest(schema_version=1, classes=(car,), assets=())
+        with pytest.raises(ExportSourceUnreadable, match="cannot be written"):
+            CvatImagesExporter().export(
+                _release(), manifest, tmp_path / "out", content=_content({}), assignment=None
+            )
+        assert not (tmp_path / "out").exists()
+
+
+def test_attribute_values_round_trip_through_a_video_release(world: World) -> None:
+    labels = (
+        "<label><name>car</name><type>rectangle</type><attributes>"
+        "<attribute><name>speed</name><mutable>True</mutable><input_type>number</input_type>"
+        "<default_value></default_value><values></values></attribute>"
+        "<attribute><name>parked</name><mutable>False</mutable><input_type>checkbox</input_type>"
+        "<default_value>false</default_value><values>false\ntrue</values></attribute>"
+        "</attributes></label>"
+    )
+    tracks = (
+        '<track id="3" label="car" source="manual">'
+        '<box frame="0" keyframe="1" outside="0" occluded="0" xtl="1" ytl="2" xbr="11" ybr="10">'
+        '<attribute name="speed">1</attribute><attribute name="parked">false</attribute></box>'
+        '<box frame="1" keyframe="1" outside="0" occluded="0" xtl="2" ytl="2" xbr="12" ybr="10">'
+        '<attribute name="speed">2.5</attribute><attribute name="parked">true</attribute></box>'
+        '<box frame="2" keyframe="1" outside="1" occluded="0" xtl="2" ytl="2" xbr="12" ybr="10"/>'
+        "</track>"
+    )
+    src = world.root / "src"
+    _video_source(src, tracks, size=3)
+    document = src / "annotations.xml"
+    document.write_text(
+        document.read_text(encoding="utf-8").replace(LABELS, labels), encoding="utf-8"
+    )
+    project_id, run = world.run("cvat", CvatVideoImporter(), src)
+    written = world.attributes(run)
+    assert sorted(written, key=lambda one: str(one["speed"])) == [
+        {"speed": 1.0, "parked": False},
+        {"speed": 2.5, "parked": True},
+    ]
+
+    dest = world.root / "out"
+    world.releases.export(
+        world.release(project_id, run), CvatVideoExporter(), dest, allow_lossy=True
+    )
+    _, again = world.run("again", CvatVideoImporter(), dest)
+    assert sorted(world.attributes(again), key=lambda one: str(one["speed"])) == written
+    assert not [one for one in again.losses if one.kind is ImportLossKind.ATTRIBUTE]
+
+
 def _drawn(dataset: ImportedDataset) -> list[str]:
     return sorted(repr((one.class_name, one.geometry)) for i in dataset.images for one in i.labels)
 
@@ -900,10 +1144,11 @@ def test_attribute_values_and_their_definitions_are_written(tmp_path: Path) -> N
     }
 
     dataset = CvatImagesImporter().read(tmp_path)
-    assert {(one.kind, one.reason) for one in dataset.losses} == {
-        (ImportLossKind.ATTRIBUTE, f"attribute {name!r} is not imported")
-        for name in ("color", "note", "parked", "speed")
-    }
+    assert dataset.losses == ()
+    (car,) = dataset.classes
+    assert car.attributes == CAR.attributes
+    (image,) = dataset.images
+    assert [label.attributes for label in image.labels] == [annotation.attributes]
 
 
 def _tracked(
