@@ -32,6 +32,14 @@ nothing was being distributed. This is the first version that is.
   pixel, polygons rasterized and reported degraded, boxes dropped; overlapping classes keep the lower id and are
   listed in the descriptor. COCO panoptic layouts and colour-encoded masks without an explicit palette are not
   supported (#1163).
+- **Rotated boxes through CVAT XML.** `cvat-images` and `cvat-video` import a `<box>` whose `rotation`, reduced
+  modulo 360 degrees, is not zero as an `obb`: CVAT turns the box before rotation clockwise on screen about its
+  centre, the sense of an `obb`'s angle, so the centre and size come from `xtl`, `ytl`, `xbr` and `ybr` and the angle
+  is `rotation` in radians. A `rotation` that is not a finite number is a `label` loss; a rotated box is no longer
+  one. Both exporters write an `obb` as the box before rotation and its angle as `rotation` in `[0, 360)` degrees,
+  none at angle 0, and declare `obb` supported, so it is no longer reported dropped; a track may mix boxes and
+  rotated boxes. A rotated box reads back within float rounding (`1e-9`). The convention is taken from CVAT's
+  source, not checked against a running CVAT's export (#1209).
 - **Raster masks: the `mask` geometry.** A class may declare `mask`, a binary raster over the whole asset stored
   inline as COCO compressed run-length encoding: `size` is `[height, width]` and must equal the asset's pixel size,
   and `counts` is the string over the pixels read column-major, first run background. Each side is 1 to 32768, the

@@ -8,10 +8,11 @@ each subset under ``images/<subset>/``. A shape with an empty ``label`` is a
 ``label`` loss. Coordinates are pixels
 from the picture's top-left corner as CVAT writes them, so a ``<box>`` is
 ``x = xtl``, ``width = xbr - xtl``. ``<box>``, ``<polygon>`` and ``<polyline>``
-become the geometry of the same name, and an image-level ``<tag>`` a
-classification tag. What the domain has no geometry for (``<points>``,
-``<ellipse>``, ``<cuboid>``, ``<mask>``, ``<skeleton>``, a rotated box) is a
-``label`` loss; ``occluded``, a non-zero ``z_order``, a ``group_id`` and a
+become the geometry of the same name, a ``<box>`` whose ``rotation`` is not a
+whole turn an ``obb``, and an image-level ``<tag>`` a classification tag. What
+the domain has no geometry for (``<points>``, ``<ellipse>``, ``<cuboid>``,
+``<mask>``, ``<skeleton>``) and a box whose ``rotation`` is not a finite number
+are a ``label`` loss; ``occluded``, a non-zero ``z_order``, a ``group_id`` and a
 ``subset`` other than ``default`` are ``attribute`` losses, the shape kept. A
 label's ``<meta>`` attributes are its class's definitions and each shape's
 ``<attribute>`` values its label's, read as their definition's kind. Every
@@ -21,7 +22,7 @@ A document holding ``<track>`` elements is CVAT for video and is refused here.
 **Out.** ``annotations.xml`` and the pictures under ``images/``, named by content
 hash, the layout the importer reads back. Each picture is an ``<image>`` whose
 ``subset`` is its fold, or ``default`` for a release without a split recipe;
-boxes, polygons, polylines and tags are written whole with their attribute
+boxes, rotated boxes, polygons, polylines and tags are written whole with their attribute
 values, and the release's classes and attribute definitions become ``<meta>``.
 ``lossy``: confidence, a polyline's per-vertex visibility, the model behind a
 label, an attribute's ``required`` and an empty-string default have nowhere to
@@ -47,7 +48,6 @@ from visionset.formats._reading import REPEATED_TAG, inside, relative, to_datase
 from visionset.formats._targets import self_target
 from visionset.formats.cvat._document import (
     DOCUMENT_FILENAME,
-    DRAWN,
     IMAGES_DIRNAME,
     SHAPES,
     SOURCES,
@@ -178,7 +178,7 @@ def _image(
         if drawn is None:
             continue
         values = extras(document, shape, losses, class_name, declared)
-        used.setdefault(class_name, set()).add(DRAWN[shape.tag])
+        used.setdefault(class_name, set()).add(GeometryType(drawn.type))
         labels.append(ImportedLabel(class_name=class_name, geometry=drawn, attributes=values))
     return ImportedImage(path=path, width=width, height=height, labels=tuple(labels))
 
@@ -193,6 +193,7 @@ class CvatImagesExporter:
     supported_geometries = frozenset(
         {
             GeometryType.BBOX,
+            GeometryType.OBB,
             GeometryType.POLYGON,
             GeometryType.POLYLINE,
             GeometryType.CLASSIFICATION_TAG,

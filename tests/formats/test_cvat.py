@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 import xml.etree.ElementTree as ElementTree
 from collections.abc import Iterator, Sequence
 from io import BytesIO
@@ -22,6 +23,7 @@ from visionset.formats.cvat import (
 from visionset.formats.mot import MotExporter
 from visionset.kernel import ExportSourceUnreadable, ImportSourceUnreadable
 from visionset.kernel.domain import (
+    OBB_MANIFEST_VERSION,
     TRACKED_MANIFEST_VERSION,
     AssetProgress,
     BboxGeometry,
@@ -38,9 +40,11 @@ from visionset.kernel.domain import (
     ManifestAsset,
     ManifestObservation,
     ManifestTrack,
+    ObbGeometry,
     PolygonGeometry,
     PolylineGeometry,
     Release,
+    obb_corners,
 )
 from visionset.kernel.domain.schema import Attribute
 from visionset.kernel.ports import ContentReader, Importer
@@ -177,7 +181,7 @@ def test_what_the_domain_cannot_hold_is_declared(tmp_path: Path) -> None:
         '<cuboid label="car" occluded="0"/>'
         '<mask label="car" occluded="0" rle="1, 2" left="0" top="0" width="2" height="2"/>'
         '<skeleton label="car" occluded="0"><points label="car" points="1,1"/></skeleton>'
-        '<box label="car" occluded="0" xtl="0" ytl="0" xbr="4" ybr="4" rotation="30"/>'
+        '<box label="car" occluded="0" xtl="0" ytl="0" xbr="4" ybr="4" rotation="nan"/>'
         '<box label="car" occluded="1" xtl="0" ytl="0" xbr="4" ybr="4" z_order="2" group_id="3">'
         '<attribute name="color">red</attribute></box>'
         '<tag label="sunny"/><tag label="sunny"/>',
@@ -196,7 +200,11 @@ def test_what_the_domain_cannot_hold_is_declared(tmp_path: Path) -> None:
             ("label", "car", f"a CVAT <{tag}> {no_geometry}"): 1
             for tag in ("points", "ellipse", "cuboid", "mask", "skeleton")
         },
-        ("label", "car", "a rotated box has no canonical geometry; it is not imported"): 1,
+        (
+            "label",
+            "car",
+            "its rotation is not a finite number of degrees; the box is not imported",
+        ): 1,
         ("attribute", "car", "occluded is not carried; the shape is kept"): 1,
         ("attribute", "car", "z_order is not carried; the shape is kept"): 1,
         ("attribute", "car", "group_id is not carried; the shape is kept"): 1,
@@ -1153,6 +1161,8 @@ def test_attribute_values_and_their_definitions_are_written(tmp_path: Path) -> N
 
 def _tracked(
     observed: Sequence[tuple[str | None, Sequence[tuple[int, object]]]],
+    classes: tuple[LabelClass, ...] = (CAR,),
+    version: int = TRACKED_MANIFEST_VERSION,
 ) -> tuple[Manifest, dict[str, bytes]]:
     source_id = uuid4()
     positions = sorted({position for _, shapes in observed for position, _ in shapes})
@@ -1193,9 +1203,9 @@ def _tracked(
         for index, position in enumerate(positions)
     )
     manifest = Manifest(
-        manifest_version=TRACKED_MANIFEST_VERSION,
+        manifest_version=version,
         schema_version=1,
-        classes=(CAR,),
+        classes=classes,
         assets=assets,
         tracks=tuple(tracks),
     )
@@ -1315,3 +1325,172 @@ def test_a_task_beyond_the_frame_bound_or_a_shifted_job_is_refused(tmp_path: Pat
     )
     with pytest.raises(ImportSourceUnreadable, match="a job export starting past frame 0"):
         CvatVideoImporter().read(root)
+
+
+# --- rotated boxes ------------------------------------------------------------
+
+ROTATING = CAR.model_copy(
+    update={"geometries": (GeometryType.BBOX, GeometryType.OBB, GeometryType.POLYGON)}
+)
+ROTATED = (
+    ObbGeometry(cx=10, cy=8, width=6, height=2, angle=math.radians(30)),
+    ObbGeometry(cx=20.25, cy=12.5, width=9.5, height=3.25, angle=-1.2),
+    ObbGeometry(cx=4, cy=4, width=3, height=3, angle=0.3),
+    ObbGeometry(cx=30, cy=20, width=8, height=4, angle=1.5),
+)
+
+
+def _assert_same_obb(found: object, expected: ObbGeometry) -> None:
+    assert isinstance(found, ObbGeometry)
+    assert (found.cx, found.cy, found.width, found.height) == pytest.approx(
+        (expected.cx, expected.cy, expected.width, expected.height), abs=1e-9
+    )
+    assert math.remainder(found.angle - expected.angle, math.pi) == pytest.approx(0, abs=1e-9)
+
+
+def _assert_same_geometries(found: Sequence[object], expected: Sequence[object]) -> None:
+    assert len(found) == len(expected)
+    for one, other in zip(found, expected, strict=True):
+        if isinstance(other, ObbGeometry):
+            _assert_same_obb(one, other)
+        else:
+            assert one == other
+
+
+def _read_box(root: Path, rotation: str) -> ImportedDataset:
+    shape = f'<box label="car" xtl="0" ytl="0" xbr="4" ybr="2" rotation="{rotation}"/>'
+    return CvatImagesImporter().read(_images_source(root, _image("a.png", shape)))
+
+
+def test_a_rotated_box_turns_clockwise_on_screen_about_its_centre(tmp_path: Path) -> None:
+    (image,) = _read_box(tmp_path, "30").images
+    (label,) = image.labels
+    geometry = label.geometry
+    assert isinstance(geometry, ObbGeometry)
+    assert (geometry.cx, geometry.cy, geometry.width, geometry.height) == (2, 1, 4, 2)
+    assert geometry.angle == pytest.approx(math.radians(30))
+    # The top-left corner (0, 0) is (-2, -1) from the centre (2, 1). CVAT's
+    # rotate2DPoints turns it to (-2 cos 30 + sin 30, -cos 30 - 2 sin 30):
+    # (-1.2320508, -1.8660254), so (0.7679492, -0.8660254) in the picture.
+    # Counter-clockwise would put it at (-0.2320508, 1.1339746).
+    top_left, top_right, _, _ = obb_corners(geometry)
+    assert top_left == pytest.approx((0.7679492, -0.8660254), abs=1e-7)
+    assert top_right == pytest.approx((4.2320508, 1.1339746), abs=1e-7)
+
+
+@pytest.mark.parametrize(
+    ("rotation", "degrees"),
+    [("390", 30), ("-330", 30), ("210", 30), ("-150", 30), ("200", 20), ("359.5", -0.5)],
+)
+def test_a_rotation_is_read_modulo_a_turn(tmp_path: Path, rotation: str, degrees: float) -> None:
+    (image,) = _read_box(tmp_path, rotation).images
+    (label,) = image.labels
+    _assert_same_obb(
+        label.geometry, ObbGeometry(cx=2, cy=1, width=4, height=2, angle=math.radians(degrees))
+    )
+
+
+@pytest.mark.parametrize("rotation", ["0", "0.00", "360", "-360", "720.0"])
+def test_a_whole_turn_is_an_axis_aligned_box(tmp_path: Path, rotation: str) -> None:
+    dataset = _read_box(tmp_path, rotation)
+    (image,) = dataset.images
+    assert [label.geometry for label in image.labels] == [BboxGeometry(x=0, y=0, width=4, height=2)]
+    assert [(one.name, one.geometries) for one in dataset.classes][0] == (
+        "car",
+        (GeometryType.BBOX,),
+    )
+
+
+@pytest.mark.parametrize("rotation", ["nan", "inf", "-inf", "1e999", "thirty", ""])
+def test_a_rotation_that_is_no_finite_number_is_a_lost_label(tmp_path: Path, rotation: str) -> None:
+    dataset = _read_box(tmp_path, rotation)
+    (image,) = dataset.images
+    assert image.labels == ()
+    reason = "its rotation is not a finite number of degrees; the box is not imported"
+    assert _losses(dataset)[("label", "car", reason)] == 1
+
+
+def _rotating_manifest(geometries: Sequence[object]) -> tuple[Manifest, dict[str, bytes]]:
+    asset = ManifestAsset(
+        asset_id=uuid4(),
+        content_hash="a" * 64,
+        uri="/a.png",
+        width=SIZE[0],
+        height=SIZE[1],
+        annotations=tuple(_annotation(geometry) for geometry in geometries),
+    )
+    manifest = Manifest(schema_version=1, classes=(ROTATING,), assets=(asset,))
+    return manifest, {"a" * 64: _png()}
+
+
+def test_a_rotated_box_is_written_before_its_turn(tmp_path: Path) -> None:
+    manifest, blobs = _rotating_manifest([ROTATED[0], ROTATED[1]])
+    CvatImagesExporter().export(
+        _release(), manifest, tmp_path, content=_content(blobs), assignment=None
+    )
+    root = ElementTree.parse(tmp_path / "annotations.xml").getroot()
+    assert root.findtext("meta/task/labels/label/type") == "any"
+    boxes = root.findall("image/box")
+    first, second = sorted(boxes, key=lambda box: box.attrib["xtl"] != "7")
+    assert [float(first.attrib[key]) for key in ("xtl", "ytl", "xbr", "ybr")] == [7, 7, 13, 9]
+    assert float(first.attrib["rotation"]) == pytest.approx(30)
+    assert float(second.attrib["rotation"]) == pytest.approx(360 - math.degrees(1.2))
+
+
+def test_an_axis_aligned_box_writes_no_rotation(tmp_path: Path) -> None:
+    level = ObbGeometry(cx=10, cy=8, width=6, height=2, angle=0)
+    manifest, blobs = _rotating_manifest([BOX, level])
+    CvatImagesExporter().export(
+        _release(), manifest, tmp_path, content=_content(blobs), assignment=None
+    )
+    root = ElementTree.parse(tmp_path / "annotations.xml").getroot()
+    assert ["rotation" in box.attrib for box in root.findall("image/box")] == [False, False]
+    (image,) = CvatImagesImporter().read(tmp_path).images
+    assert sorted(repr(label.geometry) for label in image.labels) == sorted(
+        repr(geometry) for geometry in (BOX, BboxGeometry(x=7, y=7, width=6, height=2))
+    )
+
+
+def test_rotated_boxes_round_trip_through_cvat_images(tmp_path: Path) -> None:
+    manifest, blobs = _rotating_manifest([BOX, *ROTATED])
+    CvatImagesExporter().export(
+        _release(), manifest, tmp_path, content=_content(blobs), assignment=None
+    )
+    dataset = CvatImagesImporter().read(tmp_path)
+    assert dataset.losses == ()
+    assert [(one.name, one.geometries) for one in dataset.classes] == [
+        ("car", (GeometryType.BBOX, GeometryType.OBB))
+    ]
+    (image,) = dataset.images
+    _assert_same_geometries(
+        [label.geometry for label in image.labels],
+        [annotation.geometry for annotation in manifest.assets[0].annotations],
+    )
+
+
+def test_rotated_boxes_round_trip_through_cvat_video(tmp_path: Path) -> None:
+    manifest, blobs = _tracked(
+        [("3", [(0, BOX), (1, ROTATED[0]), (2, ROTATED[1])]), ("5", [(0, ROTATED[3])])],
+        classes=(ROTATING,),
+        version=OBB_MANIFEST_VERSION,
+    )
+    CvatVideoExporter().export(
+        _release(), manifest, tmp_path, content=_content(blobs), assignment=None
+    )
+    (task,) = tmp_path.glob("*/annotations.xml")
+    boxes = ElementTree.parse(task).getroot().findall("track/box")
+    assert sum("rotation" in box.attrib for box in boxes) == 4
+
+    dataset = CvatVideoImporter().read(tmp_path)
+    assert dataset.losses == ()
+    by_frame = [
+        [(label.track, label.geometry) for label in image.labels] for image in dataset.images
+    ]
+    assert [[track for track, _ in frame] for frame in by_frame] == [["3", "5"], ["3"], ["3"]]
+    assert by_frame[0][0][1] == BOX
+    for found, expected in zip(
+        (by_frame[0][1][1], by_frame[1][0][1], by_frame[2][0][1]),
+        (ROTATED[3], ROTATED[0], ROTATED[1]),
+        strict=True,
+    ):
+        _assert_same_obb(found, expected)
