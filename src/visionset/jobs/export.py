@@ -44,6 +44,7 @@ from visionset.kernel.domain import (
     EXPORT_RECIPE_SPEC_KEY,
     EXPORT_RELEASE_KEY,
     EXPORT_TARGET_KEY,
+    ExportResult,
     RecipeSpec,
     export_job_payload,
 )
@@ -150,11 +151,15 @@ def run(
     shutil.make_archive(str(archive.with_suffix("")), "zip", root_dir=destination)
 
     reporter.report(processed=result.file_count, total=result.file_count)
+    return {**outcome_of(result), "archive": str(archive.relative_to(workspace_root))}
+
+
+def outcome_of(result: ExportResult) -> dict[str, JsonValue]:
+    """What an export came to, as this handler's ``result`` records it, less the archive."""
     return {
-        "release_id": str(release_id),
+        "release_id": str(result.release_id),
         "format": result.format_name,
         "target": result.target,
-        "archive": str(archive.relative_to(workspace_root)),
         "file_count": result.file_count,
         "total_bytes": result.total_bytes,
         "source_file_count": result.source_file_count,

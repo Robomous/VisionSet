@@ -42,6 +42,25 @@ nothing was being distributed. This is the first version that is.
   (`baseball diamond` as `baseball-diamond`), and a re-import names the class with the hyphen; two classes that would
   share a category refuse the export naming both. `yolo-obb` keeps names unchanged in `data.yaml`. The `ultralytics`
   formats and targets are unchanged (#1161).
+- **Commands and MCP tools are tracked like the background jobs they mirror.** With tracking on, pre-labeling
+  (`job`, `batch` and `project pre-label`; `pre_label_job`, `pre_label_batch`, `pre_label_project`), `export`
+  (`export_release`), `ingest` and `inference download` (`download_connection_weights`) open the same runs, with the
+  same allowlisted tags, parameters, metrics and release lineage, as the job of the same type, and
+  `visionset.execution_source` is `cli` or `mcp`. Pre-labeling opens one run per job row it writes and carries that
+  row's id; nothing a background job runs opens a second run. A command waits up to 10 seconds at exit for its
+  deliveries and never changes its output or exit code; nothing reaches standard output, the MCP protocol channel,
+  and `MLFLOW_SUPPRESS_PRINTING_URL_TO_STDOUT` is always forced to `true` so MLflow's run links cannot reach it either.
+  With tracking off, nothing is imported or started. See [tracking](docs/content/tracking.md#command-line-and-mcp)
+  (#1177).
+- **A local MLflow server for development, and the adapter tested against a real one.** An optional `mlflow`
+  Compose profile runs a pinned MLflow server on loopback port 5050 (`VISIONSET_MLFLOW_PORT` moves it) with its own
+  `mlflow-data` volume; plain `docker compose up` never starts it and no service depends on it.
+  `docker/compose.mlflow.yaml` installs the `mlflow` extra into the api image and points it at `http://mlflow:5000`.
+  The tracking page now covers turning tracking off, standalone and Compose servers, host, container and remote
+  URIs, and basic, bearer and client-certificate authentication over TLS, and states what leaves VisionSet: no
+  artifacts, ever. A new test runs the adapter and background jobs against that server, directly and behind an
+  authenticating HTTPS proxy with a certificate authority generated per run; CI's `tracking-smoke` job runs it on one
+  Python. See [tracking](docs/content/tracking.md#a-tracking-server-for-development) (#1177).
 - **Export, ingest and weight-download runs carry their own facts, and releases their lineage.** When tracking is
   on, an export run records its format, target, lossy consent, whether a recipe ran and the recipe's content hash,
   the files and bytes it wrote and the source and augmented image counts; a succeeded export also records the

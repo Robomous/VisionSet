@@ -924,9 +924,16 @@ jobs:
   # The `mlflow` extra (#1174), installed from the lockfile, with the client
   # present. Every other job runs a base install, where the tracking tests that
   # need the client skip and the base-install guarantees run instead; this is the
-  # only place the adapter meets the real client. No server is needed: the tests
-  # run one of their own on loopback. The tracked-job tests (#1175) run here too,
+  # only place the adapter meets the real client. Most tests run a recording stub
+  # of their own on loopback. The tracked-job tests (#1175) run here too,
   # because their spawned-worker half needs the client in the workers.
+  #
+  # One leg also runs the adapter against a real tracking server: the pinned image
+  # in docker/compose.yaml's `mlflow` profile, behind an authenticating TLS proxy
+  # the test builds. The image is Dependabot's, under its cool-down, which is why
+  # the server is a container rather than the full `mlflow` package; and why a
+  # `docker` change runs this job too. VISIONSET_REQUIRE_MLFLOW_SERVER turns its
+  # skip into a failure.
   #
   # The oldest and newest Python the extra installs on. Not 3.15: `pyyaml`, which
   # the client requires, publishes no 3.15 wheel yet and its source build needs
@@ -950,18 +957,18 @@ jobs:
           persist-credentials: false
 
       - name: Install uv
-        if: needs.changes.result != 'success' || needs.changes.outputs.python == 'true'
+        if: needs.changes.result != 'success' || needs.changes.outputs.python == 'true' || needs.changes.outputs.docker == 'true'
         uses: astral-sh/setup-uv@v7
         with:
           version: "0.12.3"
           enable-cache: true
 
       - name: Sync environment with the mlflow extra
-        if: needs.changes.result != 'success' || needs.changes.outputs.python == 'true'
+        if: needs.changes.result != 'success' || needs.changes.outputs.python == 'true' || needs.changes.outputs.docker == 'true'
         run: uv sync --locked --extra mlflow --python ${{ matrix.python-version }}
 
       - name: The tracking adapter, with the client present
-        if: needs.changes.result != 'success' || needs.changes.outputs.python == 'true'
+        if: needs.changes.result != 'success' || needs.changes.outputs.python == 'true' || needs.changes.outputs.docker == 'true'
         run: |
           uv run pytest \
             tests/tracking \
@@ -970,6 +977,14 @@ jobs:
             tests/architecture/test_optional_runtime.py \
             tests/architecture/test_kernel_purity.py \
             -rs
+
+      - name: The adapter against a real tracking server
+        if: >-
+          matrix.python-version == '3.14' &&
+          (needs.changes.result != 'success' || needs.changes.outputs.python == 'true' || needs.changes.outputs.docker == 'true')
+        env:
+          VISIONSET_REQUIRE_MLFLOW_SERVER: "1"
+        run: uv run pytest tests/tracking/test_tracking_real_server.py -rs
 
   # #62's and #63's second acceptance criteria: the tools the exporters exist to
   # feed actually load what they wrote. Its own job because `ultralytics` brings

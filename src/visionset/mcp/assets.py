@@ -44,11 +44,12 @@ from __future__ import annotations
 
 import io
 import json
-from typing import Annotated, Final, Literal, TypedDict
+from typing import Annotated, Final, Literal
 
 from mcp.server.mcpserver.utilities.types import Image
 from mcp.types import CallToolResult, TextContent
 from pydantic import ConfigDict, Field, with_config
+from typing_extensions import TypedDict
 
 from visionset import wire
 from visionset.kernel.domain import Asset, ImageFormat, require_image

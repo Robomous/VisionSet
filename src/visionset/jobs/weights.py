@@ -47,6 +47,7 @@ from visionset.jobs.registry import HandlerRef, register
 from visionset.kernel.domain import (
     CONNECTION_JOB_KEY,
     WEIGHT_DOWNLOAD_JOB_TYPE,
+    InferenceConnection,
     connection_job_payload,
 )
 from visionset.kernel.ports import ProgressReporter
@@ -123,8 +124,13 @@ def run(
         connection_id,
         on_bytes=lambda done, total: reporter.report(processed=done, total=total),
     )
+    return outcome_of(ready)
+
+
+def outcome_of(ready: InferenceConnection) -> dict[str, JsonValue]:
+    """What a download came to, as this handler's ``result`` records it."""
     return {
-        "connection_id": str(ready.id),
+        CONNECTION_JOB_KEY: str(ready.id),
         "model_id": ready.model_id,
         "model_revision": ready.model_revision,
         "setup_state": ready.setup_state.value,

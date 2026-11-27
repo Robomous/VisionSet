@@ -41,6 +41,7 @@ from visionset.inference import (
     select_pre_labelable,
     served_for,
 )
+from visionset.jobs.inline import Surface, pre_label_observer
 from visionset.kernel.services import (
     InferenceConnectionService,
     ProjectService,
@@ -146,6 +147,7 @@ def project_pre_label(
             on_progress=lambda one, done, total: note(
                 f"Pre-labeling {one.name!r} {done}/{total} asset(s)."
             ),
+            observer=pre_label_observer(Surface.CLI),
         )
     written = sum(job.outcome.annotations_written for job in ran)
     if json_out:
