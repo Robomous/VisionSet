@@ -330,6 +330,14 @@ def test_the_installed_exporters_declare_what_they_can_carry() -> None:
                 "targets": ["openlane-2d"],
             },
             {
+                "name": "segmentation-png",
+                "lossy": True,
+                "geometries": ["mask"],
+                "degraded_geometries": ["polygon"],
+                "modalities": ["image"],
+                "targets": ["segmentation-png"],
+            },
+            {
                 # The one lane format that does not write the vertices it
                 # was given: TuSimple's file *is* the X where a lane crosses each
                 # of a fixed set of rows, so a lane is resampled rather than
@@ -387,7 +395,7 @@ def test_the_installed_exporters_declare_what_they_can_carry() -> None:
                 "targets": ["yolov7"],
             },
         ],
-        "total": 18,
+        "total": 19,
     }
 
 

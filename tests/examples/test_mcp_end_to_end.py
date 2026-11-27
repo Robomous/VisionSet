@@ -125,6 +125,7 @@ def test_the_export_wrote_where_it_was_told(summary: Any) -> None:
         "kitti",
         "mot",
         "openlane-2d",
+        "segmentation-png",
         "tusimple",
         "ultralytics",
         "voc",

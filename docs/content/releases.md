@@ -541,6 +541,7 @@ The catalog this build ships, generated from the declarations by
 | `kitti` | kitti | `other` | `kitti` | — | cuboid_3d | — | — |
 | `mot` | mot | `other` | `mot` | — | bbox | — | — |
 | `openlane-2d` | openlane-2d | `other` | `openlane-2d` | — | polyline | — | — |
+| `segmentation-png` | segmentation-png | `other` | `segmentation-png` | — | mask, polygon | — | — |
 | `tusimple` | tusimple | `other` | `tusimple` | — | polyline | — | — |
 | `voc` | voc | `other` | `voc` | — | bbox | — | — |
 | `yolo-obb` | yolo-obb | `other` | `yolo-obb` | — | obb | — | — |

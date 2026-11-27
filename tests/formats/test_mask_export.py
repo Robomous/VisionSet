@@ -48,7 +48,7 @@ SHIPPED = sorted(
 
 
 #: The exporters that write a mask; every other one drops it.
-MASK_WRITERS = frozenset({"coco"})
+MASK_WRITERS = frozenset({"coco", "segmentation-png"})
 
 
 def _road(geometry: MaskGeometry = MASK) -> Annotation:
