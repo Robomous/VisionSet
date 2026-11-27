@@ -40,6 +40,19 @@ nothing was being distributed. This is the first version that is.
   uploaded, and no archive, weights, manifest, image, label, path, address, batch name, release tag or connection
   name is sent. `Tracker` gains `log_inputs`. See
   [tracking](docs/content/tracking.md#export) (#1176).
+- **A frame says whether its objects can join a track, and why not.** A batch asset declares `observe` wherever it
+  declares `annotate`, except on a `pre_labeled` frame, and `BatchAssetOut.withheld_actions` lists each refusal code
+  with the actions a writable frame withholds - `ASSET_NOT_JUDGED` for `observe` there. The annotator disables *Add
+  selected object* and the new-track `+` on such a frame with that reason instead of waiting for the refusal, which
+  still stands behind it; removing an object from a track needs only `annotate`. Starting a track from an object is
+  one write - `POST /jobs/{job_id}/tracks`, `visionset track start`, the `start_track` tool - judged as an observe
+  is and then against the batch's pinned version, so a refusal leaves no empty track behind (#1194).
+- **An observed object keeps its track's class in the editor.** A batch asset's `observed` names every annotation a
+  track observes, from any source, with the track's class. The reassignment menu, from the row and from the canvas,
+  disables every other class for such an object, naming the track, and their hotkeys do nothing; undo and redo
+  refuse a step off that class, saying why, and because the history is linear a refused step holds back the steps
+  behind it. This source's tracks, once read, are trusted over the declaration for their own tracks. The save refusal (`TRACK_CLASS_MISMATCH`) stays behind a declaration gone stale, and
+  changing a whole track's class stays a track operation (#1195).
 - **Imports carry attribute values and definitions.** An importer may define attributes on a class and give each
   label values. With no schema, the version an import creates declares the source's definitions; every value is
   judged against the class it lands under, so a value the class does not declare or does not accept is an

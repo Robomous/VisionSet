@@ -221,6 +221,7 @@ annotation already drawn at each (see
 | `list_tracks` | A source's tracks, each with its observations. Where a track id comes from. |
 | `get_track_status` | A track's observations counted by the progress their assets hold in one batch; `settled` only when the batch holds every observation of a non-empty track and each is settled. |
 | `create_track` | An empty track of a class the active schema declares, on a video or image-sequence source. |
+| `start_track` | Create a track of an annotation's class and observe the annotation with it, in one write: a refusal leaves no empty track. The class is judged against the batch's pinned version. |
 | `observe_track` | Attach an annotation drawn at an occurrence's asset, through the job carrying it. A `pre_labeled` asset is refused: a person edits or confirms it first. |
 | `unobserve_track` | Detach one observation; the annotation stays. |
 | `set_track_class` | Rename a track and every annotation it observes, in one transaction. |

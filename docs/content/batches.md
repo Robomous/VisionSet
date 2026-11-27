@@ -617,7 +617,10 @@ DELETE /batches/{id}?confirm=true                               → 204
 
 `progress` repeats per state and narrows `total` with it; `sort=confidence` puts the frame whose
 weakest model label scores lowest first, unscored last, ties in membership order. Each item
-carries `annotation_count` and `min_confidence`.
+carries `annotation_count`, `min_confidence`, and beside `allowed_actions` the `withheld_actions` a
+writable frame still refuses ([jobs](jobs.md#what-a-job-and-an-asset-say-they-allow)), and
+`observed`: every annotation of the asset a track observes, from any source, with the class that
+track keeps it to ([annotations](annotations.md#a-track-observes-annotations-an-annotation-knows-nothing-of-tracks)).
 
 **A batch is born from an ingest in the ordinary case**, and that has not changed: an ingest run
 puts what it gathered into a batch (`batch_name` for a new one, `batch_id` to join an existing
