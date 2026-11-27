@@ -73,8 +73,9 @@ images ingested on another machine produce a different manifest.
 database's format and of the package version. A build writes the **lowest version that can
 express the release**: **3** for a release of images with no 3D label, **4** for one that holds
 any, **5** for one that holds a point-cloud asset, **6** for one that holds an asset with a
-group label, **7** for one that holds an annotation a track observes, and **8** for one that
-holds a rotated box (`obb`).
+group label, **7** for one that holds an annotation a track observes, **8** for one that
+holds a rotated box (`obb`), and **9** for one that holds an asset of an image-sequence source or
+an observation whose timing is unknown.
 
 | Version | Since | What changed |
 | --- | --- | --- |
@@ -86,6 +87,7 @@ holds a rotated box (`obb`).
 | 6 | #1147 | an asset's `group_label`, the group its importer placed it in |
 | 7 | #1181 | `tracks`, each with the observations of it the release holds |
 | 8 | #1160 | the `obb` geometry, a rotated pixel rectangle |
+| 9 | #1199 | `sources`, each image-sequence source with the occurrences the release holds; a `timestamp` may be `null` |
 
 An older document keeps the version it was written with, so its bytes and its hash never move and
 `verify` still passes. Version 3 changes no existing bytes: a polyline with unknown visibility
@@ -138,6 +140,18 @@ release with no rotated box keeps the version and the hash it had; a manifest ho
 under a version below 8 does not load. The box is copied in its canonical spelling (see
 [annotations](annotations.md#a-rotated-box-is-a-centre-a-size-and-an-angle)), so two publishes of
 an unchanged dataset still agree byte for byte.
+
+Version 9 changes no existing bytes either. `sources` is **omitted** when the release holds no
+asset of an `image_sequence` source, so such a release keeps the version and the hash it had. A
+source is listed as its `source_id` with every occurrence whose asset the release holds, observed
+or not, each as `position`, `timestamp` and `asset_id`, in position order; sources sort by id. A
+position the release holds no asset for is absent, so an exporter writes every held frame and
+leaves only those positions as gaps. A video source is not listed: its frames are its own clip's.
+A `timestamp`, here or on an observation, is `null` where the source recorded no timing, as a CVAT
+task does - which is not the same document as `0`. A manifest carrying `sources` or a `null`
+timestamp under a version below 9, an occurrence naming an asset it does not hold, or an
+observation that disagrees with the occurrence its source lists at that position, does not load.
+An export cuts `sources` to the assets it hands its format, as it cuts tracks.
 
 Publishing content that needs a newer version than an older build wrote still produces a
 different manifest hash, because the version number is part of the document.
@@ -905,11 +919,13 @@ because it transforms images.
 ### The MOTChallenge format
 
 `mot` writes a release's tracked boxes as MOTChallenge (MOT16/17/20) sequences, one per source a
-released track observes: `<source-id>/seqinfo.ini`, the frames as `<source-id>/img1/<frame:06d><ext>`,
-and `<source-id>/gt/gt.txt` with `<source-id>/gt/labels.txt`, the layout the
-[`mot` importer](import.md#formats) reads back. Frame `n` is the occurrence at position `n - 1`, so
-a position no released track observes is a gap in `img1/` and the frames after it keep their
-numbers; `seqLength` runs to the last observed position. A row is
+released track observes: `<source-id>/seqinfo.ini`, every frame the release holds of that source,
+observed or not, as `<source-id>/img1/<frame:06d><ext>`, and `<source-id>/gt/gt.txt` with
+`<source-id>/gt/labels.txt`, the layout the [`mot` importer](import.md#formats) reads back. Frame
+`n` is the occurrence at position `n - 1`, so only a position the release holds no frame for is a
+gap in `img1/`, and the frames after it keep their numbers; `seqLength` runs to the last held
+position. A video source is not listed in the manifest, so of a clip only the observed frames are
+written. A row is
 `frame,id,bb_left,bb_top,bb_width,bb_height,conf,class,visibility`: the box in pixels as stored,
 `conf` `1` for a label with no confidence and its confidence otherwise, `class` the class's 1-based
 position in the release's schema, which `labels.txt` lists in that order, and visibility `-1`
@@ -918,14 +934,15 @@ every other track is numbered after the largest such id in its sequence, in mani
 two tracks of a sequence share an id and ids never cross sequences.
 
 The manifest carries no sequence name and no frame rate, so a sequence is named by its source id
-and `frameRate` is the last observed position over its timestamp, rounded to six decimals: an
+and `frameRate` is the last written position over its timestamp, rounded to six decimals: an
 imported MOT sequence or a clip gives its own rate back, and timing that was not uniform keeps its
-frame numbers and loses its spacing. A sequence whose observations are all at its first frame, or
-whose frames differ in pixel size or image type, is refused with `ExportSourceUnreadable`, because
-`seqinfo.ini` has one of each. It declares `supported_geometries` `{bbox}` and `tracked_only`, so a
+frame numbers and loses its spacing. A sequence whose timing is unknown (`null`, as a CVAT task's
+is) is refused with `ExportSourceUnreadable` naming the first such frame, and so, with another
+message, is one whose frames after the first are all at timestamp `0`, or whose frames differ in
+pixel size or image type, because `seqinfo.ini` has one of each. It declares `supported_geometries` `{bbox}` and `tracked_only`, so a
 box no track observes is reported dropped (see
 [dropped is not degraded](#dropped-is-not-degraded-and-one-word-for-both-was-a-lie)); a frame whose
-labels are all untracked is not written, because nothing in the manifest places it in a sequence.
+labels are all untracked is still written when its source is listed, without them.
 `lossy = True`: attributes, provenance, the source's name and a confidence of exactly `0` or `1`
 have nowhere to go (`0` reads back as an ignored entry, `1` as ground truth). The release's split
 recipe is not applied, because a sequence is not cut across folds, and augmented variants observe no
@@ -955,13 +972,15 @@ one. It writes boxes, polygons, polylines and classification tags (`<tag>`) whol
 `supported_geometries` are those four and nothing is degraded.
 
 `cvat-video` writes CVAT for video 1.1, one task per source a released track observes:
-`<source-id>/annotations.xml` and the observed frames as `<source-id>/images/frame_<position:06d><ext>`.
-`<size>` runs to the last observed position, so a position no released track observes is a missing
-frame, and `<original_size>` is the frames' one size; frames of two sizes or two image types refuse
-the export, checked for every task before any is written. The manifest holds only the frames a
-track observes, so a task with such a gap is read back by the importer, which keys frames by name,
-but CVAT, which numbers a task's pictures in sorted order, would shift every frame after the gap:
-such a task is not loadable into CVAT as it stands. Attribute definitions are written
+`<source-id>/annotations.xml` and every frame the release holds of that source, observed or not, as
+`<source-id>/images/frame_<position:06d><ext>`. `<size>` runs to the last held position, and
+`<original_size>` is the frames' one size; frames of two sizes or two image types refuse the
+export, checked for every task before any is written. Only a position the release holds no frame
+for is missing - one the source never held, or whose asset the dataset does not contain. The
+importer, which keys frames by name, reads such a task back, but CVAT, which numbers a task's
+pictures in sorted order, would shift every frame after that gap; a source released whole has
+none. A video source is not listed in the manifest, so of a clip only the observed frames are
+written. Attribute definitions are written
 `mutable="True"`, because a value may change from frame to frame. A track whose imported id is a non-negative integer written without leading zeros keeps
 it, and every other is numbered after the largest such id in its task. Each observation is a shape
 at `keyframe="1" outside="0"`; where a track does not continue to the next frame, an

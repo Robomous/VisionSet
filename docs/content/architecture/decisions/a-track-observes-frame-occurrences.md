@@ -14,8 +14,11 @@ and [releases](../../releases.md#the-manifests-own-format-version). So is
 [releases](../../releases.md#the-motchallenge-format); MOTS waits for raster masks. So is
 [#1171](https://github.com/Robomous/VisionSet/issues/1171), CVAT XML 1.1 in and out as two named
 dialects, CVAT for video's tracks over image-sequence sources with interpolation left unexpanded -
-see [import](../../import.md#formats) and [releases](../../releases.md#the-cvat-xml-formats). The
-rest is not.
+see [import](../../import.md#formats) and [releases](../../releases.md#the-cvat-xml-formats). So is
+[#1199](https://github.com/Robomous/VisionSet/issues/1199), manifest version 9, which lists each
+released image-sequence source's occurrences so those two exporters write every held frame, and
+lets a timestamp be unknown - see [releases](../../releases.md#the-manifests-own-format-version).
+The rest is not.
 
 **Amended for slice 5 on 2026-11-26.** Neither imported identity had anything to land on: OpenLane
 frames are stills with no source, and nuScenes keyframes are point-cloud scans with 3D boxes. The
@@ -39,7 +42,8 @@ substitute for one another.
 - **Image sequences.** An `image_sequence` source is written only by an import, for stills the
   dataset itself orders, such as one OpenLane segment. Every import writes its own, so two imports
   of one segment are two sequences and equal external ids in them never merge. `position` is the
-  frame's ordinal in the dataset's order and `timestamp` its time since the sequence's first frame;
+  frame's ordinal in the dataset's order and `timestamp` its time since the sequence's first frame,
+or `null` when the dataset records no timing (never `0` in its place);
   a frame the dataset names but does not hold is an absent position, and a frame whose bytes repeat
   another is an occurrence of that asset. It is not a directory this process reads, so nothing
   ingests from it, and it carries no video provenance and no scan frame.
@@ -84,7 +88,8 @@ backfill: none existed before the amendment.
   holding some observations cannot restructure the rest. A settled batch is never reopened.
 - **Releases.** A published manifest is immutable and gains tracks at the next `MANIFEST_VERSION`.
   It lists a track's observations only for assets the release contains, ordered by source
-  sequence and position, never by database id, so the hash stays deterministic.
+  sequence and position, never by database id, so the hash stays deterministic. From version 9 it
+  also lists each image-sequence source's occurrences of the assets it contains, observed or not.
 
 ## Interpolation and modality
 

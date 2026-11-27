@@ -101,7 +101,9 @@ part:
 
 The last two are disjoint, and a geometry in neither is not written at all. An optional
 `tracked_only` says the format writes a label only as an observation of a released track, as `mot`
-and `cvat-video` do, so the report counts every other label dropped. Three
+and `cvat-video` do, so the report counts every other label dropped; the frames they write are
+every occurrence the manifest's `sources` hold of that track's source, not only the observed ones.
+Three
 states rather than two, because a boolean answers "is this written?" and "is this
 written intact?" with one word - and a caller consenting to lose three annotations
 would receive two of them back as boxes.
