@@ -153,6 +153,7 @@ def test_every_installed_exporter_stays_discovered() -> None:
         "yolo-obb",
         "dota",
         "segmentation-png",
+        "labelme",
     }
 
 

@@ -13,6 +13,16 @@ nothing was being distributed. This is the first version that is.
 
 ### Added
 
+- **LabelMe JSON import and export as `labelme`.** The importer reads every JSON object holding `shapes` as one
+  picture's document: a `rectangle` (two opposite corners, either order) as a box and a `polygon` as a polygon, in
+  pixels as written, never rounded or normalized; shape `flags` as boolean attributes and a non-empty `description`
+  as a string attribute. Every other shape type is a `label` loss, never converted, as are degenerate shapes;
+  `group_id`, picture flags and unknown keys are `attribute` losses. `imagePath` is resolved against the document's
+  directory and refused when absolute or leaving the source, including through a link; embedded `imageData` is
+  size-bounded, strictly decoded and checked against `imageWidth` and `imageHeight`, and a picture held only
+  embedded is an `image` loss. Malformed JSON refuses the source by file. The exporter writes each picture with its
+  document beside it, under `<fold>/` when the release has a split, with `version`, `flags`, `imageData` `null` and
+  the picture's size; it opens in LabelMe 7.9.1's own reader (#1166).
 - **COCO RLE masks, and semantic segmentation masks as `segmentation-png`, import and export.** The `coco` importer
   reads an RLE `segmentation` object, compressed string or uncompressed list `counts` with `size` `[height, width]`,
   as a mask, which must be the image entry's size; a malformed or wrongly sized one is a `label` loss. A polygon of
