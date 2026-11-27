@@ -210,12 +210,9 @@ authored and preserved; geometry order carries no meaning and nobody can read on
 `bbox`, `obb`, `polygon`, `polyline`, `mask`, `keypoints`, `polyline_3d`, `cuboid_3d` and
 `classification_tag`.
 `IMPLEMENTED_GEOMETRIES` is read *off* the union, so shipping a variant widens it with no
-second edit, and `create_version` refuses a class naming anything outside it:
-
-```python
-LabelClass(name="pose", geometries=(GeometryType.KEYPOINTS,))  # constructs fine
-schemas.create_version(project.id, [that])  # UnsupportedGeometry, for a member the union lacks
-```
+second edit, and `create_version` refuses a class naming anything outside it with
+`UnsupportedGeometry`. Today that set is all of `GeometryType`, so no class can reach the
+refusal; it stays for the next member added to the enum before its model joins the union.
 
 `GET /geometries` publishes the same set, so a client offering shapes reads it rather than
 keeping a copy: the schema editor's picker has no list of its own.
@@ -265,6 +262,14 @@ class's keypoints annotations and is guarded by the same orphan check as removin
 | only `skeleton` changed | additive |
 | the spec removed | additive |
 | the `keypoints` geometry added together with a spec | additive |
+
+The guard is the class and the geometry, not the point count: it does not ask whether an existing
+label already carries as many points as the new spec names. So adding a spec to a class, or
+renaming, adding, removing or reordering its `names`, is refused with `SCHEMA_CHANGE_WOULD_ORPHAN`
+while **any** `keypoints` label of that class exists, even one whose count would fit, and
+`allow_destructive` does not lift it. Once no such label remains, the change is an ordinary
+narrowing that needs `allow_destructive` and nothing more. Delete or re-draw those labels first;
+a project with none changes the spec freely.
 
 **`mask` (#1162): a run-length encoded raster over the whole asset.** A class may
 declare it, and `GET /geometries`, the CLI and MCP list it, since each reads the union. One `mask`

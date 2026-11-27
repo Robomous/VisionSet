@@ -331,7 +331,9 @@ exactly as many points as the spec has names, in that order, or it is refused wi
 
 **Against the frame**, a keypoints label must have at least one point inside the asset's frame, edges
 included, when the asset's size is known; otherwise it is refused with
-`ANNOTATION_GEOMETRY_OUT_OF_BOUNDS` (422). Other points may lie outside, as a polyline's may. It is
+`ANNOTATION_GEOMETRY_OUT_OF_BOUNDS` (422). Any point counts, whatever its visibility: a label
+whose only point inside the frame is unlabeled (`0`) passes. Other points may lie outside, as a
+polyline's may. It is
 a 2D shape: a point-cloud scan refuses it like any other pixel shape.
 
 No exporter writes keypoints yet: every export reports each one dropped (see
