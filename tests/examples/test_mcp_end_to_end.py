@@ -121,12 +121,14 @@ def test_the_export_wrote_where_it_was_told(summary: Any) -> None:
         "cvat-images",
         "cvat-video",
         "darknet",
+        "dota",
         "kitti",
         "mot",
         "openlane-2d",
         "tusimple",
         "ultralytics",
         "voc",
+        "yolo-obb",
         "yolov5-yaml",
     )
     assert Path(summary.export_directory).is_dir()

@@ -43,19 +43,17 @@ import unicodedata
 from pathlib import Path
 from typing import Final
 
-from visionset.formats._layout import IMAGES_DIRNAME, folds_of, write_image
+from visionset.formats._layout import folds_of, write_image
 from visionset.formats._yolo_writer import (
     DATA_FILENAME,
-    HEADER_COMMENT,
     LABELS_DIRNAME,
     class_index,
     class_names,
     derive_task,
     detect_rows,
-    fold_path,
     segment_rows,
+    write_data_yaml,
     write_label_layout,
-    yaml_scalar,
 )
 from visionset.formats.ultralytics.reader import UltralyticsImporter
 from visionset.kernel.domain import (
@@ -210,37 +208,7 @@ class UltralyticsExporter:
             return
         rows = segment_rows if task is Task.SEGMENT else detect_rows
         folds = write_label_layout(manifest, dest, content, assignment, rows)
-        _write_data_yaml(dest / DATA_FILENAME, class_names(manifest), folds)
-
-
-def _write_data_yaml(target: Path, names: list[str], folds: set[str]) -> None:
-    """The descriptor: ``path: .``, one key per fold present, ``names`` as a mapping.
-
-    ``names`` is a mapping from index rather than a list, because the index is
-    the thing that matters and a list makes it positional and invisible. No
-    ``nc``: the trainer counts the mapping, and a second number is one that can
-    disagree with it.
-
-    ``train`` and ``val`` are both required by the trainer, which raises naming
-    the missing key rather than defaulting — so a release published with no
-    recipe, one undivided set, still declares a ``val`` and points it at the
-    training images. That says "there is no held-out set", where omitting the
-    key says "this file is malformed". ``test`` is written only when it has
-    something in it.
-    """
-    present = sorted(folds)
-    train = fold_path(folds, "train", present[0])
-    lines = [
-        HEADER_COMMENT,
-        "path: .",
-        f"train: {train}",
-        f"val: {fold_path(folds, 'val', train)}",
-    ]
-    if "test" in folds:
-        lines.append(f"test: {IMAGES_DIRNAME}/test")
-    lines.append("names:")
-    lines.extend(f"  {index}: {yaml_scalar(name)}" for index, name in enumerate(names))
-    target.write_text("\n".join(lines) + "\n", encoding="utf-8")
+        write_data_yaml(dest / DATA_FILENAME, class_names(manifest), folds)
 
 
 def _write_class_tree(

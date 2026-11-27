@@ -356,12 +356,14 @@ def test_the_installed_command_finds_every_exporter(installed: Path) -> None:
         "cvat-images",
         "cvat-video",
         "darknet",
+        "dota",
         "kitti",
         "mot",
         "openlane-2d",
         "tusimple",
         "ultralytics",
         "voc",
+        "yolo-obb",
         "yolov5-yaml",
     ]
 

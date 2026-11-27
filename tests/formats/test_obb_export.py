@@ -1,8 +1,9 @@
-"""A rotated box through every writing exporter: reduced where declared, dropped elsewhere.
+"""A rotated box through every writing exporter: native, reduced where declared, else dropped.
 
 The report is read against the bytes, as in ``test_report_agreement``: a format
-calling ``obb`` degraded writes every rotated box as its enclosing axis-aligned
-box, and one calling it dropped writes none of them.
+writing ``obb`` natively writes every rotated box as itself, one calling it
+degraded writes every rotated box as its enclosing axis-aligned box, and one
+calling it dropped writes none of them.
 """
 
 from __future__ import annotations
@@ -30,6 +31,9 @@ ROTATED = ObbGeometry(cx=32.0, cy=24.0, width=20.0, height=8.0, angle=0.5)
 
 #: The formats that write a rotated box as the axis-aligned box around it.
 REDUCING = frozenset({"voc", "darknet", "yolov5-yaml"})
+
+#: The formats that write a rotated box as itself, and nothing else.
+NATIVE = frozenset({"yolo-obb", "dota"})
 
 
 def _ship(geometry: ObbGeometry = ROTATED) -> Annotation:
@@ -60,10 +64,13 @@ def test_the_release_holding_a_rotated_box_is_a_version_8_manifest(labelled: Fix
 
 
 def test_every_writing_exporter_is_covered() -> None:
-    assert set(COUNTERS) >= REDUCING
+    assert set(COUNTERS) >= REDUCING | NATIVE
     for name in REDUCING:
         assert GeometryType.OBB in exporters()[name].degraded_geometries
-    for name in set(COUNTERS) - REDUCING:
+    for name in NATIVE:
+        assert exporters()[name].supported_geometries == {GeometryType.OBB}
+        assert exporters()[name].degraded_geometries == frozenset()
+    for name in set(COUNTERS) - REDUCING - NATIVE:
         plugin = exporters()[name]
         assert GeometryType.OBB not in plugin.supported_geometries | plugin.degraded_geometries
 
@@ -82,6 +89,12 @@ def test_the_report_agrees_with_what_was_written(
 
     (ship,) = [one for one in report.classes if one.label_class == "ship"]
     assert ship.annotations == 2
+    if format_name in NATIVE:
+        assert ship.status is ClassExportStatus.SUPPORTED
+        assert written["ship"] == 2
+        # The one box beside the ships is the one thing a rotated-box format drops.
+        assert (report.excluded_annotations, report.degraded_annotations) == (1, 0)
+        return
     if format_name in REDUCING:
         assert ship.status is ClassExportStatus.DEGRADED
         assert ship.reason is not None and "bounding box" in ship.reason

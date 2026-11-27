@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import json
 import re
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 from typing import Final
@@ -71,7 +71,30 @@ class Descriptor:
     keypoints: tuple[int, int] | None = None
 
 
-def read_label_layout(src: Path, descriptor: Descriptor, format_label: str) -> ImportedDataset:
+Row = tuple[str, list[str]]
+"""Where a label row was read, and its tokens."""
+
+LabelParser = Callable[
+    [Row, Descriptor, tuple[int, int] | None, dict[str, set[GeometryType]], Losses],
+    ImportedLabel | None,
+]
+"""How one label row becomes a label, recording any loss and the geometry it carries."""
+
+
+def read_label_layout(
+    src: Path,
+    descriptor: Descriptor,
+    format_label: str,
+    *,
+    parse: LabelParser | None = None,
+    default_geometry: GeometryType = GeometryType.BBOX,
+) -> ImportedDataset:
+    """Every picture under ``images/`` with the label rows YOLO's rule pairs it with.
+
+    ``parse`` reads one row, the box-or-polygon reader unless a dialect brings
+    its own; a class no row uses is declared with ``default_geometry``.
+    """
+    parse = parse or _label
     found = {
         PurePosixPath(relative(src, path)): path
         for path in files_under(src, src, IMAGE_SUFFIXES | {_LABEL_SUFFIX})
@@ -112,7 +135,7 @@ def read_label_layout(src: Path, descriptor: Descriptor, format_label: str) -> I
         labels = [
             label
             for row in rows
-            if (label := _label(row, descriptor, size, geometries, losses)) is not None
+            if (label := parse(row, descriptor, size, geometries, losses)) is not None
         ]
         width, height = size if size is not None else (None, None)
         images.append(ImportedImage(path=picture, width=width, height=height, labels=tuple(labels)))
@@ -122,7 +145,7 @@ def read_label_layout(src: Path, descriptor: Descriptor, format_label: str) -> I
         losses[(ImportLossKind.LABEL, str(label_path), "a label file with no picture")] += count
 
     classes = [
-        ImportedClass(name=name, geometries=tuple(seen) or (GeometryType.BBOX,))
+        ImportedClass(name=name, geometries=tuple(seen) or (default_geometry,))
         for name, seen in geometries.items()
     ]
     return to_dataset(classes, images, losses, format_label)

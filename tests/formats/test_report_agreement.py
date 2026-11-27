@@ -201,11 +201,23 @@ def _cvat_video_counts(root: Path) -> Counter[str]:
     return found
 
 
+def _dota_counts(root: Path) -> Counter[str]:
+    """Every ``labelTxt`` row, by the category token that names its class."""
+    found: Counter[str] = Counter()
+    for path in sorted(root.glob("*/labelTxt/*.txt")):
+        for line in path.read_text(encoding="utf-8").splitlines():
+            if line.strip():
+                found[line.split()[8]] += 1
+    return found
+
+
 #: How to count what each format actually wrote, keyed by ``format_name``.
 COUNTERS: dict[str, Callable[[Path], Counter[str]]] = {
     "ultralytics": _yolo_counts,
     "yolov5-yaml": _yolo_counts,
     "darknet": _darknet_counts,
+    "yolo-obb": _yolo_counts,
+    "dota": _dota_counts,
     "voc": _voc_counts,
     "coco": _coco_counts,
     "classification": _classification_counts,

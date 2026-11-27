@@ -293,3 +293,33 @@ def fold_path(folds: set[str], wanted: str, fallback: str, *, prefix: str = "") 
     training images rather than at a path nobody created.
     """
     return f"{prefix}{IMAGES_DIRNAME}/{wanted}" if wanted in folds else fallback
+
+
+def write_data_yaml(target: Path, names: list[str], folds: set[str]) -> None:
+    """The descriptor: ``path: .``, one key per fold present, ``names`` as a mapping.
+
+    ``names`` is a mapping from index rather than a list, because the index is
+    the thing that matters and a list makes it positional and invisible. No
+    ``nc``: the trainer counts the mapping, and a second number is one that can
+    disagree with it.
+
+    ``train`` and ``val`` are both required by the trainer, which raises naming
+    the missing key rather than defaulting — so a release published with no
+    recipe, one undivided set, still declares a ``val`` and points it at the
+    training images. That says "there is no held-out set", where omitting the
+    key says "this file is malformed". ``test`` is written only when it has
+    something in it.
+    """
+    present = sorted(folds)
+    train = fold_path(folds, "train", present[0])
+    lines = [
+        HEADER_COMMENT,
+        "path: .",
+        f"train: {train}",
+        f"val: {fold_path(folds, 'val', train)}",
+    ]
+    if "test" in folds:
+        lines.append(f"test: {IMAGES_DIRNAME}/test")
+    lines.append("names:")
+    lines.extend(f"  {index}: {yaml_scalar(name)}" for index, name in enumerate(names))
+    target.write_text("\n".join(lines) + "\n", encoding="utf-8")

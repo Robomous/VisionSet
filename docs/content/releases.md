@@ -527,11 +527,13 @@ The catalog this build ships, generated from the declarations by
 | `curvelanes` | curvelanes | `other` | `curvelanes` | — | polyline | — | — |
 | `cvat-images` | cvat-images | `other` | `cvat-images` | — | bbox, classification_tag, polygon, polyline | — | — |
 | `cvat-video` | cvat-video | `other` | `cvat-video` | — | bbox, polygon, polyline | — | — |
+| `dota` | dota | `other` | `dota` | — | obb | — | — |
 | `kitti` | kitti | `other` | `kitti` | — | cuboid_3d | — | — |
 | `mot` | mot | `other` | `mot` | — | bbox | — | — |
 | `openlane-2d` | openlane-2d | `other` | `openlane-2d` | — | polyline | — | — |
 | `tusimple` | tusimple | `other` | `tusimple` | — | polyline | — | — |
 | `voc` | voc | `other` | `voc` | — | bbox | — | — |
+| `yolo-obb` | yolo-obb | `other` | `yolo-obb` | — | obb | — | — |
 | `yolo11` | YOLO11 | `ultralytics-yolo` | `ultralytics` | classify, detect, obb, pose, segment | bbox, classification_tag, polygon | 640×640 | letterbox |
 | `yolo12` | YOLO12 | `ultralytics-yolo` | `ultralytics` | classify, detect, obb, pose, segment | bbox, classification_tag, polygon | 640×640 | letterbox |
 | `yolo26` | YOLO26 | `ultralytics-yolo` | `ultralytics` | classify, depth, detect, obb, pose, segment, semantic | bbox, classification_tag, polygon | 640×640 | letterbox |
