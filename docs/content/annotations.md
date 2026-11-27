@@ -362,7 +362,8 @@ finished, because a label outlives the work that produced it.
 
 ## A track observes annotations; an annotation knows nothing of tracks
 
-A track follows one object through one video source - see
+A track follows one object through one sequence source - a video, or an image sequence an
+[import](import.md) wrote - see
 [the decision](architecture/decisions/a-track-observes-frame-occurrences.md). It is
 `Track(id, source_id, label_class, external_id?)` and a set of observations, each
 `(track_id, occurrence_id, annotation_id)`: a [frame occurrence](ingest.md) of the track's source and
@@ -375,8 +376,8 @@ everything above - schema validation, provenance, progress - is untouched by tra
   same bytes are one asset, so tracking an object at both needs two annotations on it
   (`OCCURRENCE_ALREADY_OBSERVED`, `ANNOTATION_ALREADY_OBSERVED`).
 - **One source, one class.** Observing another source's occurrence, or merging tracks of two
-  sources, is `TRACK_SOURCE_MISMATCH`; a track is created only on a video source
-  (`SOURCE_NOT_SEQUENCE`). An observed annotation carries the track's class
+  sources, is `TRACK_SOURCE_MISMATCH`; a track is created only on a video or image-sequence
+  source (`SOURCE_NOT_SEQUENCE`). An observed annotation carries the track's class
   (`TRACK_CLASS_MISMATCH`) and sits on the occurrence's asset (`ANNOTATION_NOT_AT_OCCURRENCE`).
   A track follows 2D geometry; a 3D label is `INVALID_ANNOTATION`. `external_id` is an imported
   identity, unique per source (`TRACK_EXTERNAL_ID_TAKEN`), and neither it nor the class may be
