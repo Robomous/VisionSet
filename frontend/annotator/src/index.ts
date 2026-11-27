@@ -75,6 +75,12 @@ export {
   projectPolyline3D,
   type Projected3DLabel,
 } from "./core/geometry/projection";
+export {
+  keypointLabels,
+  type KeypointEdge,
+  type KeypointLabel,
+  type KeypointMark,
+} from "./core/geometry/keypoints";
 // Point-cloud scans — the buffer, the orbit camera, colours and labels in the declared frame
 export {
   POINT_BUFFER_HEADER_BYTES,

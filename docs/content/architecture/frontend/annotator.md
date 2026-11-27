@@ -117,9 +117,12 @@ out of the scene, nothing draws, selects or edits it, and it goes back unchanged
 `parseGeometry` refuses it explicitly.
 
 A `keypoints` annotation (`{type: "keypoints", points, visibility?}`, pixel points in order) is
-rendered read-only: its points, the skeleton edges of the class's keypoint spec and the visibility
-styling are drawn, and nothing selects or edits it; there is no keypoint drawing tool yet. It goes
-back unchanged on save.
+carried the same way and rendered read-only: `parseLabelClass` reads the class's keypoint spec
+(`LabelClass.keypoints`, `null` when unset), `keypointLabels` (pure, in core) turns the carried
+annotations into the points and spec edges to draw, and the React adapter's `KeypointLayer` draws
+them beneath the committed annotations, as `Overlay3DLayer` draws projected 3D labels. Nothing
+hit-tests, selects or edits a keypoint; there is no keypoint drawing tool yet. It goes back
+unchanged on save, and `parseGeometry` refuses it explicitly.
 
 | Piece | Image engine | Scan editor |
 | --- | --- | --- |

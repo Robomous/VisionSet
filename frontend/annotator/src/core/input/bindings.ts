@@ -45,9 +45,9 @@
  * `v` survives only because select mode is the *absence* of a class — `tool.ts`
  * cause 1 — so it names none.
  *
- * **`k`, `l`** (keypoint, polyline). Geometries `types.ts` declares and no
- * annotation may carry. A binding for a tool that cannot exist is one somebody
- * has to remove later.
+ * **`k`, `l`** (keypoint, polyline). v1's tool keys; a tool is a class choice
+ * here, and keypoints have no drawing tool. A binding for a tool that cannot
+ * exist is one somebody has to remove later.
  *
  * **`1`–`6`, `q`/`w`/`e`/`r`, `o`/`e`** — v1's lane-attribute hotkeys. Attributes
  * are schema-declared and an attribute editor is a panel, not a canvas binding.

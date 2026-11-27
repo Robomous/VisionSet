@@ -58,13 +58,8 @@ describe("the geometry vocabulary", () => {
     ]);
   });
 
-  it("keeps the carryable set a strict subset of the vocabulary", () => {
-    // Three members are roadmap. If this ever becomes an equality the two lists
-    // have collapsed into one and `parseGeometry` has nothing left to refuse.
-    expect(IMPLEMENTED_GEOMETRY_TYPES.length).toBeLessThan(GEOMETRY_TYPES.length);
-    for (const type of IMPLEMENTED_GEOMETRY_TYPES) {
-      expect(GEOMETRY_TYPES).toContain(type);
-    }
+  it("implements every name in the vocabulary, as the kernel does today", () => {
+    expect([...IMPLEMENTED_GEOMETRY_TYPES].sort()).toEqual([...GEOMETRY_TYPES].sort());
   });
 });
 
@@ -135,17 +130,6 @@ describe("the divergences this file exists to keep closed", () => {
     expect(() => parseAnnotation(flattened)).toThrow(/does not declare/);
   });
 
-  it.each(["keypoints"])(
-    "refuses %s as declared-but-unimplemented rather than as unknown",
-    (type) => {
-      // The distinction is the point: the remedy for one is to wait for a
-      // variant, and for the other to fix the caller. Two names are still
-      // waiting on a variant.
-      expect(() => parseGeometry({ type })).toThrow(WireFormatError);
-      expect(() => parseGeometry({ type })).toThrow(/no implementation/);
-      expect(() => parseGeometry({ type })).toThrow(/UNSUPPORTED_GEOMETRY/);
-    },
-  );
 });
 
 describe("a 3D polyline, carried outside the image scene", () => {
@@ -175,7 +159,60 @@ describe("a 3D polyline, carried outside the image scene", () => {
   it("is told apart from the drawn variants", () => {
     const parsed = parseAnnotations(fixture.annotations);
     const carried = parsed.filter((one) => !isDrawnAnnotation(one));
-    expect(carried.map((one) => one.geometry.type)).toEqual(["polyline_3d", "cuboid_3d", "mask"]);
+    expect(carried.map((one) => one.geometry.type)).toEqual(["polyline_3d", "cuboid_3d", "mask", "keypoints"]);
+  });
+});
+
+describe("keypoints, carried outside the image scene", () => {
+  const POSE = { type: "keypoints", points: [[40, 30], [40, 30], [52.5, 61.25]] };
+
+  it("parses the fixture's keypoints and goes back out byte for byte", () => {
+    const parsed = parseAnnotations(fixture.annotations).find((one) => one.geometry.type === "keypoints");
+    if (parsed === undefined) throw new Error("the fixture carries no keypoints");
+    expect(isDrawnAnnotation(parsed)).toBe(false);
+    const stored = fixture.annotations.find((one) => (one as { id: string }).id === parsed.id) as {
+      geometry: unknown;
+    };
+    expect(parsed.geometry).toStrictEqual(stored.geometry);
+  });
+
+  it("keeps an absent visibility absent, and a present one as given", () => {
+    for (const raw of [POSE, { ...POSE, visibility: [2, 1, 0] }]) {
+      // What a save sends: an absent visibility stays an absent key.
+      expect(JSON.stringify(parseStoredGeometry(raw))).toBe(JSON.stringify(raw));
+    }
+  });
+
+  it("is refused by the scene's own parser, which draws and edits", () => {
+    expect(() => parseGeometry(POSE)).toThrow(/"keypoints" is carried untouched/);
+  });
+
+  it("refuses a coordinate that is not a finite number", () => {
+    for (const bad of [Number.NaN, Number.POSITIVE_INFINITY, "40", null]) {
+      expect(() => parseStoredGeometry({ ...POSE, points: [[bad, 30]] })).toThrow(
+        /geometry\.points\[0\]\[0\] must be a finite number/,
+      );
+    }
+    expect(() => parseStoredGeometry({ ...POSE, points: [[40, 30, 1]] })).toThrow(/\[x, y\] pair/);
+  });
+
+  it("refuses a visibility state other than 0, 1 or 2", () => {
+    for (const bad of [3, -1, 1.5, "2", true, null]) {
+      expect(() => parseStoredGeometry({ ...POSE, visibility: [2, bad, 2] })).toThrow(
+        /geometry\.visibility\[1\] .* is not one of 0, 1, 2/,
+      );
+    }
+    expect(() => parseStoredGeometry({ ...POSE, visibility: null })).toThrow(/must be an array/);
+  });
+
+  it("refuses a visibility not aligned one state per point", () => {
+    expect(() => parseStoredGeometry({ ...POSE, visibility: [2, 2] })).toThrow(/names 2 states for 3 points/);
+    expect(() => parseStoredGeometry({ ...POSE, visibility: [2, 2, 2, 2] })).toThrow(/names 4 states for 3 points/);
+  });
+
+  it("refuses a missing points key and an undeclared one", () => {
+    expect(() => parseStoredGeometry({ type: "keypoints" })).toThrow(/missing points/);
+    expect(() => parseStoredGeometry({ ...POSE, names: ["a"] })).toThrow(/does not declare/);
   });
 });
 
@@ -442,7 +479,29 @@ describe("parsing the schema the kernel produced", () => {
       geometries: ["bbox"],
       color: null,
       attributes: [],
+      keypoints: null,
     });
+  });
+
+  it("reads a class's keypoint spec, names in order and edges as given", () => {
+    const face = parseSchema(fixture.schema).classes.find((one) => one.name === "face");
+    expect(face?.keypoints).toEqual({
+      names: ["left_eye", "right_eye", "nose"],
+      skeleton: [[2, 0], [0, 1], [1, 2]],
+    });
+    const bare = parseLabelClass({ name: "pose", geometries: ["keypoints"], keypoints: { names: ["a"] } });
+    expect(bare.keypoints).toEqual({ names: ["a"], skeleton: [] });
+  });
+
+  it("refuses a keypoint spec that is not its shape", () => {
+    const spec = (keypoints: unknown) => () =>
+      parseLabelClass({ name: "pose", geometries: ["keypoints"], keypoints });
+    expect(spec([])).toThrow(/class pose keypoints must be an object or null/);
+    expect(spec({ skeleton: [] })).toThrow(/class pose keypoints is missing names/);
+    expect(spec({ names: ["a", 1] })).toThrow(/names\[1\] must be a string/);
+    expect(spec({ names: ["a", "b"], skeleton: [[0]] })).toThrow(/skeleton\[0\] must be a pair of point indices/);
+    expect(spec({ names: ["a", "b"], skeleton: [[0, 1.5]] })).toThrow(/skeleton\[0\]\[1\] must be a point index/);
+    expect(spec({ names: ["a", "b"], skeleton: [[-1, 0]] })).toThrow(/skeleton\[0\]\[0\] must be a point index/);
   });
 
   it("ignores a key the contract does not declare", () => {

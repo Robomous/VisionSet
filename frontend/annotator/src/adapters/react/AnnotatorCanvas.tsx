@@ -156,6 +156,7 @@ import { topmostAnnotationAt } from "../../core/geometry/hitTest";
 import { withinBounds } from "../../core/geometry/primitives";
 import { assetTolerances } from "../../core/geometry/tolerance";
 import type { Projected3DLabel } from "../../core/geometry/projection";
+import type { KeypointLabel } from "../../core/geometry/keypoints";
 import { affordanceAt, viewerAffordanceAt } from "../../core/interaction/affordance";
 import { transition } from "../../core/interaction/machine";
 import { runEffects } from "../../core/interaction/runEffects";
@@ -209,6 +210,7 @@ import {
 import type { Viewport } from "../viewport";
 import { AnnotationLayer } from "./AnnotationLayer";
 import { Overlay3DLayer } from "./Overlay3DLayer";
+import { KeypointLayer } from "./KeypointLayer";
 import { createDecodedAssetImage, type DecodedAssetImage } from "./decodedAssetImage";
 import { useAnnotatorSnapshot } from "./hooks";
 import { digitFromCode, isComposing, isTextEntry } from "./keyboard";
@@ -336,6 +338,11 @@ export interface AnnotatorCanvasProps {
    * layer's `memo`.
    */
   readonly overlay3d?: readonly Projected3DLabel[];
+  /**
+   * Keypoints annotations (`keypointLabels`), drawn read-only beneath the
+   * annotations and outside the document, like `overlay3d`. Memoize it.
+   */
+  readonly keypoints?: readonly KeypointLabel[];
   /**
    * Anything core cannot do and this adapter does not own — a help sheet, a
    * "next asset". `reset-zoom` never arrives: the zoom is the adapter's.
@@ -550,6 +557,7 @@ export function AnnotatorCanvas({
   onViewChange,
   hiddenIds,
   overlay3d,
+  keypoints,
   onHostAction,
   onAnnotationMenu,
   bindings,
@@ -1637,6 +1645,9 @@ export function AnnotatorCanvas({
           >
             {overlay3d !== undefined && (
               <Overlay3DLayer labels={overlay3d} schema={snapshot.document.schema} />
+            )}
+            {keypoints !== undefined && (
+              <KeypointLayer labels={keypoints} classes={snapshot.document.schema.classes} zoom={view.zoom} />
             )}
             <AnnotationLayer
               committed={visibleCommitted}
