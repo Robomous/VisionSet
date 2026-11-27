@@ -3,10 +3,11 @@
 Status: **proposed** (#364). The direction was approved on 2026-11-26: keep content-addressed
 media, model ordered frame occurrences separately, and give persistent sequence-scoped tracks
 explicit observations. This page settles the details that approval left open. Slice 1, the
-occurrence model, migration and importer writes, and slice 2, the track and observation kernel
-over REST, the CLI and MCP, are implemented - see
-[annotations](../../annotations.md#a-track-observes-annotations-an-annotation-knows-nothing-of-tracks);
-the rest is not, and
+occurrence model, migration and importer writes, slice 2, the track and observation kernel
+over REST, the CLI and MCP, and slice 4, tracks in the release manifest at version 7, are
+implemented - see
+[annotations](../../annotations.md#a-track-observes-annotations-an-annotation-knows-nothing-of-tracks)
+and [releases](../../releases.md#the-manifests-own-format-version); the rest is not, and
 [#1170](https://github.com/Robomous/VisionSet/issues/1170) and the video variant of
 [#1171](https://github.com/Robomous/VisionSet/issues/1171) stay blocked until the slices below ship.
 

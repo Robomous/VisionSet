@@ -76,6 +76,8 @@ from visionset.kernel.domain import (
     Manifest,
     ManifestAnnotation,
     ManifestAsset,
+    ManifestObservation,
+    ManifestTrack,
     ModalityCompatibility,
     RecipeSpec,
     Release,
@@ -85,6 +87,7 @@ from visionset.kernel.domain import (
     ResizeStrategy,
     SplitAssignment,
     SplitRecipe,
+    Track,
     TransformedView,
     assign_split,
     canonical_bytes,
@@ -99,6 +102,7 @@ from visionset.kernel.domain import (
     sha256_hex,
     sha256_hex_of_stream,
     source_of_content_hash,
+    tracks_within,
     transform_manifest,
     validate_schema_annotation,
     variant_seed,
@@ -227,11 +231,13 @@ class ReleaseService:
                         blockers=blockers,
                     )
 
+                manifest_tracks = _manifest_tracks(uow, manifest_assets)
                 manifest = Manifest(
-                    manifest_version=manifest_version_for(manifest_assets),
+                    manifest_version=manifest_version_for(manifest_assets, manifest_tracks),
                     schema_version=active.version,
                     classes=active.classes,
                     assets=manifest_assets,
+                    tracks=manifest_tracks,
                 )
                 project_id = dataset.project_id
                 published = uow.releases.add(
@@ -964,6 +970,61 @@ def _manifest_assets(uow: UnitOfWork, assets: list[Asset]) -> tuple[ManifestAsse
     return tuple(built)
 
 
+def _manifest_tracks(
+    uow: UnitOfWork, assets: tuple[ManifestAsset, ...]
+) -> tuple[ManifestTrack, ...]:
+    """Every track observing an annotation the release copies, cut to those observations.
+
+    Walked from the annotations, so an observation is listed only where the
+    release holds both its asset and its annotation, and a track from any
+    source an asset occurs in is found, not only the asset's first-seen one.
+
+    Raises:
+        WorkspaceCorrupt: an observation names a missing track, or an occurrence that
+            is missing, decoded to another asset than its annotation's, or sits in
+            another source than its track.
+    """
+    tracks: dict[UUID, Track] = {}
+    observed: dict[UUID, list[ManifestObservation]] = {}
+    for asset in assets:
+        for annotation in asset.annotations:
+            observation = uow.observation_of(annotation.id)
+            if observation is None:
+                continue
+            occurrence = uow.frame_occurrences.get(observation.occurrence_id)
+            track = tracks.get(observation.track_id) or uow.tracks.get(observation.track_id)
+            if (
+                occurrence is None
+                or track is None
+                or occurrence.asset_id != asset.asset_id
+                or occurrence.source_id != track.source_id
+            ):
+                raise WorkspaceCorrupt(
+                    f"annotation {annotation.id} on asset {asset.asset_id} is observed at "
+                    f"occurrence {observation.occurrence_id} by track {observation.track_id}, "
+                    f"which do not both exist, on that asset and in one source"
+                )
+            tracks[track.id] = track
+            observed.setdefault(track.id, []).append(
+                ManifestObservation(
+                    position=occurrence.position,
+                    timestamp=occurrence.timestamp,
+                    asset_id=occurrence.asset_id,
+                    annotation_id=annotation.id,
+                )
+            )
+    return tuple(
+        ManifestTrack(
+            id=track.id,
+            source_id=track.source_id,
+            label_class=track.label_class,
+            external_id=track.external_id,
+            observations=tuple(observed[track.id]),
+        )
+        for track in tracks.values()
+    )
+
+
 def _release_schema_blockers(
     schema: AnnotationSchema, assets: tuple[ManifestAsset, ...]
 ) -> tuple[ClassCount, ...]:
@@ -1690,21 +1751,18 @@ def _addressed_to(manifest: Manifest, carried: frozenset[GeometryType]) -> Manif
     The classes stay: a class index is the frozen schema's, and a target that
     drops every polygon of a class still has that class in its vocabulary.
     """
-    return manifest.model_copy(
-        update={
-            "assets": tuple(
-                asset.model_copy(
-                    update={
-                        "annotations": tuple(
-                            one
-                            for one in asset.annotations
-                            if GeometryType(one.geometry.type) in carried
-                        )
-                    }
+    assets = tuple(
+        asset.model_copy(
+            update={
+                "annotations": tuple(
+                    one for one in asset.annotations if GeometryType(one.geometry.type) in carried
                 )
-                for asset in manifest.assets
-            )
-        }
+            }
+        )
+        for asset in manifest.assets
+    )
+    return manifest.model_copy(
+        update={"assets": assets, "tracks": tracks_within(manifest.tracks, assets)}
     )
 
 

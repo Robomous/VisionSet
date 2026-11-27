@@ -178,6 +178,10 @@ def publish_release(workspace: WorkspaceDep, dataset_id: UUID, body: ReleaseCrea
     409 `CALIBRATION_MISSING`, and with one measured at another size than the
     asset it is 422 `CALIBRATION_RESOLUTION_MISMATCH`. A release with no 3D
     label embeds no calibration and is written as manifest version 3.
+
+    A track observing an annotation the release copies is listed with those
+    observations only, in source position order, and makes the release a
+    manifest version 7. A release no track observes omits `tracks`.
     """
     release = ReleaseService(workspace).publish(
         dataset_id, body.tag, split=None if body.split is None else body.split.to_domain()

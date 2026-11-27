@@ -72,8 +72,8 @@ images ingested on another machine produce a different manifest.
 `manifest_version` names the shape of the document itself, independent of the workspace
 database's format and of the package version. A build writes the **lowest version that can
 express the release**: **3** for a release of images with no 3D label, **4** for one that holds
-any, **5** for one that holds a point-cloud asset, and **6** for one that holds an asset with a
-group label.
+any, **5** for one that holds a point-cloud asset, **6** for one that holds an asset with a
+group label, and **7** for one that holds an annotation a track observes.
 
 | Version | Since | What changed |
 | --- | --- | --- |
@@ -83,6 +83,7 @@ group label.
 | 4 | #1038, #1045 | the `polyline_3d` and `cuboid_3d` geometries, and a `calibration` on each asset that carries one |
 | 5 | #1046 | an asset's `modality`, and on a point-cloud asset its `point_cloud` metadata and the scan `frame` |
 | 6 | #1147 | an asset's `group_label`, the group its importer placed it in |
+| 7 | #1181 | `tracks`, each with the observations of it the release holds |
 
 An older document keeps the version it was written with, so its bytes and its hash never move and
 `verify` still passes. Version 3 changes no existing bytes: a polyline with unknown visibility
@@ -117,6 +118,18 @@ so a release of unlabelled assets keeps the version and the hash it had. The lab
 whatever the release's split recipe says: the document is a function of content, and a recipe is
 not content, so a grouped and an ungrouped release of one dataset still share one manifest. A
 manifest carrying a group label under a version below 6 does not load.
+
+Version 7 changes no existing bytes either. `tracks` is **omitted** when no track observes an
+annotation the release copies, so an untracked release keeps the version and the hash it had. A
+track is listed as its `id`, `source_id`, `label_class` and `external_id`, with only the
+observations whose asset **and** annotation the release holds - a frame the release does not
+contain is simply absent, and a track left with none is not listed. Each observation is the
+occurrence's `position` and `timestamp`, its `asset_id` and its `annotation_id`. Observations sort
+by position, never by when they were recorded, and tracks by source, then the position each is
+first observed at, then id, so two publishes of an unchanged dataset still agree byte for byte. An
+asset that occurs at two positions appears under both, once per annotation. A manifest carrying
+tracks under a version below 7, or an observation naming an annotation the document does not hold,
+does not load. An export hands its format the tracks cut to the annotations it carries.
 
 Publishing content that needs a newer version than an older build wrote still produces a
 different manifest hash, because the version number is part of the document.

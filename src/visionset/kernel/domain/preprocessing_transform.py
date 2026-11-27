@@ -49,6 +49,7 @@ from visionset.kernel.domain.release import (
     ManifestAnnotation,
     ManifestAsset,
     SplitAssignment,
+    tracks_within,
 )
 from visionset.kernel.domain.schema import AttributeValue, GeometryType
 from visionset.kernel.errors import (
@@ -818,37 +819,34 @@ def plugin_manifest(manifest: Manifest, view: TransformedView) -> Manifest:
     reads each file on its own. ``uri`` and ``group_label`` are copied from the
     source; ``width`` and ``height`` are the transformed size. Classes stay the manifest's. A file
     still carrying a 3D label carries its source's calibration, which only a
-    step that leaves the pixels where they are lets through.
+    step that leaves the pixels where they are lets through. Tracks keep only
+    the observations whose annotation a variant-0 file still carries.
     """
     sources = {asset.asset_id: asset for asset in manifest.assets}
-    return manifest.model_copy(
-        update={
-            "assets": tuple(
-                ManifestAsset(
-                    asset_id=file.asset_id,
-                    content_hash=variant_content_hash(file.content_hash, file.variant),
-                    uri=sources[file.asset_id].uri,
-                    width=file.width,
-                    height=file.height,
-                    annotations=tuple(
-                        _manifest_annotation(annotation, file.variant)
-                        for annotation in file.annotations
-                    ),
-                    calibration=(
-                        sources[file.asset_id].calibration
-                        if any(
-                            geometry_needs_calibration(
-                                a.geometry, modality=sources[file.asset_id].modality
-                            )
-                            for a in file.annotations
-                        )
-                        else None
-                    ),
-                    group_label=sources[file.asset_id].group_label,
+    assets = tuple(
+        ManifestAsset(
+            asset_id=file.asset_id,
+            content_hash=variant_content_hash(file.content_hash, file.variant),
+            uri=sources[file.asset_id].uri,
+            width=file.width,
+            height=file.height,
+            annotations=tuple(
+                _manifest_annotation(annotation, file.variant) for annotation in file.annotations
+            ),
+            calibration=(
+                sources[file.asset_id].calibration
+                if any(
+                    geometry_needs_calibration(a.geometry, modality=sources[file.asset_id].modality)
+                    for a in file.annotations
                 )
-                for file in view.files
-            )
-        }
+                else None
+            ),
+            group_label=sources[file.asset_id].group_label,
+        )
+        for file in view.files
+    )
+    return manifest.model_copy(
+        update={"assets": assets, "tracks": tracks_within(manifest.tracks, assets)}
     )
 
 

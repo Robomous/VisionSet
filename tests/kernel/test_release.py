@@ -375,7 +375,7 @@ def test_a_manifest_of_unlabelled_assets_keeps_its_version_and_its_hash() -> Non
 
 def test_a_labelled_asset_needs_the_grouped_manifest_version() -> None:
     labelled = [_fixed(0, group="scene-0061"), _fixed(1)]
-    assert manifest_version_for(labelled) == GROUPED_MANIFEST_VERSION == MANIFEST_VERSION
+    assert manifest_version_for(labelled) == GROUPED_MANIFEST_VERSION
     with pytest.raises(ValidationError, match="carries no group labels"):
         Manifest(manifest_version=5, schema_version=1, assets=labelled)
     manifest = Manifest(manifest_version=6, schema_version=1, assets=labelled)
