@@ -13,6 +13,15 @@ nothing was being distributed. This is the first version that is.
 
 ### Added
 
+- **Rotated boxes: the `obb` geometry.** A class may declare `obb`, a rectangle turned in the image plane: centre
+  `cx`, `cy`, sides `width`, `height` and the width side's `angle` in radians, y down. Every box is stored in one
+  canonical spelling - `width >= height`, `angle` in `[-pi/2, pi/2)`, a square's in `[-pi/4, pi/4)` - and a zero or
+  negative side or a nonfinite value is refused. The SDK, REST and MCP write it, the annotator draws, moves,
+  resizes and rotates it, and a frame check uses the rectangle itself. `voc`, `darknet` and `yolov5-yaml`
+  write it as its enclosing axis-aligned box, reported degraded; every other format drops it, reported dropped.
+  `letterbox`, `hflip`, `rot90` and `brightness_contrast` move it exactly; `stretch`, `fill` and `center_crop`
+  refuse it. A release holding one is a version-8 manifest; every other release keeps its version and hash
+  (#1160).
 - **Tracks in the annotation workspace.** On a frame of a video or image-sequence source, the side panel gains a
   Tracks region: the source's tracks with their class and frame count, the followed track's standing in this batch,
   and `‹` / `›` to its previous and next frame in the job, through the save-first path, passing over - and saying

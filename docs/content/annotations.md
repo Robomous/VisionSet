@@ -196,6 +196,52 @@ polylines outright (see [pre-processing](preprocessing.md)). Of the export forma
 `openlane-2d` has a per-vertex slot, and its importer reads it back; see
 [releases](releases.md#the-lane-formats).
 
+## A rotated box is a centre, a size and an angle
+
+`obb` (#1160) is a rectangle turned in the image plane, in the asset's **pixels** (x right, y
+down) - its own variant, not a `bbox` with an angle, so no code reading an axis-aligned box can
+reach it. It carries five fields:
+
+| Field | Meaning |
+| --- | --- |
+| `cx`, `cy` | the rectangle's centre |
+| `width`, `height` | its side lengths, each finite and strictly above zero |
+| `angle` | radians: the width side runs along `(cos angle, sin angle)` and the height side along `(-sin angle, cos angle)`. With y down, a positive angle turns clockwise on screen |
+
+The four corners, in order, are `c - w/2·u - h/2·v`, `c + w/2·u - h/2·v`, `c + w/2·u + h/2·v`
+and `c - w/2·u + h/2·v`, with `u` and `v` the two directions above; at `angle` 0 that is
+top-left, top-right, bottom-right, bottom-left, a `bbox`'s ring order.
+
+**One rectangle, one spelling.** Adding `pi` to the angle, or swapping the sides and adding
+`pi/2`, draws the same pixels, so every box is stored canonical, and a read may spell a box
+differently from the write that made it:
+
+1. when `width < height` the sides swap and `angle` gains `pi/2`, so `width >= height` always;
+2. `angle` is reduced modulo `pi` into `[-pi/2, pi/2)` - `pi/2` itself is stored as `-pi/2`;
+3. a square (`width == height` exactly) reduces it further, modulo `pi/2`, into `[-pi/4, pi/4)`;
+4. `-0.0` is stored as `0.0`.
+
+The reduction is IEEE `remainder`, which is exact, so a canonical box is a fixed point and
+serializes to the same bytes however often it is read and written back. Two spellings of one box
+agree to the last bit when their angles differ by an exactly representable amount; otherwise the
+float rounding of the sent angle can leave them an ulp apart. A box with a zero or negative side,
+a NaN or infinite field, or corners that overflow a float is refused with the kernel's wording -
+a 422 over REST, an input error over MCP.
+
+**Converting it.** The four corners are the rectangle exactly, so `obb_polygon` turns one into a
+four-vertex `polygon` with nothing lost, and `obb_from_corners` reads four ordered corners back
+into a box - either way round, from any start - refusing anything that is not one rectangle
+within `OBB_CORNER_TOLERANCE` (a relative `1e-6`): the wrong number of points, a nonfinite
+coordinate, a zero area, a parallelogram or a trapezoid. `obb_enclosing_box`, the axis-aligned
+box around the corners, is **lossy** whenever the angle is not a multiple of `pi/2`, and only an
+exporter that declares `obb` in `degraded_geometries` writes it; see
+[releases](releases.md#dropped-is-not-degraded-and-one-word-for-both-was-a-lie). Nothing projects a rotated box onto an
+axis-aligned one silently.
+
+**Against the frame**, a rotated box is judged by the rectangle itself, not its enclosing box:
+it may hang past the edges, but one whose rectangle does not meet the frame at all is refused
+like any other label wholly off its asset, even when its enclosing box would reach in.
+
 ## A 3D polyline is read against a calibration
 
 `polyline_3d` is an open path of at least two `[x, y, z]` points, in order, in **metres in the
@@ -259,7 +305,7 @@ the frame's forward axis, and `yaw` turns it right-handed about up - counter-clo
 above. On `lidar_flu` that is KITTI's lidar convention, heading `(cos yaw, sin yaw, 0)`; on `lidar_rfu`
 it is `(-sin yaw, cos yaw, 0)`.
 
-A scan has no pixels, so a `bbox`, `polygon` or `polyline` on one is refused with
+A scan has no pixels, so a `bbox`, `obb`, `polygon` or `polyline` on one is refused with
 `INVALID_ANNOTATION` (422); a `classification_tag` is accepted.
 
 ## Provenance is the model's own rule, not the service's

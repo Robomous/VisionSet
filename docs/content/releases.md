@@ -73,7 +73,8 @@ images ingested on another machine produce a different manifest.
 database's format and of the package version. A build writes the **lowest version that can
 express the release**: **3** for a release of images with no 3D label, **4** for one that holds
 any, **5** for one that holds a point-cloud asset, **6** for one that holds an asset with a
-group label, and **7** for one that holds an annotation a track observes.
+group label, **7** for one that holds an annotation a track observes, and **8** for one that
+holds a rotated box (`obb`).
 
 | Version | Since | What changed |
 | --- | --- | --- |
@@ -84,6 +85,7 @@ group label, and **7** for one that holds an annotation a track observes.
 | 5 | #1046 | an asset's `modality`, and on a point-cloud asset its `point_cloud` metadata and the scan `frame` |
 | 6 | #1147 | an asset's `group_label`, the group its importer placed it in |
 | 7 | #1181 | `tracks`, each with the observations of it the release holds |
+| 8 | #1160 | the `obb` geometry, a rotated pixel rectangle |
 
 An older document keeps the version it was written with, so its bytes and its hash never move and
 `verify` still passes. Version 3 changes no existing bytes: a polyline with unknown visibility
@@ -130,6 +132,12 @@ first observed at, then id, so two publishes of an unchanged dataset still agree
 asset that occurs at two positions appears under both, once per annotation. A manifest carrying
 tracks under a version below 7, or an observation naming an annotation the document does not hold,
 does not load. An export hands its format the tracks cut to the annotations it carries.
+
+Version 8 changes no existing bytes either. It adds a geometry and no key anywhere else, so a
+release with no rotated box keeps the version and the hash it had; a manifest holding an `obb`
+under a version below 8 does not load. The box is copied in its canonical spelling (see
+[annotations](annotations.md#a-rotated-box-is-a-centre-a-size-and-an-angle)), so two publishes of
+an unchanged dataset still agree byte for byte.
 
 Publishing content that needs a newer version than an older build wrote still produces a
 different manifest hash, because the version number is part of the document.
@@ -386,8 +394,9 @@ the report promised.
 The fix is vocabulary rather than capability. `Exporter` declares two geometry sets:
 
 - **`supported_geometries`** - written as they stand.
-- **`degraded_geometries`** - written, having lost something the kernel could represent. `{polygon}`
-  for `yolov5-yaml` and `voc`; and empty for `coco`, which writes a polygon as a polygon. The two sets are disjoint, and `supported` wins if a plugin
+- **`degraded_geometries`** - written, having lost something the kernel could represent. `{obb,
+  polygon}` for `yolov5-yaml`, `darknet` and `voc`, each written as its axis-aligned bounding box;
+  and empty for `coco`, which writes a polygon as a polygon and drops a rotated box. The two sets are disjoint, and `supported` wins if a plugin
   says both, because resolving a contradiction towards the weaker claim would report a loss that
   does not happen.
 
@@ -627,7 +636,7 @@ trainer's tasks:
 - `detect` otherwise - `class cx cy w h` per box, clamped into the image.
 
 `supported_geometries` is `{bbox, polygon, classification_tag}` and `degraded_geometries` is
-empty. A tag beside a located label has no layout to land in and is not written, so the format
+empty, so a rotated box is dropped: the oriented-box layout ultralytics reads is not written yet. A tag beside a located label has no layout to land in and is not written, so the format
 also declares `solitary_geometries = {classification_tag}`: whenever a box or polygon reaches the
 output, the report lists every tag row as **dropped** and counts it in `excluded_annotations`,
 which is what the label files hold. `lossy = True`, so consent is always asked. An asset with nothing on it gets an **empty** label file rather than
@@ -648,7 +657,7 @@ names: ["sign", "lane"]
 ```
 
 Detection only, always. `supported_geometries` is `{bbox}` and `degraded_geometries` is
-`{polygon}`: a polygon is written as its axis-aligned bounding box, and the report counts it as
+`{obb, polygon}`: a polygon or a rotated box is written as its axis-aligned bounding box, and the report counts it as
 written in a reduced form and says which classes and how many. A classification tag has no
 location and is dropped rather than given an invented box.
 
@@ -671,8 +680,8 @@ the other dialects already write. `valid.txt` is always written: a release with 
 points it at the training list, as `yolov5-yaml` points `val` at the training images. Darknet has
 no test key, so test images are written under `images/test` and listed in neither file.
 
-Detection only, always, with the same capabilities as `yolov5-yaml`: a polygon is written as its
-axis-aligned bounding box and reported as reduced, and a classification tag is dropped. The one
+Detection only, always, with the same capabilities as `yolov5-yaml`: a polygon or a rotated box is
+written as its axis-aligned bounding box and reported as reduced, and a classification tag is dropped. The one
 target is `yolov4`; `yolov3` stays with `ultralytics`.
 
 ### The COCO format
@@ -744,7 +753,8 @@ They are clamped into the image for the reason YOLO's are, and a box whose exten
 still gets `xmax >= xmin`, because an inverted box gives a reader a negative area rather than an
 error.
 
-`lossy = True` and `supported_geometries` is `{bbox}`. The reason is not YOLO's: a VOC `<object>`
+`lossy = True` and `supported_geometries` is `{bbox}`; `degraded_geometries` is `{obb, polygon}`,
+each written as its axis-aligned bounding box. The reason is not YOLO's: a VOC `<object>`
 has a fixed set of children its consumers index by tag name, so there is nowhere to put an
 attribute, a confidence or a provenance - where COCO can carry all three precisely because JSON
 readers ignore keys they do not know.
