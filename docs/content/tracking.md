@@ -33,15 +33,108 @@ server is an `http://` or `https://` URI. The skinny client cannot open a `sqlit
 database store; install the full `mlflow` package if you point VisionSet at one. A `file://` store
 (a local directory) is refused by MLflow itself unless `MLFLOW_ALLOW_FILE_STORE=true` is set.
 
+Settings are read once, when a process starts: set them before `visionset server` (or any other
+command) starts, and restart it after changing one. Background-job workers inherit them from the
+server.
+
+### Turning it off
+
+Unset `VISIONSET_MLFLOW_ENABLED`, or set it to `false`, and restart the process. Nothing else is
+needed: with tracking off, VisionSet ignores `MLFLOW_TRACKING_URI` and every other `MLFLOW_*`
+variable, never imports the client, and opens no connection, so the variables can stay set for other
+tools. Uninstalling the client (`pip uninstall mlflow-skinny`) is optional. What a server already
+holds stays there: VisionSet never deletes runs.
+
 ### Authentication and TLS
 
-VisionSet passes MLflow's own variables through untouched: `MLFLOW_TRACKING_USERNAME` and
-`MLFLOW_TRACKING_PASSWORD`, `MLFLOW_TRACKING_TOKEN`, `MLFLOW_TRACKING_INSECURE_TLS`,
-`MLFLOW_TRACKING_SERVER_CERT_PATH`, `MLFLOW_TRACKING_CLIENT_CERT_PATH`, and the rest the MLflow
-documentation lists. Set them in the environment of the process that runs VisionSet.
+A remote server is an `https://` URI. VisionSet hands authentication and certificates to the MLflow
+client and passes its own variables through untouched; set them in the environment of the process
+that runs VisionSet:
+
+| Variable | Use |
+| --- | --- |
+| `MLFLOW_TRACKING_USERNAME`, `MLFLOW_TRACKING_PASSWORD` | HTTP basic authentication, as MLflow's built-in authentication app expects. Both must be set. |
+| `MLFLOW_TRACKING_TOKEN` | A bearer token (`Authorization: Bearer …`), as most reverse proxies and hosted servers expect. Ignored when a username and password are both set. |
+| `MLFLOW_TRACKING_SERVER_CERT_PATH` | A PEM file of the certificate authorities to trust, for a server whose certificate a public authority did not issue — a company CA, for instance. Without it, only the public authorities `requests` trusts by default (the `certifi` bundle) are. |
+| `MLFLOW_TRACKING_CLIENT_CERT_PATH` | A PEM file holding a client certificate and its private key, for a server that requires mutual TLS. |
+
+```bash
+export VISIONSET_MLFLOW_ENABLED=true
+export MLFLOW_TRACKING_URI=https://mlflow.example.com
+export MLFLOW_TRACKING_SERVER_CERT_PATH=/etc/ssl/certs/company-ca.pem
+read -rs MLFLOW_TRACKING_TOKEN && export MLFLOW_TRACKING_TOKEN   # typed, never in shell history
+```
+
+Keep the token or password in a secret store or an environment file only you can read, never in a
+committed file or a Compose file. **Never turn certificate verification off** to make a connection
+work (`MLFLOW_TRACKING_INSECURE_TLS`): give the client the authority that signed the server's
+certificate with `MLFLOW_TRACKING_SERVER_CERT_PATH` instead.
 
 **A URI carrying credentials is refused** (`https://user:password@host`). Put them in the
 variables above instead, so they cannot reach a log line by way of the URI.
+
+The adapter is tested against a real MLflow server behind an HTTPS proxy that checks basic, bearer
+and client-certificate authentication, with a certificate authority generated for each run and
+trusted only through `MLFLOW_TRACKING_SERVER_CERT_PATH`. A wrong password and an untrusted
+certificate both leave the run unrecorded, as described under [when the server is
+down](#when-the-server-is-down).
+
+## A tracking server for development
+
+Any MLflow tracking server works. Two ways to run one locally; neither is started by anything in
+VisionSet.
+
+### Standalone
+
+```bash
+pip install mlflow   # the full package: the skinny client has no server
+mlflow server --host 127.0.0.1 --port 5000 --backend-store-uri sqlite:///mlflow.db
+```
+
+Then point VisionSet at `http://127.0.0.1:5000`, as in [turning it on](#turning-it-on). Run the
+server in its own virtual environment if you can: the full package brings a large dependency set
+that VisionSet's environment does not need. On macOS, port 5000 is often held by AirPlay Receiver;
+pick another with `--port`.
+
+### The Compose profile
+
+The development stack ([CONTRIBUTING.md](../../CONTRIBUTING.md#dev-setup))
+has an optional `mlflow` profile. A plain `docker compose up` does not start it, and no other
+service depends on it.
+
+```bash
+# The server alone, for VisionSet running on the host:
+docker compose -f docker/compose.yaml --profile mlflow up -d mlflow
+export VISIONSET_MLFLOW_ENABLED=true
+export MLFLOW_TRACKING_URI=http://127.0.0.1:5050
+
+# Or the server and the stack's api, with tracking turned on there:
+docker compose -f docker/compose.yaml -f docker/compose.mlflow.yaml --profile mlflow up --build
+```
+
+| | |
+| --- | --- |
+| Image | `ghcr.io/mlflow/mlflow`, pinned to the client version VisionSet locks, and updated by Dependabot under the repository's three-day cool-down. |
+| Port | `127.0.0.1:5050` on the host — loopback only, and not 5000. Move it with `VISIONSET_MLFLOW_PORT` in `docker/.env`. The UI is at the same address. |
+| Storage | The `mlflow-data` named volume: a SQLite database and an artifact directory, apart from the VisionSet workspace. It survives `down`; `docker volume rm visionset_mlflow-data` deletes it. `down -v` deletes it too, along with the other profiles' volumes. |
+| Authentication | None. It is for one developer on one machine: do not publish its port beyond loopback. |
+| `docker/compose.mlflow.yaml` | Installs the `mlflow` extra into the api image (hence `--build`, on every switch in or out), and sets `VISIONSET_MLFLOW_ENABLED=true`, `MLFLOW_TRACKING_URI=http://mlflow:5000` and `VISIONSET_MLFLOW_EXPERIMENT` (default `visionset-dev`) for the api. Without it the api runs untracked even while the server is up. |
+
+## Connecting from where VisionSet runs
+
+The URI is resolved by the process that runs VisionSet, so it depends on where that process is:
+
+| VisionSet runs | Server runs | `MLFLOW_TRACKING_URI` |
+| --- | --- | --- |
+| On the host | On the host, or the Compose profile | `http://127.0.0.1:<port>` (5050 for the profile) |
+| In the Compose stack | The Compose profile | `http://mlflow:5000` — the service name on the Compose network, as `docker/compose.mlflow.yaml` sets it. `127.0.0.1` inside a container is the container itself. |
+| In a container | On the host | `http://host.docker.internal:<port>` on Docker Desktop; on Linux add `extra_hosts: ["host.docker.internal:host-gateway"]` to the service. The server must listen on an address the container can reach and list `host.docker.internal` in `--allowed-hosts`. The Compose profile is simpler. |
+| Anywhere | Another machine | `https://<host>`, with the [authentication and TLS](#authentication-and-tls) variables above. |
+
+A server reached by a name other than `localhost` or a private address must allow that name: MLflow
+refuses other `Host` headers unless its `--allowed-hosts` includes them, and the profile allows
+`mlflow`. For VisionSet in a container and a remote server, pass the credentials into that container
+from an environment file you keep out of version control.
 
 ## When it is misconfigured
 
@@ -86,6 +179,13 @@ it imports the client, and only where the variable is not already set, so your v
 | `MLFLOW_HTTP_REQUEST_BACKOFF_FACTOR` | `1` | `2` |
 
 ## What is sent
+
+**In short:** run names, ids, parameters, metrics and tags from the lists on this page, and a
+release's identity as a dataset input, to the one server `MLFLOW_TRACKING_URI` names — with the
+credentials you configured, as an `Authorization` header to that server only. **No artifacts are
+uploaded**, ever: no images, annotations, label files, export archives, model weights or logs, and
+nothing is registered in MLflow's model registry. That holds even on a server that accepts
+artifacts, such as the Compose profile's.
 
 A run is opened through `MlflowClient` with an explicit run id. VisionSet uses no autologging and no
 active run, and never calls `mlflow.set_tracking_uri`, so it does not change what other MLflow code

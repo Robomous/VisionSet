@@ -29,6 +29,15 @@ nothing was being distributed. This is the first version that is.
   (`baseball diamond` as `baseball-diamond`), and a re-import names the class with the hyphen; two classes that would
   share a category refuse the export naming both. `yolo-obb` keeps names unchanged in `data.yaml`. The `ultralytics`
   formats and targets are unchanged (#1161).
+- **A local MLflow server for development, and the adapter tested against a real one.** An optional `mlflow`
+  Compose profile runs a pinned MLflow server on loopback port 5050 (`VISIONSET_MLFLOW_PORT` moves it) with its own
+  `mlflow-data` volume; plain `docker compose up` never starts it and no service depends on it.
+  `docker/compose.mlflow.yaml` installs the `mlflow` extra into the api image and points it at `http://mlflow:5000`.
+  The tracking page now covers turning tracking off, standalone and Compose servers, host, container and remote
+  URIs, and basic, bearer and client-certificate authentication over TLS, and states what leaves VisionSet: no
+  artifacts, ever. A new test runs the adapter and background jobs against that server, directly and behind an
+  authenticating HTTPS proxy with a certificate authority generated per run; CI's `tracking-smoke` job runs it on one
+  Python. See [tracking](docs/content/tracking.md#a-tracking-server-for-development) (#1177).
 - **Export, ingest and weight-download runs carry their own facts, and releases their lineage.** When tracking is
   on, an export run records its format, target, lossy consent, whether a recipe ran and the recipe's content hash,
   the files and bytes it wrote and the source and augmented image counts; a succeeded export also records the
