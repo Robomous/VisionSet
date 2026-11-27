@@ -5577,6 +5577,8 @@ export interface components {
             release_id: string;
             /** Target */
             target?: string | null;
+            /** Untagged Assets */
+            untagged_assets: number;
         };
         /**
          * ExportTargetOut

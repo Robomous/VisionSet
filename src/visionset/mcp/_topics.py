@@ -162,6 +162,8 @@ what the format declares it can write, so the numbers are exact. Each class has 
 - `supported`: written as it stands.
 - `dropped`: not in the output at all. `excluded_annotations` counts those labels and
   `excluded_assets` the assets that arrive with at least one missing.
+  `untagged_assets` counts the assets a single-tag format (`classification-dir`)
+  leaves out whole because they carry no classification tag.
 - `degraded`: in the output, reduced (a polygon written as its axis-aligned bounding
   box, as `yolov5-yaml` and `voc` do), counted by `degraded_annotations` and
   `degraded_assets`. `reason` says which.

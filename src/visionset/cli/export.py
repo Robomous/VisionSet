@@ -328,6 +328,11 @@ def _report(report: ExportCompatibility, *, json_out: bool) -> None:
             f"{report.degraded_annotations} annotation(s) across "
             f"{report.degraded_assets} asset(s) in a reduced form."
         )
+    if report.untagged_assets:
+        note(
+            f"{report.format_name} would leave out {report.untagged_assets} asset(s) "
+            "that carry no classification tag."
+        )
     if report.format_is_lossy:
         # The format's blanket declaration, which the per-class table structurally
         # cannot show: it covers attributes, confidence and provenance, none of

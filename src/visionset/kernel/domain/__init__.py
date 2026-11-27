@@ -366,6 +366,7 @@ from visionset.kernel.domain.release import (
     manifest_within,
     sha256_hex,
     sha256_hex_of_stream,
+    single_tag,
     tracks_within,
 )
 from visionset.kernel.domain.rle import (
@@ -550,6 +551,7 @@ __all__ = [
     "SEQUENCED_MANIFEST_VERSION",
     "MASK_MANIFEST_VERSION",
     "ModalityCompatibility",
+    "single_tag",
     "manifest_version_for",
     "MARK_TRANSITIONS",
     "MEDIA_TYPES",

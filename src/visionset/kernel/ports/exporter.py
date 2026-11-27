@@ -146,6 +146,11 @@ class Exporter(Protocol):
     # writes a label only as an observation of a released track, as a MOT
     # sequence does. The compatibility report counts every other label dropped.
 
+    # Optional, read with ``getattr``: ``single_tag: bool`` says the format
+    # writes one classification tag per asset, the one the domain's
+    # ``single_tag`` keeps, and leaves an asset with none out. The compatibility
+    # report counts the other tags dropped and those assets in ``untagged_assets``.
+
     # Optional, read through :func:`supported_modalities_of`:
     # ``supported_modalities: frozenset[str]`` names the asset modalities this
     # format can write. A plain ``str`` set, matching ``Asset.modality``: a

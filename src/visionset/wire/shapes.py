@@ -678,6 +678,7 @@ class ExportCompatibility(TypedDict):
     degraded_assets: int
     classes: list[ClassCompatibility]
     dropped_modalities: list[ModalityCompatibility]
+    untagged_assets: int
 
 
 @closed
