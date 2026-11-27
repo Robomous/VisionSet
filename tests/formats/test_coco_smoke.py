@@ -32,15 +32,19 @@ from uuid import UUID
 import pytest
 from PIL import Image
 
-from visionset.formats.coco import ANNOTATIONS_DIRNAME, CocoExporter
+from visionset.formats.coco import ANNOTATIONS_DIRNAME, CocoExporter, CocoImporter
 from visionset.kernel.domain import (
     Annotation,
     BboxGeometry,
     GeometryType,
     LabelClass,
+    MaskGeometry,
     PolygonGeometry,
     SplitRecipe,
+    mask_rows,
+    rasterize_rings,
 )
+from visionset.kernel.domain.geometry import mask_runs
 from visionset.kernel.services import (
     AnnotationService,
     BatchService,
@@ -257,3 +261,128 @@ def test_the_extra_keys_ride_along_without_disturbing_anything(exported: Path) -
         (exported / ANNOTATIONS_DIRNAME / "instances_train.json").read_text(encoding="utf-8")
     )
     assert document["info"]["visionset"]["manifest_hash"]
+
+
+# --- RLE masks ------------------------------------------------------------------
+
+ROAD = LabelClass(name="road", geometries=(GeometryType.MASK,))
+
+#: A ring with a hole beside a second region: two regions, one hole.
+HOLED_RINGS = (
+    ((4.0, 4.0), (24.0, 4.0), (24.0, 24.0), (4.0, 24.0)),
+    ((10.0, 10.0), (18.0, 10.0), (18.0, 18.0), (10.0, 18.0)),
+    ((40.0, 30.0), (60.0, 30.0), (60.0, 44.0), (40.0, 44.0)),
+)
+
+
+def _holed() -> MaskGeometry:
+    width, height = IMAGE_SIZE
+    return rasterize_rings([list(ring) for ring in HOLED_RINGS], height=height, width=width)
+
+
+def _export_masks(tmp_path: Path) -> Path:
+    """A two-image release, one carrying the holed mask and one carrying nothing."""
+    root = tmp_path / "ws"
+    workspace = WorkspaceService.init(root)
+    try:
+        projects = ProjectService(workspace)
+        project = projects.create("roads")
+        SchemaService(workspace).create_version(project.id, [ROAD])
+        incoming = tmp_path / "incoming"
+        incoming.mkdir()
+        for index in range(2):
+            Image.new("RGB", IMAGE_SIZE, (index * 40, 80, 160)).save(incoming / f"s-{index}.png")
+        source = SourceService(workspace).register_images(project.id, incoming)
+        run = IngestService(workspace).ingest(source.id, batch_name="first")
+        assert run.batch_id is not None
+        batches, jobs = BatchService(workspace), JobService(workspace)
+        batches.approve(run.batch_id)
+        (job,) = batches.jobs(run.batch_id)
+        batches.start(run.batch_id)
+        jobs.start(job.id)
+        first, second = batches.assets(run.batch_id)
+        AnnotationService(workspace).add(
+            job.id,
+            [
+                Annotation(
+                    asset_id=first.id,
+                    label_class="road",
+                    schema_version=1,
+                    geometry=_holed(),
+                    provenance="human",
+                )
+            ],
+        )
+        jobs.mark(job.id, second.id, "annotated")
+        jobs.complete(job.id)
+        batches.complete(run.batch_id)
+        DatasetService(workspace).promote(run.batch_id)
+        releases = ReleaseService(workspace)
+        release = releases.publish(projects.get_dataset(project.id).id, "v1")
+        out = tmp_path / "out"
+        releases.export(release.id, CocoExporter(), out)
+        return out
+    finally:
+        workspace.close()
+
+
+def test_pycocotools_decodes_an_exported_mask_pixel_for_pixel(tmp_path: Path) -> None:
+    """`annToMask` on our RLE is our bitmap exactly, and `area` and `bbox` agree with its own."""
+    import numpy as np
+    from pycocotools import mask as coco_mask
+
+    coco = _loaded(_export_masks(tmp_path))
+    (row,) = coco.loadAnns(coco.getAnnIds())
+    width, height = IMAGE_SIZE
+    expected = np.frombuffer(b"".join(mask_rows(_holed())), np.uint8).reshape(height, width)
+
+    assert row["iscrowd"] == 0
+    decoded = coco.annToMask(row)
+    assert decoded.shape == expected.shape
+    assert (decoded == expected).all()
+    assert row["area"] == float(coco_mask.area(row["segmentation"]))
+    assert row["bbox"] == [float(value) for value in coco_mask.toBbox(row["segmentation"])]
+    assert len(coco.getImgIds()) == 2
+
+
+def test_pycocotools_encodes_the_same_counts_and_both_spellings_import_alike(
+    tmp_path: Path,
+) -> None:
+    """Its `encode` writes our string, and its uncompressed crowd form reads as the same mask."""
+    import numpy as np
+    from pycocotools import mask as coco_mask
+
+    holed = _holed()
+    width, height = IMAGE_SIZE
+    rows = np.frombuffer(b"".join(mask_rows(holed)), np.uint8).reshape(height, width)
+    encoded = coco_mask.encode(np.asfortranarray(rows))
+    assert encoded["counts"].decode("ascii") == holed.counts
+
+    uncompressed = coco_mask.frPyObjects(
+        {"size": [height, width], "counts": list(mask_runs(holed))}, height, width
+    )
+    assert uncompressed["counts"].decode("ascii") == holed.counts
+
+    document = {
+        "images": [{"id": 1, "file_name": "a.png", "width": width, "height": height}],
+        "annotations": [
+            {
+                "id": 1,
+                "image_id": 1,
+                "category_id": 1,
+                "iscrowd": 1,
+                "segmentation": {"size": [height, width], "counts": list(mask_runs(holed))},
+            },
+            {
+                "id": 2,
+                "image_id": 1,
+                "category_id": 1,
+                "iscrowd": 0,
+                "segmentation": {"size": [height, width], "counts": holed.counts},
+            },
+        ],
+        "categories": [{"id": 1, "name": "road"}],
+    }
+    (tmp_path / "instances_train.json").write_text(json.dumps(document), encoding="utf-8")
+    (image,) = CocoImporter().read(tmp_path).images
+    assert [label.geometry for label in image.labels] == [holed, holed]

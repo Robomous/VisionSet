@@ -241,7 +241,7 @@ def test_the_installed_exporters_declare_what_they_can_carry() -> None:
                 # COCO has no field for rides in a `visionset` object.
                 "name": "coco",
                 "lossy": False,
-                "geometries": ["bbox", "polygon"],
+                "geometries": ["bbox", "mask", "polygon"],
                 "degraded_geometries": [],
                 "modalities": ["image"],
                 "targets": ["coco"],

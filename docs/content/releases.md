@@ -532,7 +532,7 @@ The catalog this build ships, generated from the declarations by
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | `bdd100k-lane` | bdd100k-lane | `other` | `bdd100k-lane` | — | polyline | — | — |
 | `classification` | classification | `other` | `classification` | — | classification_tag | — | — |
-| `coco` | coco | `other` | `coco` | — | bbox, polygon | — | — |
+| `coco` | coco | `other` | `coco` | — | bbox, mask, polygon | — | — |
 | `culane` | culane | `other` | `culane` | — | polyline | — | — |
 | `curvelanes` | curvelanes | `other` | `curvelanes` | — | polyline | — | — |
 | `cvat-images` | cvat-images | `other` | `cvat-images` | — | bbox, classification_tag, polygon, polyline | — | — |

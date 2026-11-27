@@ -183,7 +183,7 @@ def test_format_list_json_is_the_envelope() -> None:
             # has no field for rides in a `visionset` object per annotation.
             "name": "coco",
             "lossy": False,
-            "geometries": ["bbox", "polygon"],
+            "geometries": ["bbox", "mask", "polygon"],
             "degraded_geometries": [],
             "modalities": ["image"],
             "targets": ["coco"],
