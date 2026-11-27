@@ -191,6 +191,8 @@ async function serveApi(page: Page, jobs: readonly string[] = [JOB]): Promise<vo
               allowed_actions: assetActions("unannotated"),
               annotation_count: 0,
               min_confidence: null,
+              withheld_actions: [],
+              observed: [],
             },
           ],
           total: 1,

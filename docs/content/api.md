@@ -112,6 +112,7 @@ GET    /jobs/{job_id}/assets/{asset_id}/annotations
 POST   /jobs/{job_id}/annotations                         bulk, all-or-nothing
 PATCH  /jobs/{job_id}/annotations                         bulk, all-or-nothing
 DELETE /jobs/{job_id}/annotations                         ?id=&id=
+POST   /jobs/{job_id}/tracks                              start a track observing an annotation; one write
 POST   /jobs/{job_id}/tracks/{track_id}/observations      an annotation already drawn
 DELETE /jobs/{job_id}/tracks/{track_id}/observations/{occurrence_id}  204; the annotation stays
 PUT    /jobs/{job_id}/tracks/{track_id}/class             the track and every annotation it observes

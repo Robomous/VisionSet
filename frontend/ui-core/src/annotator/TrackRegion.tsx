@@ -49,7 +49,6 @@ export interface TrackCandidate {
 export interface TrackRegionProps {
   readonly jobId: string;
   readonly batchId: string;
-  readonly sourceId: string;
   readonly assetId: string;
   readonly occurrences: readonly FrameOccurrence[];
   readonly tracks: readonly Track[];
@@ -57,6 +56,8 @@ export interface TrackRegionProps {
   readonly jobAssetIds: readonly string[];
   /** Why writing is withheld on this frame, or null when the wire declares `annotate`. */
   readonly withheld: string | null;
+  /** Why adding an object to a track is withheld on this frame, or null when the wire declares `observe`. */
+  readonly observeWithheld: string | null;
   /** How many objects are selected, and the one object when it is exactly one drawn 2D shape. */
   readonly selectionCount: number;
   readonly candidate: TrackCandidate | null;
@@ -83,10 +84,10 @@ function frameWord(position: number): string {
 }
 
 export function TrackRegion(props: TrackRegionProps): JSX.Element {
-  const { jobId, sourceId, assetId, occurrences, tracks, withheld, candidate, focus, onFocus } = props;
-  const observe = useObserveTrack(jobId);
-  const unobserve = useUnobserveTrack(jobId);
-  const start = useStartTrack(jobId);
+  const { jobId, assetId, occurrences, tracks, candidate, focus, onFocus } = props;
+  const observe = useObserveTrack(jobId, props.batchId);
+  const unobserve = useUnobserveTrack(jobId, props.batchId);
+  const start = useStartTrack(jobId, props.batchId);
   const { outcome, onOutcome: setOutcome } = props;
   const busy = observe.isPending || unobserve.isPending || start.isPending;
 
@@ -110,7 +111,7 @@ export function TrackRegion(props: TrackRegionProps): JSX.Element {
     });
   }
 
-  const startReason = startWithheld({ withheld, candidate, selectionCount: props.selectionCount, candidateOn, tracks, here, busy });
+  const startReason = startWithheld({ withheld: props.observeWithheld, candidate, selectionCount: props.selectionCount, candidateOn, tracks, here, busy });
 
   function startAt(occurrence: FrameOccurrence): void {
     if (startReason !== null || candidate === null) return;
@@ -118,10 +119,9 @@ export function TrackRegion(props: TrackRegionProps): JSX.Element {
       // `mutateAsync` and a handler pair rather than per-call callbacks: the
       // region remounts with the frame, and a per-call callback does not run
       // once its component is gone. Both setters are the page's.
-      start.mutateAsync({ sourceId, labelClass: candidate.labelClass, occurrenceId: occurrence.id, annotationId }).then((result) => {
-        onFocus({ trackId: result.track.id, position: occurrence.position, passed: 0 });
-        if (result.observeError === null) setOutcome({ tone: "done", text: `Started a track at ${frameWord(occurrence.position)}` });
-        else setOutcome({ tone: "error", text: `Started an empty track. ${refusalProse(result.observeError)}` });
+      start.mutateAsync({ occurrenceId: occurrence.id, annotationId }).then((track) => {
+        onFocus({ trackId: track.id, position: occurrence.position, passed: 0 });
+        setOutcome({ tone: "done", text: `Started a track at ${frameWord(occurrence.position)}` });
       }, failed),
     );
   }
@@ -244,6 +244,7 @@ function FocusedTrack({
   jobAssetIds,
   openAsset,
   withheld,
+  observeWithheld,
   candidate,
   candidateServerId,
   candidateOn,
@@ -284,7 +285,7 @@ function FocusedTrack({
     openAsset(index, () => onFocus({ trackId: track.id, position: target.position, passed: step.skipped }));
   }
 
-  const addReason = addWithheld({ withheld, candidate, track, candidateOn: candidateServerId === null ? null : candidateOn, tracks, here, free, busy });
+  const addReason = addWithheld({ withheld: observeWithheld, candidate, track, candidateOn: candidateServerId === null ? null : candidateOn, tracks, here, free, busy });
   const previousReason = stepReason(previous, "earlier");
   const nextReason = stepReason(next, "later");
 

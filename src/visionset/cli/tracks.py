@@ -198,6 +198,26 @@ def track_observe(
     _print_track(found, json_out=json_out)
 
 
+@track_app.command("start")
+def track_start(
+    job: JobOption,
+    occurrence: OccurrenceOption,
+    annotation: Annotated[
+        UUID, typer.Option("--annotation", help="The annotation drawn at the occurrence, by id.")
+    ],
+    json_out: JsonOption = False,
+    workspace: WorkspaceOption = None,
+) -> None:
+    """Start a track of the annotation's class on the occurrence's source, observing it there.
+
+    One write: a refused observation leaves no track behind. Every rule of
+    creating a track and of observing holds.
+    """
+    with opened_workspace(workspace) as service:
+        found = TrackService(service).start(job, occurrence, annotation)
+    _print_track(found, json_out=json_out)
+
+
 @track_app.command("unobserve")
 def track_unobserve(
     track: TrackArgument,

@@ -124,10 +124,16 @@ export const checkBackgroundJobPage: Check<Schemas["BackgroundJobPage"]> =
   /*#__PURE__*/ object({ "items": [true, arrayOf(checkBackgroundJobOut)], "total": [true, isInteger] } as const);
 
 export const checkAssetAction: Check<Schemas["AssetAction"]> =
-  /*#__PURE__*/ openOneOf(["annotate", "skip", "restore", "confirm", "submit_for_review", "accept", "return_to_annotator"] as const);
+  /*#__PURE__*/ openOneOf(["annotate", "observe", "skip", "restore", "confirm", "submit_for_review", "accept", "return_to_annotator"] as const);
+
+export const checkObservedLabelOut: Check<Schemas["ObservedLabelOut"]> =
+  /*#__PURE__*/ object({ "annotation_id": [true, isString], "label_class": [true, isString], "track_id": [true, isString] } as const);
+
+export const checkWithheldActionsOut: Check<Schemas["WithheldActionsOut"]> =
+  /*#__PURE__*/ object({ "actions": [true, arrayOf(checkAssetAction)], "code": [true, isString] } as const);
 
 export const checkBatchAssetOut: Check<Schemas["BatchAssetOut"]> =
-  /*#__PURE__*/ object({ "allowed_actions": [true, arrayOf(checkAssetAction)], "annotation_count": [true, isInteger], "content_hash": [true, isString], "format": [true, either([checkImageFormat, isNull] as const)], "frame_index": [true, either([isInteger, isNull] as const)], "frame_timestamp": [true, either([isNumber, isNull] as const)], "height": [true, either([isInteger, isNull] as const)], "id": [true, isString], "ingested_at": [true, either([isString, isNull] as const)], "job_id": [true, either([isString, isNull] as const)], "min_confidence": [true, either([isNumber, isNull] as const)], "modality": [true, oneOf(["image", "point_cloud"] as const)], "point_cloud": [true, either([checkPointCloudMetadataOut, isNull] as const)], "progress": [true, either([checkAssetProgress, isNull] as const)], "project_id": [true, isString], "source_id": [true, either([isString, isNull] as const)], "thumbnail_hash": [true, either([isString, isNull] as const)], "width": [true, either([isInteger, isNull] as const)] } as const);
+  /*#__PURE__*/ object({ "allowed_actions": [true, arrayOf(checkAssetAction)], "annotation_count": [true, isInteger], "content_hash": [true, isString], "format": [true, either([checkImageFormat, isNull] as const)], "frame_index": [true, either([isInteger, isNull] as const)], "frame_timestamp": [true, either([isNumber, isNull] as const)], "height": [true, either([isInteger, isNull] as const)], "id": [true, isString], "ingested_at": [true, either([isString, isNull] as const)], "job_id": [true, either([isString, isNull] as const)], "min_confidence": [true, either([isNumber, isNull] as const)], "modality": [true, oneOf(["image", "point_cloud"] as const)], "observed": [true, arrayOf(checkObservedLabelOut)], "point_cloud": [true, either([checkPointCloudMetadataOut, isNull] as const)], "progress": [true, either([checkAssetProgress, isNull] as const)], "project_id": [true, isString], "source_id": [true, either([isString, isNull] as const)], "thumbnail_hash": [true, either([isString, isNull] as const)], "width": [true, either([isInteger, isNull] as const)], "withheld_actions": [true, arrayOf(checkWithheldActionsOut)] } as const);
 
 export const checkBatchAssetPage: Check<Schemas["BatchAssetPage"]> =
   /*#__PURE__*/ object({ "items": [true, arrayOf(checkBatchAssetOut)], "total": [true, isInteger] } as const);
@@ -660,6 +666,7 @@ export const checkSplitTrack = checkTrackSplitOut;
 export const checkStartBatch = checkBatchOut;
 export const checkStartIngest = checkIngestJobOut;
 export const checkStartJob = checkJobOut;
+export const checkStartTrack = checkTrackOut;
 export const checkStartVideoImport = checkVideoImportOut;
 export const checkSuggestRegion = checkSuggestionOut;
 export const checkTestConnectionEndpoint = checkConnectionOut;

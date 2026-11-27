@@ -68,6 +68,7 @@ from visionset.kernel.domain import (
     ClassCount,
     MembershipChange,
     Modality,
+    ObservedLabel,
     OrphanGuard,
     Partition,
     PreLabelRun,
@@ -247,6 +248,7 @@ class BatchService:
                     )
                 )
             window = ids[offset:] if limit is None else ids[offset : offset + limit]
+            observed = uow.observed_labels(window)
             items = []
             for asset_id in window:
                 asset = uow.assets.get(asset_id)
@@ -262,6 +264,7 @@ class BatchService:
                         job_state=job_state,
                         progress=state,
                         summary=summary.get(asset_id, nothing),
+                        observed=observed.get(asset_id, ()),
                     )
                 )
             return items, len(ids)
@@ -1076,6 +1079,7 @@ class PlacedAsset(BaseModel):
     job_state: AnnotationJobState | None
     progress: AssetProgress | None
     summary: AnnotationSummary
+    observed: tuple[ObservedLabel, ...]
 
 
 def assets_of(uow: UnitOfWork, batch: Batch) -> list[Asset]:

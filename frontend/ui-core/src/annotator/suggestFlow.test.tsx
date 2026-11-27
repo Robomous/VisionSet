@@ -173,6 +173,8 @@ function assetRow(id: string, hash: string): Record<string, unknown> {
     allowed_actions: annotatable ? assetActions("unannotated", { batchState: "in_annotation" }) : [],
     annotation_count: 0,
     min_confidence: null,
+    withheld_actions: [],
+    observed: [],
   };
 }
 

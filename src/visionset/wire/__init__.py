@@ -110,6 +110,7 @@ from visionset.kernel.domain import (
     MaskGeometry,
     ObbGeometry,
     ObservedFrame,
+    ObservedLabel,
     PointCloudMetadata,
     PolygonGeometry,
     Polyline3DGeometry,
@@ -141,11 +142,13 @@ from visionset.kernel.domain import (
     VideoProvenance,
     WeightDownload,
     asset_actions,
+    asset_withheld,
     batch_actions,
     connection_actions,
     job_actions,
     loss_kinds,
 )
+from visionset.kernel.error_codes import ERROR_CODES
 from visionset.kernel.ports import Exporter, Provider, supported_modalities_of
 from visionset.wire import shapes
 
@@ -503,6 +506,7 @@ def batch_asset(
     progress: AssetProgress | None,
     batch_state: BatchState,
     summary: AnnotationSummary,
+    observed: Sequence[ObservedLabel],
 ) -> shapes.BatchAsset:
     """One asset seen from inside a batch: the asset, plus where the work stands.
 
@@ -524,6 +528,20 @@ def batch_asset(
         "progress": None if progress is None else progress.value,
         "allowed_actions": [
             a.value for a in asset_actions(progress, batch_state=batch_state, job_state=job_state)
+        ],
+        "withheld_actions": [
+            {"code": ERROR_CODES[refusal], "actions": [a.value for a in actions]}
+            for refusal, actions in asset_withheld(
+                progress, batch_state=batch_state, job_state=job_state
+            ).items()
+        ],
+        "observed": [
+            {
+                "annotation_id": str(one.annotation_id),
+                "track_id": str(one.track_id),
+                "label_class": one.label_class,
+            }
+            for one in observed
         ],
         "annotation_count": summary.count,
         "min_confidence": summary.min_model_confidence,

@@ -215,9 +215,9 @@ nowhere to be shown.
 
 | Progress | Declares |
 | --- | --- |
-| `unannotated` | `annotate`, `skip` |
+| `unannotated` | `annotate`, `observe`, `skip` |
 | `pre_labeled` | `annotate`, `skip`, `confirm` |
-| `annotated` | `annotate`, `skip`, `submit_for_review` |
+| `annotated` | `annotate`, `observe`, `skip`, `submit_for_review` |
 | `skipped` | `restore` |
 | `review_pending` | `accept`, `return_to_annotator` |
 | `accepted` | *nothing* |
@@ -243,6 +243,20 @@ an edit, which is derived like the other four, and `confirm`, which a person cli
 model's labels as the frame's own without editing them - labels exist either way, the marker
 records judgment. Offering any of the other four as a control would mean changing a marker while
 the labels stay put.
+
+`observe` is not a progress move either: it is the right to add one of the asset's labels to a
+[track](annotations.md#a-track-observes-annotations-an-annotation-knows-nothing-of-tracks), which is
+`annotate` less the progress states `ASSET_WITHHOLDINGS` names for it. Today that is `pre_labeled`,
+whose model output a replacing pre-label run deletes without asking. **A writable asset says why it
+withholds an action**: `BatchAssetOut.withheld_actions` lists each refusal code with the actions it
+withholds, so a `pre_labeled` asset carries
+`[{"code": "ASSET_NOT_JUDGED", "actions": ["observe"]}]` and an observe sent anyway is refused with
+that code, read from the same table. The list is empty wherever `annotate` is not declared: there
+the asset is read-only, and the batch, the job and the progress already say why.
+
+`observe` is a right the batch, the job and the progress grant, **not a promise that the asset is a
+position of a sequence**: a still of an image directory or a point-cloud scan declares it too, and an
+observe there is refused for what the asset is, as the track rules say.
 
 ## Settled, not terminal
 

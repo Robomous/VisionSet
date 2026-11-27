@@ -65,6 +65,8 @@ const ASSET = {
   allowed_actions: assetActions("unannotated"),
   annotation_count: 0,
   min_confidence: null,
+  withheld_actions: [],
+  observed: [],
 } satisfies Wire["BatchAssetOut"];
 
 async function serveApi(page: Page): Promise<void> {

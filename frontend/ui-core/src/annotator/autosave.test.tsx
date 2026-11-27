@@ -25,7 +25,7 @@ import { AUTOSAVE_MS, AnnotationPage } from "./AnnotationPage";
 import { TooltipProvider } from "@robomous/ui-core";
 import { renderWithData } from "../testing/dataHarness";
 import { stubResizeObserver } from "../testing/resizeObserver.js";
-import { assetActions, batchActions, jobActions } from "../testing/wire.fixtures.js";
+import { assetActions, assetWithheld, batchActions, jobActions } from "../testing/wire.fixtures.js";
 
 const PROJECT = "11111111-1111-4111-8111-111111111111";
 const BATCH = "22222222-2222-4222-8222-222222222222";
@@ -190,6 +190,8 @@ function answer(path: string): unknown {
       allowed_actions: assetActions(progress as never, { batchState: "in_annotation" }),
       annotation_count: 0,
       min_confidence: null,
+      withheld_actions: assetWithheld(progress as never, { batchState: "in_annotation" }),
+      observed: [],
     }));
     return { items, total: items.length };
   }

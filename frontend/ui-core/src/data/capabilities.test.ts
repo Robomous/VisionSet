@@ -29,9 +29,11 @@ import {
   declaring,
   JOB_ACTION,
   withheldBecause,
+  withheldCode,
   type AssetAction,
   type BatchAction,
   type Capable,
+  type Withholding,
 } from "./capabilities";
 import type { KnownMembers } from "../generated/api.js";
 import { groupRefusals, REFUSAL_PROSE, refusalProse, type Refusal } from "./refusals";
@@ -132,6 +134,7 @@ describe("the action names the client imports", () => {
         "accept",
         "annotate",
         "confirm",
+        "observe",
         "restore",
         "return_to_annotator",
         "skip",
@@ -160,6 +163,13 @@ describe("why an action is not on offer", () => {
   it("offers no sentence for a state it has never heard of", () => {
     expect(withheldBecause(undefined)).toBeNull();
     expect(withheldBecause("archived")).toBeNull();
+  });
+  it("reads the refusal code the wire names for a withheld action, and nothing it does not name", () => {
+    const frame: Withholding<AssetAction> = { withheld_actions: [{ code: "ASSET_NOT_JUDGED", actions: ["observe"] }] };
+    expect(withheldCode(frame, ASSET_ACTION.observe)).toBe("ASSET_NOT_JUDGED");
+    expect(withheldCode(frame, ASSET_ACTION.annotate)).toBeNull();
+    expect(withheldCode({ withheld_actions: [] }, ASSET_ACTION.observe)).toBeNull();
+    expect(withheldCode(undefined, ASSET_ACTION.observe)).toBeNull();
   });
 });
 

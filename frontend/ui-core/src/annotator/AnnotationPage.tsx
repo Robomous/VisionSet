@@ -173,13 +173,15 @@ import {
   JOB_ACTION,
   declares,
   withheldBecause,
+  withheldCode,
   type AssetAction,
   type BatchAction,
   type JobAction,
+  type Withholding,
 } from "../data/capabilities";
 import type { OpenMember } from "../generated/api.js";
 import { asApiError } from "../data/errors";
-import { refusalProse } from "../data/refusals";
+import { REFUSAL_PROSE, refusalProse } from "../data/refusals";
 import { Badge, Button, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger, HoverCard, HoverCardContent, HoverCardTrigger, Kbd, Tooltip, TooltipContent, TooltipTrigger, cn } from "@robomous/ui-core";
 import { EmptyState, ErrorState, LoadingState } from "../patterns/AsyncStates";
 import { AnnotatorPanel, type TrackMark } from "./AnnotatorPanel";
@@ -190,6 +192,7 @@ import { keepCanvasFocus } from "./keepCanvasFocus";
 import { Withheld } from "./Withheld";
 import { classColor } from "../palette";
 import { CanvasReassign } from "./CanvasReassign";
+import type { ClassLock } from "./ReassignMenu";
 import { EditorNotice, EditorNotices } from "./EditorNotice";
 import { modKey } from "./modKey";
 import { ScanShortcutSheet, ShortcutSheet } from "./ShortcutSheet";
@@ -794,6 +797,10 @@ interface WorkspaceProps {
      * must be one the labels can still move with.
      */
     readonly allowed_actions: readonly OpenMember<AssetAction>[];
+    /** Why the wire withholds an action this frame would otherwise allow — `observe` on unjudged model output. */
+    readonly withheld_actions: Withholding<AssetAction>["withheld_actions"];
+    /** Every annotation of this frame a track observes, from any source, and the class it keeps. */
+    readonly observed: BatchAsset["observed"];
   };
   readonly schema: unknown;
   /** The version the batch pinned at approval — what every write here is judged against. */
@@ -1920,6 +1927,11 @@ function Workspace({
    */
   const canAnnotate = declares(asset, ASSET_ACTION.annotate);
   const readOnly = !canAnnotate;
+  const observeWithheld = readOnly
+    ? "Viewing only"
+    : declares(asset, ASSET_ACTION.observe)
+      ? null
+      : (REFUSAL_PROSE[withheldCode(asset, ASSET_ACTION.observe) ?? ""] ?? "Adding to a track is not available on this frame.");
 
   // Tracks are 2D and follow a sequence source's occurrences; a scan has none.
   const trackSource = isScan ? null : asset.source_id;
@@ -1948,6 +1960,54 @@ function Workspace({
     }
     return marks;
   }, [tracks, snapshot.document, frame.minted, onTrackFocus]);
+  /**
+   * The class a track keeps each drawn object to. This source's tracks, once
+   * read, are the fresher word on their own tracks — a Remove from track here
+   * unlocks at once — and the frame's declaration (`observed`, from any source)
+   * covers what they cannot: a track of another sequence, and a read that is
+   * pending or has failed, so neither ever unlocks an object.
+   */
+  const classLocks = useMemo(() => {
+    const locks = new Map<string, ClassLock>();
+    const declared = new Map(asset.observed.map((one) => [one.annotation_id, one]));
+    for (const annotation of snapshot.document.annotations.values()) {
+      const serverId = frame.minted.get(annotation.id) ?? annotation.id;
+      const on = tracks === undefined ? null : observationOf(tracks, serverId);
+      if (on !== null && tracks !== undefined) {
+        locks.set(annotation.id, { labelClass: on.track.label_class, track: trackName(on.track, tracks) });
+        continue;
+      }
+      const one = declared.get(serverId);
+      if (one === undefined || tracks?.some((track) => track.id === one.track_id) === true) continue;
+      locks.set(annotation.id, { labelClass: one.label_class, track: null });
+    }
+    return locks;
+  }, [asset.observed, tracks, snapshot.document, frame.minted]);
+  // Undo and redo are the other road to a class change: a step that would move a
+  // locked object to any class but its lock, from the one it holds, is refused.
+  // One guard per store, reading the locks through a ref; a change of locks asks
+  // it again rather than installing another.
+  const locksRef = useRef(classLocks);
+  useEffect(() => {
+    store.guardHistory((from, to) => {
+      for (const [id, lock] of locksRef.current) {
+        const after = to.annotations.get(id)?.label_class;
+        if (after !== undefined && after !== lock.labelClass && after !== from.annotations.get(id)?.label_class) {
+          return "would move an object off its track's class";
+        }
+      }
+      return null;
+    });
+    return () => store.guardHistory(null);
+  }, [store]);
+  const lockKeyRef = useRef("");
+  useEffect(() => {
+    locksRef.current = classLocks;
+    const key = [...classLocks].map(([id, lock]) => `${id}:${lock.labelClass}`).sort().join("|");
+    if (key === lockKeyRef.current) return;
+    lockKeyRef.current = key;
+    store.recheckHistory();
+  }, [store, classLocks]);
   const trackCandidate: TrackCandidate | null = useMemo(() => {
     if (snapshot.selection.size !== 1) return null;
     const [id] = snapshot.selection;
@@ -2798,6 +2858,7 @@ function Workspace({
               readOnly={readOnly}
               openFor={reclassing}
               onOpenChange={setReclassing}
+              classLocks={classLocks}
             />
           )}
 
@@ -2987,8 +3048,8 @@ function Workspace({
               <>
                 {(
                   [
-                    { testId: "tool-undo", can: !readOnly && (scan === null ? snapshot.canUndo : scan.canUndo), label: scan === null || scan.undoLabel === null ? "Undo" : `Undo ${scan.undoLabel}`, empty: readOnly ? "Viewing only — nothing here can be undone" : "Nothing to undo", keys: `${modKey()}Z`, run: () => (scan === null ? store.undo() : scan.undo()), Icon: Undo2 },
-                    { testId: "tool-redo", can: !readOnly && (scan === null ? snapshot.canRedo : scan.canRedo), label: scan === null || scan.redoLabel === null ? "Redo" : `Redo ${scan.redoLabel}`, empty: readOnly ? "Viewing only — nothing here can be redone" : "Nothing to redo", keys: `⇧${modKey()}Z`, run: () => (scan === null ? store.redo() : scan.redo()), Icon: Redo2 },
+                    { testId: "tool-undo", can: !readOnly && (scan === null ? snapshot.canUndo : scan.canUndo), label: scan === null || scan.undoLabel === null ? "Undo" : `Undo ${scan.undoLabel}`, empty: readOnly ? "Viewing only — nothing here can be undone" : scan === null && snapshot.undoRefusal !== null ? `Undo ${snapshot.undoRefusal}` : "Nothing to undo", keys: `${modKey()}Z`, run: () => (scan === null ? store.undo() : scan.undo()), Icon: Undo2 },
+                    { testId: "tool-redo", can: !readOnly && (scan === null ? snapshot.canRedo : scan.canRedo), label: scan === null || scan.redoLabel === null ? "Redo" : `Redo ${scan.redoLabel}`, empty: readOnly ? "Viewing only — nothing here can be redone" : scan === null && snapshot.redoRefusal !== null ? `Redo ${snapshot.redoRefusal}` : "Nothing to redo", keys: `⇧${modKey()}Z`, run: () => (scan === null ? store.redo() : scan.redo()), Icon: Redo2 },
                   ] as const
                 ).map(({ testId, can, label, empty, keys, run, Icon }) => (
                   <Tooltip key={testId}>
@@ -3230,6 +3291,7 @@ function Workspace({
             setAddingClass(true);
           }}
           trackMarks={trackMarks}
+          classLocks={classLocks}
           {...(trackSource === null || occurrences.data === undefined || occurrences.data.length === 0 || tracks === undefined
             ? sourceTracks.isError || occurrences.isError
               ? {
@@ -3255,12 +3317,12 @@ function Workspace({
                   <TrackRegion
                     jobId={jobId}
                     batchId={batchId}
-                    sourceId={trackSource}
                     assetId={asset.id}
                     occurrences={occurrences.data}
                     tracks={tracks}
                     jobAssetIds={jobAssetIds}
                     withheld={readOnly ? "Viewing only" : null}
+                    observeWithheld={observeWithheld}
                     selectionCount={snapshot.selection.size}
                     candidate={trackCandidate}
                     serverIdOf={serverIdOf}

@@ -271,10 +271,25 @@ class IngestJob(TypedDict):
 
 
 @closed
+class ObservedLabel(TypedDict):
+    annotation_id: str
+    track_id: str
+    label_class: str
+
+
+@closed
+class WithheldActions(TypedDict):
+    code: str
+    actions: list[str]
+
+
+@closed
 class BatchAsset(Asset):
     job_id: str | None
     progress: str | None
     allowed_actions: list[str]
+    withheld_actions: list[WithheldActions]
+    observed: list[ObservedLabel]
     annotation_count: int
     min_confidence: float | None
 

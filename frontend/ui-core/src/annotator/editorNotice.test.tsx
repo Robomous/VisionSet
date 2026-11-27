@@ -105,6 +105,8 @@ function answer(path: string): unknown {
           allowed_actions: assetActions("unannotated", { batchState }),
           annotation_count: 0,
           min_confidence: null,
+          withheld_actions: [],
+          observed: [],
         },
       ],
       total: 1,

@@ -57,6 +57,7 @@ visionset track occurrences|list --source SOURCE_ID
 visionset track show TRACK_ID
 visionset track status TRACK_ID --batch BATCH_ID
 visionset track create --source SOURCE_ID --class C [--external-id X]
+visionset track start --job JOB_ID --occurrence OCCURRENCE_ID --annotation ANNOTATION_ID
 visionset track observe TRACK_ID --job JOB_ID --occurrence OCCURRENCE_ID --annotation ANNOTATION_ID
 visionset track unobserve TRACK_ID --job JOB_ID --occurrence OCCURRENCE_ID
 visionset track set-class TRACK_ID --job JOB_ID --class C
@@ -560,7 +561,9 @@ Every other command names the job acting with `--job`, and passes the gates an a
 does against every observation it touches - a job carrying only some of a track's assets cannot
 restructure it. `observe` attaches an annotation already drawn at the occurrence's asset, which
 needs a canvas or a model, and refuses a `pre_labeled` asset with `ASSET_NOT_JUDGED` until a
-person edits or confirms it; `unobserve` detaches one and keeps the annotation; `set-class`
+person edits or confirms it; `start` creates a track of the annotation's class on the
+occurrence's source and observes the annotation in one write, judging the class against the
+batch's pinned version, so a refusal leaves no track behind; `unobserve` detaches one and keeps the annotation; `set-class`
 rewrites the track and every annotation it observes in one transaction; `merge` absorbs the
 second track into the first; `split` moves the cut occurrence and every later one to a new track
 and prints `{kept, created}` with `--json`. `delete` keeps the annotations unless

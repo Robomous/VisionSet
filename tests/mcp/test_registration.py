@@ -71,6 +71,7 @@ SHIPPED = {
     "list_tracks",
     "get_track_status",
     "create_track",
+    "start_track",
     "observe_track",
     "unobserve_track",
     "set_track_class",

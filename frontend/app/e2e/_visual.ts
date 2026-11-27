@@ -465,6 +465,8 @@ export async function serveVisualApi(page: Page, options: VisualOptions = {}): P
               allowed_actions: assetActions("annotated"),
               annotation_count: options.scan === true ? 1 : (options.annotationCount ?? 3),
               min_confidence: null,
+              withheld_actions: [],
+              observed: [],
             },
           ],
           total: 1,

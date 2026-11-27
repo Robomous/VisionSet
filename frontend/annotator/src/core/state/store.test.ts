@@ -332,3 +332,65 @@ describe("a drag writes nothing until release", () => {
     expect(idsOf(store.document)).toEqual(["a", "b"]);
   });
 });
+
+describe("a history guard", () => {
+  const recolored = (document: AnnotationDocument, labelClass: string) =>
+    replaceAnnotationCommand({ ...annotationById(document, "a")!, label_class: labelClass });
+  /** Refuses any step that moves `a` off `sign` to a class other than the one it holds now. */
+  const keepsSign = (from: AnnotationDocument, to: AnnotationDocument): string | null => {
+    const before = annotationById(from, "a")?.label_class;
+    const after = annotationById(to, "a")?.label_class;
+    return after === undefined || after === "sign" || after === before ? null : "keeps sign";
+  };
+
+  it("refuses a redo that would move a guarded annotation off its class, and says so", () => {
+    const store = new AnnotatorStore(documentOf("a"));
+    store.execute(recolored(store.document, "lane"));
+    store.execute(recolored(store.document, "sign"));
+    expect(store.undo()).toBe(true);
+    expect(store.undo()).toBe(true);
+    store.guardHistory(keepsSign);
+
+    expect(store.canRedo).toBe(false);
+    expect(store.getSnapshot().redoLabel).toBeNull();
+    expect(store.getSnapshot().redoRefusal).toBe("keeps sign");
+    expect(store.redo()).toBe(false);
+    expect(annotationById(store.document, "a")?.label_class).toBe("sign");
+  });
+
+  it("refuses an undo back to another class, and allows one back to the guarded class", () => {
+    const store = new AnnotatorStore(documentOf("a"));
+    store.execute(recolored(store.document, "lane"));
+    store.execute(recolored(store.document, "sign"));
+    store.guardHistory(keepsSign);
+
+    expect(store.canUndo).toBe(false);
+    expect(store.undo()).toBe(false);
+    expect(annotationById(store.document, "a")?.label_class).toBe("sign");
+
+    store.guardHistory(null);
+    expect(store.undo()).toBe(true);
+    store.guardHistory(keepsSign);
+    expect(store.redo()).toBe(true);
+    expect(annotationById(store.document, "a")?.label_class).toBe("sign");
+  });
+
+  it("notifies when the guard changes, so a reader's canUndo follows it", () => {
+    const store = new AnnotatorStore(documentOf("a"));
+    store.execute(recolored(store.document, "lane"));
+    let heard = 0;
+    store.subscribe(() => {
+      heard += 1;
+    });
+    let refuse = false;
+    store.guardHistory(() => (refuse ? "no" : null));
+    expect(heard).toBe(1);
+    expect(store.canUndo).toBe(true);
+
+    refuse = true;
+    store.recheckHistory();
+    expect(heard).toBe(2);
+    expect(store.canUndo).toBe(false);
+    expect(store.getSnapshot().undoRefusal).toBe("no");
+  });
+});

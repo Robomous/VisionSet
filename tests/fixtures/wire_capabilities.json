@@ -3,6 +3,7 @@
     "accepted": [],
     "annotated": [
       "annotate",
+      "observe",
       "skip",
       "submit_for_review"
     ],
@@ -20,7 +21,13 @@
     ],
     "unannotated": [
       "annotate",
+      "observe",
       "skip"
+    ]
+  },
+  "ASSET_WITHHELD": {
+    "pre_labeled/ASSET_NOT_JUDGED": [
+      "observe"
     ]
   },
   "BATCH_ACTIONS": {

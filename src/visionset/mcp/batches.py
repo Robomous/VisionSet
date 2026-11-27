@@ -799,6 +799,7 @@ def list_batch_assets(
                 progress=one.progress,
                 batch_state=batch.state,
                 summary=one.summary,
+                observed=one.observed,
             )
             for one in placed
         ]

@@ -368,6 +368,7 @@ def test_the_batch_vantage_point_carries_the_arrival_too() -> None:
         progress=None,
         batch_state=BatchState.DRAFT,
         summary=AnnotationSummary(count=0),
+        observed=(),
     )
 
     assert published.ingested_at == arrived
