@@ -39,6 +39,7 @@ from visionset.kernel.ports import ProgressReporter
 from visionset.kernel.services import IngestService
 
 JOB_TYPE = "ingest.resume"
+INGEST_JOB_KEY = "ingest_job_id"
 
 HANDLER = register(HandlerRef(type=JOB_TYPE, func=f"{__name__}:run", idempotent=True))
 
@@ -51,7 +52,7 @@ def payload_for(ingest_job_id: UUID) -> dict[str, JsonValue]:
     ``{"ingest_job_id": ...}`` by hand would be free to spell it differently, and
     the mismatch would surface as a ``KeyError`` inside a worker.
     """
-    return {"ingest_job_id": str(ingest_job_id)}
+    return {INGEST_JOB_KEY: str(ingest_job_id)}
 
 
 def run(
@@ -71,7 +72,7 @@ def run(
     """
     if reporter.is_cancelled():
         return {}
-    ingest_job_id = UUID(str(payload["ingest_job_id"]))
+    ingest_job_id = UUID(str(payload[INGEST_JOB_KEY]))
     # Never a ``with``: the handle belongs to the worker and outlives this task.
     # See ``jobs/context.py``.
     workspace = workspace_for(workspace_root)

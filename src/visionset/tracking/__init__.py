@@ -11,7 +11,13 @@ See ``docs/content/tracking.md``.
 from __future__ import annotations
 
 from visionset.tracking._mlflow import build_mlflow_tracker
-from visionset.tracking._tracker import NoOpTracker, ParamValue, RunStatus, Tracker
+from visionset.tracking._tracker import (
+    DatasetInput,
+    NoOpTracker,
+    ParamValue,
+    RunStatus,
+    Tracker,
+)
 from visionset.tracking.settings import (
     TrackingSettings,
     load_tracking_settings,
@@ -33,6 +39,7 @@ def build_tracker(settings: TrackingSettings) -> Tracker:
 
 
 __all__ = [
+    "DatasetInput",
     "NoOpTracker",
     "ParamValue",
     "RunStatus",

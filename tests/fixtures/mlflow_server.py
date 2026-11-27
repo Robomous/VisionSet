@@ -58,6 +58,7 @@ class Run:
     tags: dict[str, str] = field(default_factory=dict)
     params: dict[str, str] = field(default_factory=dict)
     metrics: dict[str, float] = field(default_factory=dict)
+    inputs: list[dict[str, Any]] = field(default_factory=list)
     updates: int = 0
 
     def info(self) -> dict[str, Any]:
@@ -169,6 +170,9 @@ class _Handler(BaseHTTPRequestHandler):
                 run.params.update({p["key"]: p["value"] for p in body.get("params", [])})
                 run.metrics.update({m["key"]: m["value"] for m in body.get("metrics", [])})
                 run.tags.update({t["key"]: t["value"] for t in body.get("tags", [])})
+                return self._reply(200, {})
+            if self.path.endswith("/runs/log-inputs") and run is not None:
+                run.inputs.extend(body.get("datasets", []))
                 return self._reply(200, {})
             if self.path.endswith("/runs/search"):
                 found = [

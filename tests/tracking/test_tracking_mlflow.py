@@ -25,6 +25,7 @@ from tests.fixtures.mlflow_server import (
 
 from visionset.kernel.errors import TrackingUnavailable
 from visionset.tracking import (
+    DatasetInput,
     RunStatus,
     TrackingSettings,
     build_tracker,
@@ -91,6 +92,35 @@ def test_a_run_sends_exactly_what_it_was_given(server: MlflowServer) -> None:
     updated = posted["/api/2.0/mlflow/runs/update"]
     assert updated is not None
     assert updated["status"] == "FAILED"
+
+
+def test_a_dataset_input_is_sent_as_identity_with_its_context(server: MlflowServer) -> None:
+    tracker = build_tracker(load_tracking_settings())
+
+    run_id = tracker.start_run("export.release")
+    tracker.log_inputs(run_id, [RELEASE_INPUT])
+    tracker.log_inputs(run_id, [])
+    tracker.end_run(run_id)
+
+    sent = [seen.body for seen in server.requests if seen.path.endswith("/runs/log-inputs")]
+    assert sent == [
+        {
+            "run_id": "run-1",
+            "datasets": [
+                {
+                    "tags": [{"key": "mlflow.data.context", "value": "export"}],
+                    "dataset": {
+                        "name": "visionset-release-r1",
+                        "digest": "ab" * 16,
+                        "source_type": "visionset_release",
+                        "source": '{"release_id": "r1"}',
+                        "profile": '{"schema_version": 2}',
+                    },
+                }
+            ],
+        }
+    ]
+    assert server.runs["run-1"].status == "FINISHED"
 
 
 def test_nothing_identifying_the_machine_is_sent(server: MlflowServer) -> None:
@@ -353,6 +383,10 @@ class _FakeClient:
         self._maybe_fail("set_terminated")
         self.calls.append(("set_terminated", status))
 
+    def log_inputs(self, run_id: str, **kwargs: Any) -> None:
+        self._maybe_fail("log_inputs")
+        self.calls.append(("log_inputs", kwargs))
+
     def search_runs(self, experiment_ids: list[str], **kwargs: Any) -> list[Any]:
         self._maybe_fail("search_runs")
         self.calls.append(("search_runs", kwargs))
@@ -363,6 +397,18 @@ _ENTITIES: Any = SimpleNamespace(
     Param=lambda key, value: (key, value),
     Metric=lambda key, value, timestamp, step: (key, value, step),
     RunTag=lambda key, value: (key, value),
+    Dataset=lambda **fields: fields,
+    DatasetInput=lambda dataset, tags: (dataset, tags),
+    InputTag=lambda key, value: (key, value),
+)
+
+RELEASE_INPUT = DatasetInput(
+    name="visionset-release-r1",
+    digest="ab" * 16,
+    source_type="visionset_release",
+    source='{"release_id": "r1"}',
+    profile='{"schema_version": 2}',
+    context="export",
 )
 
 
@@ -377,7 +423,7 @@ def test_an_experiment_created_concurrently_is_adopted() -> None:
 def test_failures_never_raise_and_never_log_the_exception_text(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
-    client = _FakeClient(fail={"create_run", "log_batch", "set_terminated"})
+    client = _FakeClient(fail={"create_run", "log_batch", "log_inputs", "set_terminated"})
     tracker = MlflowTracker(client, _ENTITIES, "visionset")
 
     with caplog.at_level(logging.WARNING, logger="visionset.tracking"):
@@ -385,10 +431,11 @@ def test_failures_never_raise_and_never_log_the_exception_text(
         tracker.log_params("r", {"a": 1})
         tracker.log_metrics("r", {"m": 1.0})
         tracker.set_tags("r", {"t": "v"})
+        tracker.log_inputs("r", [RELEASE_INPUT])
         tracker.end_run("r", RunStatus.KILLED)
 
     warnings = _warnings(caplog)
-    assert len(warnings) == 5
+    assert len(warnings) == 6
     assert all("TEMPORARILY_UNAVAILABLE" in warning for warning in warnings)
     assert not any("secret" in warning or "host.example" in warning for warning in warnings)
 
@@ -400,6 +447,7 @@ def test_a_run_that_never_started_sends_nothing() -> None:
     tracker.log_params(None, {"a": 1})
     tracker.log_metrics(None, {"m": 1.0})
     tracker.set_tags(None, {"t": "v"})
+    tracker.log_inputs(None, [RELEASE_INPUT])
     tracker.end_run(None)
 
     assert client.calls == []
