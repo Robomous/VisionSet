@@ -25,13 +25,14 @@ from tests.cli._flow import (
     workspace,
 )
 
-from visionset.kernel.domain import Annotation, BboxGeometry
+from visionset.kernel.domain import Annotation, BboxGeometry, GeometryType
 from visionset.kernel.services import (
     WORKSPACE_ENV_VAR,
     AnnotationService,
     BatchService,
     JobService,
     WorkspaceService,
+    schema_service,
 )
 from visionset.server import models
 from visionset.server.models import SchemaVersionCreate
@@ -171,13 +172,21 @@ def test_a_blank_class_name_exits_two_and_says_where(root: Path, tmp_path: Path)
     assert "classes.0.name" in usage_error(result)
 
 
-def test_an_unimplemented_geometry_exits_one(root: Path, tmp_path: Path) -> None:
-    # ``keypoints`` is a legal ``GeometryType`` member, so the document parses; it is
-    # the *service* that refuses it. A domain refusal, therefore exit 1.
+def test_an_unimplemented_geometry_exits_one(
+    root: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # A legal ``GeometryType`` member parses; it is the *service* that refuses one
+    # with no implementation. A domain refusal, therefore exit 1. Every member is
+    # implemented today, so the set is narrowed to keep the guard reachable.
+    monkeypatch.setattr(
+        schema_service,
+        "IMPLEMENTED_GEOMETRIES",
+        frozenset(GeometryType) - {GeometryType.KEYPOINTS},
+    )
     path = _document(tmp_path, [{"name": "face", "geometries": ["keypoints"]}])
     result = run(root, "schema", "apply", str(path), "-p", "road-signs")
     assert result.exit_code == 1, result.output
-    assert "Error:" in result.stderr
+    assert "no geometry implementation" in result.stderr
 
 
 # --- refusing a narrowing change: exit 1, retryable with a flag ---------------
