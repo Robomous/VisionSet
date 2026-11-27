@@ -1682,10 +1682,11 @@ export interface paths {
          *     On a point-cloud scan a 3D label is read against the frame its source
          *     declares and needs no calibration; a source declaring no frame is 409
          *     `CALIBRATION_MISSING`. A scan has no pixels, so a `bbox`, `obb`, `polygon`,
-         *     `polyline` or `mask` on one is 422 `INVALID_ANNOTATION`.
+         *     `polyline`, `keypoints` or `mask` on one is 422 `INVALID_ANNOTATION`.
          *
          *     A `mask` whose `size` is not the asset's `[height, width]` is 422
-         *     `ANNOTATION_GEOMETRY_OUT_OF_BOUNDS`.
+         *     `ANNOTATION_GEOMETRY_OUT_OF_BOUNDS`. A `keypoints` of a class whose keypoint
+         *     spec names another number of points is 422 `KEYPOINT_COUNT_MISMATCH`.
          */
         post: operations["add_annotations"];
         /**
@@ -1732,7 +1733,8 @@ export interface paths {
          *     stops a replacement too — including 409 `CALIBRATION_MISSING` and 422
          *     `CALIBRATION_RESOLUTION_MISMATCH` for a 3D label, and on a scan 409
          *     `CALIBRATION_MISSING` for a source declaring no frame and 422
-         *     `INVALID_ANNOTATION` for a `bbox`, `obb`, `polygon`, `polyline` or `mask`.
+         *     `INVALID_ANNOTATION` for a `bbox`, `obb`, `polygon`, `polyline`, `keypoints`
+         *     or `mask`.
          */
         patch: operations["update_annotations"];
         trace?: never;
