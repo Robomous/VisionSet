@@ -112,10 +112,7 @@ class SourceService:
             asset = uow.assets.get(asset_id)
             if asset is None:
                 raise AssetNotFound(f"no asset {asset_id}")
-            order = {source.id: i for i, source in enumerate(uow.sources.list(asset.project_id))}
-            return sorted(
-                uow.occurrences_of(asset_id), key=lambda o: (order[o.source_id], o.position)
-            )
+            return uow.occurrences_of(asset.id)
 
     # --- writing -----------------------------------------------------------
 

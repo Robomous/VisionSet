@@ -544,7 +544,7 @@ class UnitOfWork(Protocol):
         ...
 
     def occurrences_of(self, asset_id: UUID) -> list[FrameOccurrence]:
-        """Every frame occurrence of this asset, in every source, in no stated order.
+        """Every frame occurrence of this asset, by source registration, then position.
 
         Not a repository read for ``batches_holding``'s reason: occurrences are
         parented on their source, and this walks the edge from the asset. An

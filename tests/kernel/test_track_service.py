@@ -292,13 +292,15 @@ def test_an_asset_lists_its_occurrences_across_sources(world: World) -> None:
 
 
 def test_the_store_walks_from_an_asset_to_its_occurrences(world: World) -> None:
-    first = world.clip(seeds=(3, 4))
-    second = world.clip(seeds=(4,))
+    begun_first, begun_second = world.begin(2), world.begin(2)
+    second = world.finish(begun_second, (4, 4))
+    first = world.finish(begun_first, (3, 4))
     with world.workspace.unit_of_work() as uow:
-        assert {o.id for o in uow.occurrences_of(first.at(1).asset_id)} == {
+        assert [o.id for o in uow.occurrences_of(first.at(1).asset_id)] == [
             first.at(1).id,
             second.at(0).id,
-        }
+            second.at(1).id,
+        ]
         assert uow.occurrences_of(uuid4()) == []
 
 
