@@ -1633,6 +1633,54 @@ describe("the schema editor", () => {
       expect(saved.map((one) => one.name)).toEqual(["car", "lane", "face"]);
       expect(saved.find((one) => one.name === "face")?.keypoints).toEqual(FACE.keypoints);
     });
+
+    it("is dropped when Keypoints is unticked, so the class still publishes", async () => {
+      projectWithSchema(WITH_FACE);
+      publishes();
+      renderWithData(<ProjectScreen projectId={PROJECT} tab="schema" />);
+      await screen.findByTestId("schema-editor");
+      await selectClass(FACE_AT);
+      await userEvent.click(screen.getByTestId(`class-geometry-${FACE_AT}-bbox`));
+      await userEvent.click(screen.getByTestId(`class-geometry-${FACE_AT}-keypoints`));
+      await closeSheet();
+
+      const saved = await savedClasses();
+      const face = saved.find((one) => one.name === "face");
+      expect(face?.geometries).toEqual(["bbox"]);
+      expect(face?.keypoints ?? null).toBeNull();
+    });
+
+    it("says a resumed draft's spec would not publish, and opens the class rather than publishing", async () => {
+      projectWithSchema(WITH_FACE);
+      publishes();
+      curatedDrafts.set(PROJECT, {
+        project_id: PROJECT,
+        kind: "curated",
+        classes: [...CLASSES, { ...FACE, keypoints: { names: ["left_eye", "Left_Eye"], skeleton: [[0, 1]] } }],
+        note: "",
+        based_on: 3,
+        revision: 1,
+        updated_at: "2024-01-01T00:00:00Z",
+      });
+      renderWithData(<ProjectScreen projectId={PROJECT} tab="schema" />);
+
+      const notice = await screen.findByTestId("schema-keypoint-spec-error");
+      expect(within(notice).getByTestId(`schema-keypoint-spec-error-${FACE_AT}`).textContent).toBe(
+        "“face”: Two keypoints are named “Left_Eye” — names ignore case.",
+      );
+      await userEvent.click(screen.getByTestId("save-schema"));
+
+      expect(await screen.findByTestId(`class-${FACE_AT}`)).toBeTruthy();
+      expect(sent.some((request) => request.method === "POST" && request.url.endsWith("/publish"))).toBe(false);
+    });
+
+    it("says nothing about a draft whose specs all publish", async () => {
+      projectWithSchema(WITH_FACE);
+      renderWithData(<ProjectScreen projectId={PROJECT} tab="schema" />);
+      await screen.findByTestId("schema-editor");
+
+      expect(screen.queryByTestId("schema-keypoint-spec-error")).toBeNull();
+    });
   });
 
   it("\"Use the name’s colour\" clears a declared colour back to the derived one, once saved", async () => {

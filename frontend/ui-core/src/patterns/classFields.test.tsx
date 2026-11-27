@@ -1204,4 +1204,12 @@ describe("a keypoints class's spec", () => {
 
     expect(sheet.latest()).toMatchObject({ name: "vehicles", geometries: ["keypoints", "bbox"], keypoints: SPEC });
   });
+
+  it("is dropped with the keypoints geometry, and only with it", async () => {
+    const sheet = mountSheet(declaredWith({ geometries: ["keypoints", "bbox"], keypoints: SPEC }));
+
+    await userEvent.click(screen.getByTestId("class-geometry-0-keypoints"));
+
+    expect(sheet.latest()).toMatchObject({ geometries: ["bbox"], keypoints: null });
+  });
 });

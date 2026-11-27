@@ -401,7 +401,7 @@ function GeometryGroup({
         // Kept in the order they were first ticked, as the stored set always was.
         const next = [...elsewhere, ...(picked as GeometryType[])];
         if (next.length === 0) return;
-        onChange({ ...declared, geometries: next });
+        onChange(withGeometries(declared, next));
       }}
     >
       {geometries.map((geometry) => {
@@ -424,6 +424,16 @@ function GeometryGroup({
       })}
     </ToggleGroup>
   );
+}
+
+/**
+ * The class drawn as `geometries`. Unticking keypoints drops the spec with it:
+ * the person chose to stop drawing keypoints, and a spec on a class without the
+ * geometry is one publish refuses and this editor cannot otherwise remove.
+ */
+export function withGeometries(declared: LabelClassBody, geometries: readonly GeometryType[]): LabelClassBody {
+  if (geometries.includes("keypoints") || declared.keypoints == null) return { ...declared, geometries: [...geometries] };
+  return { ...declared, geometries: [...geometries], keypoints: null };
 }
 
 /** What each shape asks of the person drawing it, said under its name. */
@@ -525,7 +535,7 @@ function InspectorFields({
                 const kept = declared.geometries.filter((one) => chosen.has(one));
                 const held = new Set(kept);
                 const added = (picked as GeometryType[]).filter((one) => !held.has(one));
-                onChange({ ...declared, geometries: [...kept, ...added] });
+                onChange(withGeometries(declared, [...kept, ...added]));
               }}
               data-testid={`class-geometry-${slot}`}
               // 8px outside, 5px inside a 3px gutter: the corners share a centre.
