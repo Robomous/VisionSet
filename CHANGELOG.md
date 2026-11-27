@@ -13,6 +13,25 @@ nothing was being distributed. This is the first version that is.
 
 ### Added
 
+- **COCO RLE masks, and semantic segmentation masks as `segmentation-png`, import and export.** The `coco` importer
+  reads an RLE `segmentation` object, compressed string or uncompressed list `counts` with `size` `[height, width]`,
+  as a mask, which must be the image entry's size; a malformed or wrongly sized one is a `label` loss. A polygon of
+  several rings is rasterized part by part at pixel centres and the parts are unioned into one mask, a `geometry`
+  loss; boxes and single-ring polygons read as before. VisionSet has no crowd flag, so a row with `iscrowd` `1` keeps
+  its shape and the flag is an `attribute` loss. The `coco` exporter writes a mask as compressed RLE with its `bbox`
+  and `area` read off its pixels and `iscrowd` `0`, so `coco` now supports `mask` and an export reads back pixel for
+  pixel; `pycocotools` decodes it to the same pixels. `segmentation-png` is a new format of pictures and
+  name-matched class-index PNG masks, read only as a `segmentation.json` descriptor at the top states: `index`
+  encoding (an `L` or `I;16` greyscale PNG whose grey level is the id) or `palette` encoding (a `P` or `RGB` PNG with
+  an explicit colour-to-id map), the class each id names (gaps allowed), background and ignore ids, and the layout,
+  `images/` + `masks/` with optional split directories or Pascal VOC's `JPEGImages/` + `SegmentationClass/`. A source
+  without a descriptor, a PNG mode its encoding does not read, an undeclared id or a colour outside the palette is
+  refused; each class present becomes one mask, ignored pixels and a mask with no picture or of another size are
+  `label` losses, and a picture with no mask is an `image` loss. The exporter writes an `L` PNG per picture (`I;16`
+  past 255 ids), ids `1` upward in schema order with `0` background, and the descriptor: masks are written pixel for
+  pixel, polygons rasterized and reported degraded, boxes dropped; overlapping classes keep the lower id and are
+  listed in the descriptor. COCO panoptic layouts and colour-encoded masks without an explicit palette are not
+  supported (#1163).
 - **Raster masks: the `mask` geometry.** A class may declare `mask`, a binary raster over the whole asset stored
   inline as COCO compressed run-length encoding: `size` is `[height, width]` and must equal the asset's pixel size,
   and `counts` is the string over the pixels read column-major, first run background. Each side is 1 to 32768, the

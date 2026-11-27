@@ -159,8 +159,9 @@ release holding no `mask` keeps the version and the hash it had; a manifest hold
 a version below 10 does not load, and a build that predates the geometry refuses a version-10
 manifest, since it does not know the `mask` type. The mask is copied in its canonical spelling (see
 [annotations](annotations.md#a-mask-is-run-length-encoded-pixels-over-the-whole-asset)), so two
-publishes of an unchanged dataset still agree byte for byte. No exporter writes a mask: every
-export reports each one **dropped**, never degraded.
+publishes of an unchanged dataset still agree byte for byte. Two exporters write a mask whole,
+[`coco`](#the-coco-format) as RLE and [`segmentation-png`](#the-segmentation-png-format) as a
+class-index PNG; every other export reports each one **dropped**, never degraded.
 
 Publishing content that needs a newer version than an older build wrote still produces a
 different manifest hash, because the version number is part of the document.
@@ -419,8 +420,9 @@ The fix is vocabulary rather than capability. `Exporter` declares two geometry s
 - **`supported_geometries`** - written as they stand.
 - **`degraded_geometries`** - written, having lost something the kernel could represent. `{obb,
   polygon}` for `yolov5-yaml`, `darknet` and `voc`, each written as its axis-aligned bounding box;
-  and empty for `coco`, which writes a polygon as a polygon and drops a rotated box, and for
-  `yolo-obb` and `dota`, which write a rotated box as itself and drop everything else. The two sets are disjoint, and `supported` wins if a plugin
+  `{polygon}` for `segmentation-png`, which rasterizes a polygon into its class map; and empty
+  for `coco`, which writes a polygon as a polygon and a mask as RLE and drops a rotated box, and
+  for `yolo-obb` and `dota`, which write a rotated box as itself and drop everything else. The two sets are disjoint, and `supported` wins if a plugin
   says both, because resolving a contradiction towards the weaker claim would report a loss that
   does not happen.
 
@@ -799,8 +801,14 @@ shape by more. That number is not decoration: `pycocotools` buckets detections i
 small/medium/large by it, so every evaluation against such a file reports the wrong breakdown and
 nothing says so.
 
+**A mask is written as compressed RLE**, `{"size": [height, width], "counts": "..."}` - the stored
+counts, byte for byte the string `pycocotools` encodes - with `bbox` the smallest pixel-aligned box
+around its pixels and `area` its pixel count, the two numbers `pycocotools` computes from the same
+RLE. An export reads back pixel for pixel. A mask not the size of its picture refuses the export by
+asset rather than being written against the wrong frame.
+
 **This format is not lossy, and that is the point of having a second one.**
-`supported_geometries` is `{bbox, polygon}`, and everything COCO has no field for - attributes,
+`supported_geometries` is `{bbox, polygon, mask}`, and everything COCO has no field for - attributes,
 confidence, provenance, the annotation's own id - rides in a `"visionset"` object on each
 annotation. COCO is JSON and every reader tolerates keys it does not know; one nested object
 cannot collide with a future COCO field the way four top-level keys could. So a release of boxes
@@ -818,13 +826,52 @@ Smaller decisions, each of which a reader can see:
 - **A box gets an empty `segmentation`**, not its own rectangle. A box says where something is,
   not what shape it is, and writing the rectangle would claim the object fills it - which a mask
   consumer takes literally.
-- **`iscrowd` is always 0.** A `1` means an RLE region covering many instances, which the domain
-  cannot represent.
+- **`iscrowd` is always 0**, a mask's included. A `1` marks a region covering many instances,
+  which `COCOeval` ignores rather than matches; VisionSet has no crowd flag, a mask is one object,
+  and `pycocotools` decodes an RLE `segmentation` whatever `iscrowd` says. A crowd region imported
+  from COCO therefore exports as an ordinary mask, the flag already reported lost on import.
 - **`info` carries the release**: tag, publication moment, and the manifest hash - so an export
   traces back to a release that can be re-verified. Nothing reads the clock, which is why two
   exports of one release are byte-identical.
 - **`licenses` has one entry named `unspecified`.** VisionSet records no licensing information
   about an asset anywhere, so inventing one would be a claim nobody made.
+
+### The segmentation-png format
+
+`segmentation-png` writes semantic segmentation as class-index PNGs: `images/<fold>/<hash>.<ext>`
+beside `masks/<fold>/<hash>.png`, one mask per picture, and `segmentation.json` at the top - the
+descriptor the [`segmentation-png` importer](import.md#formats) requires, so an export reads back
+with nothing guessed. Every class whose declared geometries include `mask` or `polygon` gets an id,
+`1` upward in the frozen schema's order, as COCO's categories do; a class that can never reach a
+mask, a box-only or tag-only one, gets none, as `classification` lists only tag-capable classes.
+`0` is background and no id is ignore. A mask is an 8-bit greyscale (`L`) PNG whose grey level is
+the id, or 16-bit (`I;16`) when there are more than 255 ids. An unlabelled picture's mask is all
+background, so a picture with nothing in it reads back as one.
+
+```json
+{
+  "format": "segmentation-png",
+  "version": 1,
+  "encoding": "index",
+  "classes": {"1": "road", "2": "car"},
+  "background": [0],
+  "ignore": [],
+  "images": "images",
+  "masks": "masks",
+  "splits": ["train", "val"],
+  "visionset": {"release_id": "...", "release_tag": "v1", "manifest_hash": "...", "overlaps": []}
+}
+```
+
+`supported_geometries` is `{mask}`: a mask's pixels are written exactly. `degraded_geometries` is
+`{polygon}`: a polygon is rasterized at the picture's size, lighting each pixel whose centre it
+holds, so what is finer than a pixel is lost. A box is dropped - a box says where something is, not
+which pixels it covers - as are a tag and every other geometry. A class map holds one class per
+pixel, so what it cannot say is content, not geometry: several masks of one class on one picture are
+written as their union, one region on re-import, and a pixel two classes claim keeps the **lower**
+id. Each picture that lost pixels that way is listed under `visionset.overlaps` with the pixel count
+and the classes involved. Attributes, confidence and provenance have nowhere to go, so `lossy` is
+true. COCO panoptic layouts and RGB colour-encoded masks are not written.
 
 ### The Pascal VOC format
 
@@ -1031,8 +1078,7 @@ labels are all untracked is still written when its source is listed, without the
 `lossy = True`: attributes, provenance, the source's name and a confidence of exactly `0` or `1`
 have nowhere to go (`0` reads back as an ignored entry, `1` as ground truth). The release's split
 recipe is not applied, because a sequence is not cut across folds, and augmented variants observe no
-track and are not written. MOTS, whose rows are instance masks, is not written: no exporter writes a
-mask yet.
+track and are not written. MOTS, whose rows are instance masks, is not written.
 
 ### The CVAT XML formats
 
