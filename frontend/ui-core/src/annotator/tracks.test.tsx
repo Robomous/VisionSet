@@ -78,9 +78,22 @@ function observation(position: number, annotationId: string) {
   return { occurrence_id: at.id, position, timestamp: at.timestamp, asset_id: at.asset_id, annotation_id: annotationId };
 }
 
+/**
+ * A second sequence the bytes of `A1` were also imported into, at its position 0:
+ * one asset, occurrences in two sources, and each source its own tracks.
+ */
+const SECOND = "55555556-5555-4555-8555-555555555555";
+const SOURCE_NAMES: Record<string, string> = { [SOURCE]: "drive-a", [SECOND]: "drive-b" };
+const IN_SECOND = { id: "occ-b0", source_id: SECOND, position: 0, timestamp: 0, asset_id: A1 };
+
+function observationAt(occurrenceId: string, annotationId: string) {
+  const at = world.occurrences.find((one) => one.id === occurrenceId)!;
+  return { occurrence_id: at.id, position: at.position, timestamp: at.timestamp, asset_id: at.asset_id, annotation_id: annotationId };
+}
+
 interface World {
   sourceId: string | null;
-  occurrences: typeof OCCURRENCES;
+  occurrences: (typeof OCCURRENCES)[number][];
   tracks: { id: string; source_id: string; label_class: string; external_id: string | null; observations: ReturnType<typeof observation>[] }[];
   readOnly: boolean;
   /** The first frame holds a model's labels nobody has judged. */
@@ -96,7 +109,7 @@ interface World {
   failOccurrences: number;
   /** Every read of this source's tracks answers 500. */
   failTracks: boolean;
-  /** Observations of this frame's labels by tracks of other sequences, which this page never reads. */
+  /** Observations of this frame's labels by tracks this page has not read. */
   foreign: { annotation_id: string; track_id: string; label_class: string }[];
   /** When set, the first frame's declaration is this, whatever the tracks now say: a stale read. */
   staleObserved: { annotation_id: string; track_id: string; label_class: string }[] | null;
@@ -108,7 +121,7 @@ const sent: { method: string; path: string; body: unknown }[] = [];
 function freshWorld(): World {
   return {
     sourceId: SOURCE,
-    occurrences: OCCURRENCES,
+    occurrences: [...OCCURRENCES],
     tracks: [
       {
         id: "track-1",
@@ -209,13 +222,33 @@ function answer(method: string, path: string, body: unknown): Response {
     const items = ANNOTATIONS[annotations[1]!] ?? [];
     return json({ items, total: items.length });
   }
-  if (path === `/sources/${SOURCE}/occurrences` && world.failOccurrences > 0) {
+  const assetOccurrences = new RegExp(`^/projects/${PROJECT}/assets/([^/]+)/occurrences$`).exec(path);
+  if (assetOccurrences !== null && world.failOccurrences > 0) {
     world.failOccurrences -= 1;
     return json({ code: "INTERNAL", message: "down" }, 500);
   }
-  if (path === `/sources/${SOURCE}/occurrences`) return json({ items: world.occurrences, total: world.occurrences.length });
+  if (assetOccurrences !== null) {
+    const items = world.sourceId === null ? [] : world.occurrences.filter((one) => one.asset_id === assetOccurrences[1]);
+    return json({ items, total: items.length });
+  }
+  if (path === `/projects/${PROJECT}/sources`) {
+    const items = Object.entries(SOURCE_NAMES).map(([id, name]) => ({
+      id,
+      project_id: PROJECT,
+      kind: "image_sequence",
+      name,
+      registered_at: "2026-11-01T00:00:00Z",
+      video: null,
+      frame: null,
+    }));
+    return json({ items, total: items.length });
+  }
   if (path === `/sources/${SOURCE}/tracks` && method === "GET" && world.failTracks) return json({ code: "INTERNAL", message: "down" }, 500);
-  if (path === `/sources/${SOURCE}/tracks` && method === "GET") return json({ items: world.tracks, total: world.tracks.length });
+  const sourceTracks = /^\/sources\/([^/]+)\/tracks$/.exec(path);
+  if (sourceTracks !== null && method === "GET") {
+    const items = world.tracks.filter((one) => one.source_id === sourceTracks[1]);
+    return json({ items, total: items.length });
+  }
   if (path === `/sources/${SOURCE}/tracks` && method === "POST") {
     const created = {
       id: `track-${world.tracks.length + 1}`,
@@ -240,14 +273,13 @@ function answer(method: string, path: string, body: unknown): Response {
   if (path === `/jobs/${JOB}/tracks` && method === "POST") {
     if (world.refuseObserve !== null) return json(world.refuseObserve, 409);
     const { occurrence_id, annotation_id } = body as { occurrence_id: string; annotation_id: string };
-    const at = OCCURRENCES.find((one) => one.id === occurrence_id)!;
     const labelClass = (Object.values(ANNOTATIONS).flat() as { id: string; label_class: string }[]).find((one) => one.id === annotation_id)!.label_class;
     const started = {
       id: `track-${world.tracks.length + 1}`,
-      source_id: SOURCE,
+      source_id: world.occurrences.find((one) => one.id === occurrence_id)!.source_id,
       label_class: labelClass,
       external_id: null,
-      observations: [observation(at.position, annotation_id)],
+      observations: [observationAt(occurrence_id, annotation_id)],
     };
     world.tracks.push(started);
     return json(started, 201);
@@ -259,9 +291,8 @@ function answer(method: string, path: string, body: unknown): Response {
       return json(world.refuseObserve, 409);
     }
     const { occurrence_id, annotation_id } = body as { occurrence_id: string; annotation_id: string };
-    const at = OCCURRENCES.find((one) => one.id === occurrence_id)!;
     const track = trackOut(observe[1]!);
-    track.observations = [...track.observations, observation(at.position, annotation_id)].sort((a, b) => a.position - b.position);
+    track.observations = [...track.observations, observationAt(occurrence_id, annotation_id)].sort((a, b) => a.position - b.position);
     return json(track, 201);
   }
   const unobserve = new RegExp(`^/jobs/${JOB}/tracks/([^/]+)/observations/([^/]+)$`).exec(path);
@@ -372,12 +403,116 @@ describe("reading tracks", () => {
     expect(screen.queryByTestId("track-read-failed")).toBeNull();
   });
 
-  it("asks nothing about tracks for a frame with no source", async () => {
+  it("asks no source about tracks for a frame in no sequence", async () => {
     world.sourceId = null;
     await open();
     await screen.findByTestId("object-row-0");
     expect(sent.some((one) => one.path.startsWith("/sources/"))).toBe(false);
     expect(screen.queryByTestId("track-region")).toBeNull();
+  });
+});
+
+describe("a frame in two sequences", () => {
+  /** `A1` also sits at position 0 of a second source, which has one pedestrian track of its own. */
+  function inTwoSequences(observing: string | null = null): void {
+    world.occurrences.push(IN_SECOND);
+    const observations = observing === null ? [] : [observationAt(IN_SECOND.id, observing)];
+    world.tracks.push({ id: "track-b1", source_id: SECOND, label_class: "pedestrian", external_id: null, observations });
+  }
+
+  it("lists each source's tracks under the source's name", async () => {
+    inTwoSequences();
+    await open();
+    const tracks = await region();
+    expect(within(tracks).getByTestId("track-count").textContent).toBe("3");
+    const first = await within(tracks).findByTestId(`track-source-${SOURCE}`);
+    const second = within(tracks).getByTestId(`track-source-${SECOND}`);
+    await waitFor(() => expect(within(first).getByTestId("track-source-name").textContent).toBe("drive-a"));
+    expect(within(second).getByTestId("track-source-name").textContent).toBe("drive-b");
+    expect(within(first).getByTestId("track-row-track-1")).not.toBeNull();
+    expect(within(first).getByTestId("track-row-track-2")).not.toBeNull();
+    expect(within(second).getByTestId("track-row-track-b1").textContent).toMatch(/pedestrian #1.*0 frames/);
+    expect(within(first).queryByTestId("track-row-track-b1")).toBeNull();
+    expect(sent.filter((one) => one.path === `/sources/${SECOND}/tracks`)).toHaveLength(1);
+  });
+
+  it("names no source when the frame sits in only one", async () => {
+    await open();
+    const tracks = await region();
+    expect(within(tracks).queryByTestId(`track-source-${SOURCE}`)).toBeNull();
+    expect(within(tracks).queryByTestId("track-source-name")).toBeNull();
+    expect(sent.some((one) => one.path === `/projects/${PROJECT}/sources`)).toBe(false);
+  });
+
+  it("adds the object at the focused track's own source, never the other's", async () => {
+    inTwoSequences();
+    await open();
+    await region();
+    await userEvent.click(await screen.findByTestId("object-select-2"));
+    const focused = await focusTrack("track-b1");
+    expect(within(focused).getByTestId("track-where").textContent).toBe("Not on this frame");
+    await userEvent.click(within(focused).getByTestId("track-observe"));
+
+    await waitFor(() => expect(screen.getByTestId("track-done").textContent).toBe("Added at frame 0 in drive-b"));
+    expect(writes()).toEqual([
+      {
+        method: "POST",
+        path: `/jobs/${JOB}/tracks/track-b1/observations`,
+        body: { occurrence_id: "occ-b0", annotation_id: "ann-3" },
+      },
+    ]);
+  });
+
+  it("starts a track at a position of either source, naming each", async () => {
+    inTwoSequences();
+    await open();
+    await userEvent.click(await screen.findByTestId("object-select-1"));
+    await region();
+    await userEvent.click(screen.getByTestId("track-start"));
+    const menu = await screen.findByTestId("track-start-positions");
+    await waitFor(() =>
+      expect(within(menu).getAllByRole("menuitem").map((one) => one.textContent)).toEqual([
+        "At frame 1 in drive-a",
+        "At frame 4 in drive-a",
+        "At frame 0 in drive-b",
+      ]),
+    );
+    await userEvent.click(within(menu).getByTestId("track-start-at-occ-b0"));
+
+    await waitFor(() => expect(screen.getByTestId("track-done").textContent).toBe("Started a track at frame 0 in drive-b"));
+    expect(writes()).toEqual([
+      { method: "POST", path: `/jobs/${JOB}/tracks`, body: { occurrence_id: "occ-b0", annotation_id: "ann-2" } },
+    ]);
+    const second = screen.getByTestId(`track-source-${SECOND}`);
+    expect(within(second).getByTestId("track-row-track-4").getAttribute("aria-pressed")).toBe("true");
+  });
+
+  it("locks an object the second source's track observes, naming the track and its source", async () => {
+    inTwoSequences("ann-3");
+    await open();
+    await region();
+    await waitFor(() =>
+      expect(screen.getByTestId("object-track-2").getAttribute("aria-label")).toBe("On track pedestrian #1 in drive-b at frame 0"),
+    );
+    await userEvent.click(screen.getByTestId("object-reclass-2"));
+    const other = await screen.findByTestId("reclass-2-vehicle");
+    expect(other.getAttribute("aria-disabled")).toBe("true");
+    expect(other.textContent).toContain("on track pedestrian #1 in drive-b");
+  });
+
+  it("unlocks at once when the second source's track lets the object go", async () => {
+    inTwoSequences("ann-3");
+    await open();
+    await region();
+    const focused = await focusTrack("track-b1");
+    await waitFor(() => expect(within(focused).getByTestId("track-where").textContent).toBe("On this frame at 0"));
+    await userEvent.click(within(focused).getByTestId("track-unobserve-0"));
+    await waitFor(() =>
+      expect(screen.getByTestId("track-done").textContent).toBe("Removed from the track at frame 0 in drive-b — the object stays"),
+    );
+    expect(writes()).toEqual([{ method: "DELETE", path: `/jobs/${JOB}/tracks/track-b1/observations/occ-b0`, body: null }]);
+    await userEvent.click(screen.getByTestId("object-reclass-2"));
+    await waitFor(async () => expect((await screen.findByTestId("reclass-2-vehicle")).getAttribute("aria-disabled")).not.toBe("true"));
   });
 });
 
@@ -394,9 +529,8 @@ describe("reassigning an observed object", () => {
   });
 
   it("says the kernel's refusal of a class change the menu did not lock", async () => {
-    // Only this source's tracks are read, so a track of another sequence observing
-    // this object is invisible here and the menu leaves it unlocked; the kernel's
-    // refusal at save is what stands behind it.
+    // A declaration gone stale leaves the menu unlocked; the kernel's refusal at
+    // save is what stands behind it.
     world.refuseSave = { code: "TRACK_CLASS_MISMATCH", message: "kernel wording" };
     await open();
     await region();
@@ -422,7 +556,7 @@ describe("reassigning an observed object", () => {
     expect(screen.getByTestId("reclass-1-pedestrian").getAttribute("aria-disabled")).not.toBe("true");
   });
 
-  it("locks an object a track of another sequence observes, from the frame's own declaration", async () => {
+  it("locks an object a track the page has not read observes, from the frame's own declaration", async () => {
     world.foreign = [{ annotation_id: "ann-3", track_id: "elsewhere-1", label_class: "pedestrian" }];
     await open();
     await region();
@@ -432,7 +566,7 @@ describe("reassigning an observed object", () => {
     expect(other.textContent).toContain("on a track of “pedestrian”");
   });
 
-  it("keeps the lock while this source's tracks cannot be read", async () => {
+  it("keeps the lock while the source's tracks cannot be read", async () => {
     world.failTracks = true;
     await open();
     await screen.findByTestId("track-read-failed", {}, { timeout: 5000 });
@@ -594,7 +728,7 @@ describe("writing", () => {
     await userEvent.click(await screen.findByTestId("object-select-1"));
     await region();
     await userEvent.click(screen.getByTestId("track-start"));
-    await userEvent.click(await screen.findByTestId("track-start-at-4"));
+    await userEvent.click(await screen.findByTestId("track-start-at-occ-4"));
 
     await waitFor(() => expect(screen.getByTestId("track-done").textContent).toBe("Started a track at frame 4"));
     expect(writes()).toEqual([
@@ -609,7 +743,7 @@ describe("writing", () => {
     await userEvent.click(await screen.findByTestId("object-select-1"));
     await region();
     await userEvent.click(screen.getByTestId("track-start"));
-    await userEvent.click(await screen.findByTestId("track-start-at-1"));
+    await userEvent.click(await screen.findByTestId("track-start-at-occ-1"));
     expect((await screen.findByTestId("track-refusal")).textContent).toMatch(/have not been judged yet/);
     expect(writes()).toEqual([
       { method: "POST", path: `/jobs/${JOB}/tracks`, body: { occurrence_id: "occ-1", annotation_id: "ann-2" } },

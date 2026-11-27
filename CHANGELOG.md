@@ -40,6 +40,13 @@ nothing was being distributed. This is the first version that is.
   none at angle 0, and declare `obb` supported, so it is no longer reported dropped; a track may mix boxes and
   rotated boxes. A rotated box reads back within float rounding (`1e-9`). The convention is taken from CVAT's
   source, not checked against a running CVAT's export (#1209).
+- **The Tracks region shows every sequence a frame sits in.** Identical bytes imported into two sequences are one
+  asset at occurrences of both, and each source keeps its own tracks; the region read only the asset's first source,
+  so the second sequence's tracks never appeared. `GET /projects/{id}/assets/{id}/occurrences`,
+  `visionset track occurrences --asset` and the `list_asset_occurrences` MCP tool list an asset's occurrences in every
+  source, by source registration then position. The annotator lists each source's tracks, under the source's name
+  when there is more than one; starting a track asks which position of which source, adding names a position of the
+  followed track's own source, and the class lock holds across sources (#1193).
 - **Raster masks: the `mask` geometry.** A class may declare `mask`, a binary raster over the whole asset stored
   inline as COCO compressed run-length encoding: `size` is `[height, width]` and must equal the asset's pixel size,
   and `counts` is the string over the pixels read column-major, first run background. Each side is 1 to 32768, the

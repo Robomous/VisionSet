@@ -5,20 +5,21 @@
  * source (`docs/content/annotations.md`). The page works in assets and a track
  * works in occurrences, and the two are not interchangeable: identical frames
  * at two positions are one asset at two occurrences, so everything here that
- * goes from the frame on screen to a track goes through the source's
- * occurrence listing, never through `frame_index`.
+ * goes from the frame on screen to a track goes through the asset's
+ * occurrences, never through `frame_index`. One asset can sit in several
+ * sources, and each source keeps its own tracks.
  *
  * Every write is the kernel's to judge. These hooks send what was asked and
  * leave the refusal on the mutation's `error` for the caller to render.
  */
 
-import { useMutation, useQuery, useQueryClient, type UseQueryResult } from "@tanstack/react-query";
+import { useMutation, useQueries, useQuery, useQueryClient, type UseQueryResult } from "@tanstack/react-query";
 
 import { useApiClient } from "../data/VisionSetDataProvider";
 import { unwrap } from "../data/errors";
 import {
   checkGetTrackStatus,
-  checkListFrameOccurrences,
+  checkListAssetOccurrences,
   checkListTracks,
   checkObserveTrack,
   checkStartTrack,
@@ -36,34 +37,64 @@ export type TrackStatus = components["schemas"]["TrackStatusOut"];
 export const trackKeys = {
   all: ["tracks"] as const,
   ofSource: (sourceId: string) => ["tracks", "source", sourceId] as const,
-  occurrences: (sourceId: string) => ["tracks", "occurrences", sourceId] as const,
+  // Outside `all`: a track write moves no occurrence, so it has nothing here to reread.
+  occurrencesOf: (assetId: string) => ["occurrences", "asset", assetId] as const,
   status: (trackId: string, batchId: string) => ["tracks", "status", trackId, batchId] as const,
 };
 
-/** `null` is "no source to ask about": a frame with no `source_id`. */
-export function useSourceOccurrences(sourceId: string | null): UseQueryResult<readonly FrameOccurrence[], Error> {
+/**
+ * The asset's occurrences in every sequence source it sits in. `null` is "no
+ * asset to ask about": a scan, which no track follows.
+ */
+export function useAssetOccurrences(
+  projectId: string,
+  assetId: string | null,
+): UseQueryResult<readonly FrameOccurrence[], Error> {
   const client = useApiClient();
   return useQuery({
-    queryKey: trackKeys.occurrences(sourceId ?? "none"),
-    enabled: sourceId !== null,
+    queryKey: trackKeys.occurrencesOf(assetId ?? "none"),
+    enabled: assetId !== null,
     queryFn: async () =>
       unwrap(
-        await client.GET("/sources/{source_id}/occurrences", { params: { path: { source_id: sourceId ?? "" } } }),
-        checkListFrameOccurrences,
+        await client.GET("/projects/{project_id}/assets/{asset_id}/occurrences", {
+          params: { path: { project_id: projectId, asset_id: assetId ?? "" } },
+        }),
+        checkListAssetOccurrences,
       ).items,
   });
 }
 
-export function useSourceTracks(sourceId: string | null): UseQueryResult<readonly Track[], Error> {
+/** Each source's tracks, as far as the reads have answered. */
+export interface SourcesTracks {
+  /** In the order the sources were asked for; `undefined` while that read has not answered. */
+  readonly bySource: readonly (readonly Track[] | undefined)[];
+  readonly error: Error | null;
+  readonly refetchFailed: () => void;
+}
+
+function combineTracks(results: readonly UseQueryResult<readonly Track[], Error>[]): SourcesTracks {
+  return {
+    bySource: results.map((one) => one.data),
+    error: results.find((one) => one.isError)?.error ?? null,
+    refetchFailed: () => {
+      for (const one of results) if (one.isError) void one.refetch();
+    },
+  };
+}
+
+/** One read per source, combined so the answer keeps its identity until a read moves. */
+export function useSourcesTracks(sourceIds: readonly string[]): SourcesTracks {
   const client = useApiClient();
-  return useQuery({
-    queryKey: trackKeys.ofSource(sourceId ?? "none"),
-    enabled: sourceId !== null,
-    queryFn: async () =>
-      unwrap(
-        await client.GET("/sources/{source_id}/tracks", { params: { path: { source_id: sourceId ?? "" } } }),
-        checkListTracks,
-      ).items,
+  return useQueries({
+    queries: sourceIds.map((sourceId) => ({
+      queryKey: trackKeys.ofSource(sourceId),
+      queryFn: async (): Promise<readonly Track[]> =>
+        unwrap(
+          await client.GET("/sources/{source_id}/tracks", { params: { path: { source_id: sourceId } } }),
+          checkListTracks,
+        ).items,
+    })),
+    combine: combineTracks,
   });
 }
 
@@ -165,9 +196,21 @@ export function useStartTrack(jobId: string, batchId: string) {
 
 // --- pure reads over what the wire answered ------------------------------------
 
-/** The occurrences of the source this asset decoded to, in position order. */
-export function occurrencesOf(occurrences: readonly FrameOccurrence[], assetId: string): readonly FrameOccurrence[] {
-  return occurrences.filter((one) => one.asset_id === assetId);
+/** One sequence source the frame sits in, and the positions it sits at there. */
+export interface FrameSequence {
+  readonly sourceId: string;
+  readonly here: readonly FrameOccurrence[];
+}
+
+/** The asset's occurrences grouped by source, keeping the order the wire answered. */
+export function sequencesOf(occurrences: readonly FrameOccurrence[]): readonly FrameSequence[] {
+  const bySource = new Map<string, FrameOccurrence[]>();
+  for (const one of occurrences) {
+    const here = bySource.get(one.source_id);
+    if (here === undefined) bySource.set(one.source_id, [one]);
+    else here.push(one);
+  }
+  return [...bySource].map(([sourceId, here]) => ({ sourceId, here }));
 }
 
 /** Which track observes this annotation, and where. An annotation is observed at most once. */

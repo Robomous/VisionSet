@@ -334,12 +334,16 @@ takes its own state with it.
 
 **Tracks (bottom), on a frame of a sequence source.** A [track](../annotations.md#a-track-observes-annotations-an-annotation-knows-nothing-of-tracks)
 follows one object through the frame occurrences of one video or image-sequence source, so the
-region renders only when the frame has a source and that source has occurrences; a folder's
-frame, a scan and an upload with no source have none, and ask nothing about tracks. A read that
-fails says so in the region's place, with *Try again*; a later reread that fails says so under the
-tracks it still shows. Header — the word `Tracks`, the count, and a
-`+` that starts a track from the selected object; then one row per track of the source in creation
-order, inside a scroller capped at about four rows: swatch, the track's name (its class and its
+region reads the frame's occurrences in every source (`GET
+/projects/{id}/assets/{id}/occurrences`) and renders only when it has some; a folder's frame and an
+upload in no sequence have none, and a scan is never asked. Identical bytes imported into two
+sequences are one asset in both, and each source keeps its own tracks, so the region reads and
+lists the tracks of every source the frame sits in; with more than one, each source's tracks sit
+under its name, and a track's name, a badge and a write's outcome name the source too (`car 7 in
+drive-b`). A read that fails says so in the region's place, with *Try again*; a later reread that
+fails says so under the tracks it still shows. Header — the word `Tracks`, the count across every
+source, and a `+` that starts a track from the selected object; then one row per track of the
+source in creation order, inside a scroller capped at about four rows: swatch, the track's name (its class and its
 imported id, else `#n` in creation order — a track has no name of its own), `here` when it observes
 this frame, and how many frames it observes. Pressing a row follows that track: a left accent rule
 and a tint, as a class row, because both are a choice of what to work with rather than a thing on
@@ -364,7 +368,9 @@ observing the object, in one write: a refusal leaves no track behind, and says w
 Adding and starting save first, so an object drawn a moment ago is stored before a track names it,
 and a refused save stops there with its own notice; removing names only the occurrence and needs no
 save. What a write came to is held above the frame, so one that lands after a step is still said. Where this frame is several positions of its source, a write
-asks which (`At frame 4`). Removing is gated on the frame declaring `annotate`; adding and starting
+asks which (`At frame 4`); starting a track on a frame in several sources asks which position of
+which source (`At frame 0 in drive-b`), and adding names a position of the followed track's own
+source only, since a track never spans two. Removing is gated on the frame declaring `annotate`; adding and starting
 on its declaring `observe`, which a frame of a model's labels nobody has judged yet does not. Each
 is otherwise withheld with its reason: `Viewing only`, the frame's own `withheld_actions` code as
 prose from the one vocabulary (`ASSET_NOT_JUDGED`: confirm or edit the model's labels first),
@@ -381,11 +387,11 @@ by the annotation the kernel stored, so **a pasted copy is on no track** — pas
 which no observation names — and copy and paste are otherwise untouched by tracking. **The
 reassignment menu offers an observed object only its track's class**: from the row and from the
 canvas it lists every other class disabled with the track named (`on track car 7`), and their
-hotkeys do nothing. This source's tracks, once read, are the word on themselves, so an object a
-Remove from track here has just freed is free at once. The frame's own declaration — `observed` on
-the batch asset, naming every annotation a track observes from **any** source — covers what they
-cannot: a track of another sequence that decoded to the same bytes, and any track while this
-source's read is pending or has failed (named `on a track of “car”`, as the page cannot name it).
+hotkeys do nothing. The tracks read of each source the frame sits in are the word on themselves,
+so an object a Remove from track here has just freed is free at once, whichever source's track it
+was. The frame's own declaration — `observed` on the batch asset, naming every annotation a track
+observes from **any** source — covers what they cannot: any track while its source's read is
+pending or has failed (named `on a track of “car”`, as the page cannot name it).
 **Undo and redo keep the lock too**: a step that would move a locked object from the class it holds
 to any but its track's is refused, and the control reads disabled with the reason (`Undo would move
 an object off its track's class`). The history is one line, so a refused step also holds back every

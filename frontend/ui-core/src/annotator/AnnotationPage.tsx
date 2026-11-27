@@ -185,8 +185,8 @@ import { REFUSAL_PROSE, refusalProse } from "../data/refusals";
 import { Badge, Button, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger, HoverCard, HoverCardContent, HoverCardTrigger, Kbd, Tooltip, TooltipContent, TooltipTrigger, cn } from "@robomous/ui-core";
 import { EmptyState, ErrorState, LoadingState } from "../patterns/AsyncStates";
 import { AnnotatorPanel, type TrackMark } from "./AnnotatorPanel";
-import { TrackRegion, type TrackCandidate, type TrackFocus, type TrackOutcome } from "./TrackRegion";
-import { observationOf, trackName, useSourceOccurrences, useSourceTracks } from "./trackQueries";
+import { TrackRegion, sequenceTrackLabel, type TrackCandidate, type TrackFocus, type TrackOutcome, type TrackSequence } from "./TrackRegion";
+import { observationOf, sequencesOf, useAssetOccurrences, useSourcesTracks } from "./trackQueries";
 import { GeometryIcon } from "./GeometryIcon";
 import { keepCanvasFocus } from "./keepCanvasFocus";
 import { Withheld } from "./Withheld";
@@ -322,6 +322,7 @@ import {
   useOfferedGeometries,
   useSchemaComparison,
   useSchemaDraft,
+  useSources,
 } from "../screens/queries";
 import { toast } from "sonner";
 
@@ -1934,11 +1935,33 @@ function Workspace({
       : (REFUSAL_PROSE[withheldCode(asset, ASSET_ACTION.observe) ?? ""] ?? "Adding to a track is not available on this frame.");
 
   // Tracks are 2D and follow a sequence source's occurrences; a scan has none.
-  const trackSource = isScan ? null : asset.source_id;
+  // One asset can sit in several sequences, and each keeps its own tracks.
   const jobAssetIds = useMemo(() => assets.map((one) => one.id), [assets]);
-  const occurrences = useSourceOccurrences(trackSource);
-  const sourceTracks = useSourceTracks(trackSource);
-  const tracks = sourceTracks.data;
+  const occurrences = useAssetOccurrences(projectId, isScan ? null : asset.id);
+  const sequences = useMemo(() => sequencesOf(occurrences.data ?? []), [occurrences.data]);
+  const sourceIds = useMemo(() => sequences.map((one) => one.sourceId), [sequences]);
+  const trackReads = useSourcesTracks(sourceIds);
+  const sourceNames = useSources(projectId, sourceIds.length > 1);
+  const trackSequences: readonly TrackSequence[] | undefined = useMemo(() => {
+    if (trackReads.bySource.some((one) => one === undefined)) return undefined;
+    const named = sequences.length > 1;
+    return sequences.map((sequence, index) => ({
+      ...sequence,
+      tracks: trackReads.bySource[index] ?? [],
+      name: named
+        ? (sourceNames.data?.items.find((one) => one.id === sequence.sourceId)?.name ?? `Sequence ${index + 1}`)
+        : null,
+    }));
+  }, [sequences, sourceNames.data, trackReads.bySource]);
+  /** Every track read so far, of whichever sources have answered. */
+  const readTracks = useMemo(() => trackReads.bySource.flatMap((one) => one ?? []), [trackReads.bySource]);
+  const trackReadError = occurrences.error ?? trackReads.error;
+  const { refetch: refetchOccurrences } = occurrences;
+  const { refetchFailed: refetchTracks } = trackReads;
+  const retryTrackReads = useCallback(() => {
+    void refetchOccurrences();
+    refetchTracks();
+  }, [refetchOccurrences, refetchTracks]);
   const serverIdOf = useCallback(
     (localId: string): string | null => {
       const { server, minted } = frameSession.getSnapshot();
@@ -1949,40 +1972,43 @@ function Workspace({
   );
   const trackMarks = useMemo(() => {
     const marks = new Map<string, TrackMark>();
-    if (tracks === undefined) return marks;
+    if (trackSequences === undefined) return marks;
     for (const annotation of snapshot.document.annotations.values()) {
-      const on = observationOf(tracks, frame.minted.get(annotation.id) ?? annotation.id);
+      const on = observationOf(readTracks, frame.minted.get(annotation.id) ?? annotation.id);
       if (on === null) continue;
       marks.set(annotation.id, {
-        label: `${trackName(on.track, tracks)} at frame ${on.observation.position}`,
+        label: `${sequenceTrackLabel(on.track, trackSequences)} at frame ${on.observation.position}`,
         onShow: () => onTrackFocus({ trackId: on.track.id, position: on.observation.position, passed: 0 }),
       });
     }
     return marks;
-  }, [tracks, snapshot.document, frame.minted, onTrackFocus]);
+  }, [trackSequences, readTracks, snapshot.document, frame.minted, onTrackFocus]);
   /**
-   * The class a track keeps each drawn object to. This source's tracks, once
-   * read, are the fresher word on their own tracks — a Remove from track here
-   * unlocks at once — and the frame's declaration (`observed`, from any source)
-   * covers what they cannot: a track of another sequence, and a read that is
-   * pending or has failed, so neither ever unlocks an object.
+   * The class a track keeps each drawn object to. The tracks read of each
+   * source the frame sits in are the fresher word on their own tracks — a
+   * Remove from track here unlocks at once — and the frame's declaration
+   * (`observed`) covers what they cannot: a source whose read is pending or has
+   * failed, so neither ever unlocks an object.
    */
   const classLocks = useMemo(() => {
     const locks = new Map<string, ClassLock>();
     const declared = new Map(asset.observed.map((one) => [one.annotation_id, one]));
     for (const annotation of snapshot.document.annotations.values()) {
       const serverId = frame.minted.get(annotation.id) ?? annotation.id;
-      const on = tracks === undefined ? null : observationOf(tracks, serverId);
-      if (on !== null && tracks !== undefined) {
-        locks.set(annotation.id, { labelClass: on.track.label_class, track: trackName(on.track, tracks) });
+      const on = observationOf(readTracks, serverId);
+      if (on !== null) {
+        locks.set(annotation.id, {
+          labelClass: on.track.label_class,
+          track: trackSequences === undefined ? null : sequenceTrackLabel(on.track, trackSequences),
+        });
         continue;
       }
       const one = declared.get(serverId);
-      if (one === undefined || tracks?.some((track) => track.id === one.track_id) === true) continue;
+      if (one === undefined || readTracks.some((track) => track.id === one.track_id)) continue;
       locks.set(annotation.id, { labelClass: one.label_class, track: null });
     }
     return locks;
-  }, [asset.observed, tracks, snapshot.document, frame.minted]);
+  }, [asset.observed, readTracks, trackSequences, snapshot.document, frame.minted]);
   // Undo and redo are the other road to a class change: a step that would move a
   // locked object to any class but its lock, from the one it holds, is refused.
   // One guard per store, reading the locks through a ref; a change of locks asks
@@ -3292,20 +3318,13 @@ function Workspace({
           }}
           trackMarks={trackMarks}
           classLocks={classLocks}
-          {...(trackSource === null || occurrences.data === undefined || occurrences.data.length === 0 || tracks === undefined
-            ? sourceTracks.isError || occurrences.isError
+          {...(trackSequences === undefined || trackSequences.length === 0
+            ? trackReadError !== null
               ? {
                   tracks: (
                     <p className="px-2 text-xs text-destructive" role="alert" data-testid="track-read-failed">
-                      {refusalProse(occurrences.error ?? sourceTracks.error)}{" "}
-                      <button
-                        type="button"
-                        className="underline underline-offset-2"
-                        onClick={() => {
-                          void occurrences.refetch();
-                          void sourceTracks.refetch();
-                        }}
-                      >
+                      {refusalProse(trackReadError)}{" "}
+                      <button type="button" className="underline underline-offset-2" onClick={retryTrackReads}>
                         Try again
                       </button>
                     </p>
@@ -3318,8 +3337,7 @@ function Workspace({
                     jobId={jobId}
                     batchId={batchId}
                     assetId={asset.id}
-                    occurrences={occurrences.data}
-                    tracks={tracks}
+                    sequences={trackSequences}
                     jobAssetIds={jobAssetIds}
                     withheld={readOnly ? "Viewing only" : null}
                     observeWithheld={observeWithheld}
@@ -3333,17 +3351,7 @@ function Workspace({
                     colorOf={(labelClass) => classColor(classNamed(store.document, labelClass), labelClass)}
                     outcome={trackOutcome}
                     onOutcome={onTrackOutcome}
-                    readFailure={
-                      occurrences.isError || sourceTracks.isError
-                        ? {
-                            error: occurrences.error ?? sourceTracks.error,
-                            retry: () => {
-                              void occurrences.refetch();
-                              void sourceTracks.refetch();
-                            },
-                          }
-                        : null
-                    }
+                    readFailure={trackReadError === null ? null : { error: trackReadError, retry: retryTrackReads }}
                   />
                 ),
               })}

@@ -1,12 +1,14 @@
 /**
- * The side panel's Tracks region: the tracks of the frame's sequence source, a
- * way along one of them, and the two writes this page makes to a track —
- * observing an object with it, and taking one off it.
+ * The side panel's Tracks region: the tracks of every sequence source the frame
+ * sits in, a way along one of them, and the two writes this page makes to a
+ * track — observing an object with it, and taking one off it.
  *
- * Rendered only for a frame of a sequence source, which is a source with frame
- * occurrences. Every write is the kernel's to judge (`docs/content/annotations.md`):
- * the region asks for `annotate` on the frame, the one declaration the wire
- * makes about writing here, and renders any refusal in the kernel's terms.
+ * Rendered only for a frame with frame occurrences. Identical bytes imported
+ * into two sequences are one asset in both, and each source keeps its own
+ * tracks, so a write always names an occurrence of the track's own source.
+ * Every write is the kernel's to judge (`docs/content/annotations.md`): the
+ * region asks for `annotate` on the frame, the one declaration the wire makes
+ * about writing here, and renders any refusal in the kernel's terms.
  * Merging, splitting, a class change and deleting a track are not offered here.
  */
 
@@ -18,7 +20,6 @@ import { refusalProse } from "../data/refusals";
 import { Withheld } from "./Withheld";
 import {
   observationOf,
-  occurrencesOf,
   trackAnchor,
   trackName,
   trackStatusLine,
@@ -46,12 +47,20 @@ export interface TrackCandidate {
   readonly labelClass: string;
 }
 
+/** One sequence source the frame sits in: its positions there, and its tracks. */
+export interface TrackSequence {
+  readonly sourceId: string;
+  /** What to call the source; null when the frame sits in only one, which then goes unnamed. */
+  readonly name: string | null;
+  readonly here: readonly FrameOccurrence[];
+  readonly tracks: readonly Track[];
+}
+
 export interface TrackRegionProps {
   readonly jobId: string;
   readonly batchId: string;
   readonly assetId: string;
-  readonly occurrences: readonly FrameOccurrence[];
-  readonly tracks: readonly Track[];
+  readonly sequences: readonly TrackSequence[];
   /** The job's assets, in the job's order: a step lands only on one of these. */
   readonly jobAssetIds: readonly string[];
   /** Why writing is withheld on this frame, or null when the wire declares `annotate`. */
@@ -79,20 +88,34 @@ export interface TrackRegionProps {
 /** What the last track write came to, in words. Held above the frame, so a write that lands after a step is still said. */
 export type TrackOutcome = { readonly tone: "error" | "done"; readonly text: string };
 
-function frameWord(position: number): string {
-  return `frame ${position}`;
+function frameWord(position: number, source: string | null = null): string {
+  return source === null ? `frame ${position}` : `frame ${position} in ${source}`;
+}
+
+/**
+ * A track's name, and its source's when the frame sits in several: two sources
+ * can each have a `car 7`.
+ */
+export function sequenceTrackLabel(track: Track, sequences: readonly TrackSequence[]): string {
+  const sequence = sequences.find((one) => one.sourceId === track.source_id);
+  const name = trackName(track, sequence?.tracks ?? [track]);
+  return sequence?.name == null ? name : `${name} in ${sequence.name}`;
 }
 
 export function TrackRegion(props: TrackRegionProps): JSX.Element {
-  const { jobId, assetId, occurrences, tracks, candidate, focus, onFocus } = props;
+  const { jobId, sequences, candidate, focus, onFocus } = props;
   const observe = useObserveTrack(jobId, props.batchId);
   const unobserve = useUnobserveTrack(jobId, props.batchId);
   const start = useStartTrack(jobId, props.batchId);
   const { outcome, onOutcome: setOutcome } = props;
   const busy = observe.isPending || unobserve.isPending || start.isPending;
 
-  const here = occurrencesOf(occurrences, assetId);
+  const tracks = sequences.flatMap((one) => one.tracks);
+  const here = sequences.flatMap((one) => one.here);
+  const label = (track: Track): string => sequenceTrackLabel(track, sequences);
+  const sourceName = (sourceId: string): string | null => sequences.find((one) => one.sourceId === sourceId)?.name ?? null;
   const focused = focus === null ? undefined : tracks.find((one) => one.id === focus.trackId);
+  const focusedSequence = focused === undefined ? undefined : sequences.find((one) => one.sourceId === focused.source_id);
   const candidateServerId = candidate === null ? null : props.serverIdOf(candidate.localId);
   const candidateOn = candidateServerId === null ? null : observationOf(tracks, candidateServerId);
 
@@ -111,7 +134,7 @@ export function TrackRegion(props: TrackRegionProps): JSX.Element {
     });
   }
 
-  const startReason = startWithheld({ withheld: props.observeWithheld, candidate, selectionCount: props.selectionCount, candidateOn, tracks, here, busy });
+  const startReason = startWithheld({ withheld: props.observeWithheld, candidate, selectionCount: props.selectionCount, candidateOn, label, here, busy });
 
   function startAt(occurrence: FrameOccurrence): void {
     if (startReason !== null || candidate === null) return;
@@ -121,7 +144,7 @@ export function TrackRegion(props: TrackRegionProps): JSX.Element {
       // once its component is gone. Both setters are the page's.
       start.mutateAsync({ occurrenceId: occurrence.id, annotationId }).then((track) => {
         onFocus({ trackId: track.id, position: occurrence.position, passed: 0 });
-        setOutcome({ tone: "done", text: `Started a track at ${frameWord(occurrence.position)}` });
+        setOutcome({ tone: "done", text: `Started a track at ${frameWord(occurrence.position, sourceName(occurrence.source_id))}` });
       }, failed),
     );
   }
@@ -135,6 +158,7 @@ export function TrackRegion(props: TrackRegionProps): JSX.Element {
         </span>
         <PositionPicker
           positions={here}
+          sourceName={sourceName}
           reason={startReason}
           testId="track-start"
           label="New track from the selected object"
@@ -144,52 +168,30 @@ export function TrackRegion(props: TrackRegionProps): JSX.Element {
         />
       </div>
 
-      {tracks.length === 0 ? (
-        <p className="px-2 text-xs text-muted-foreground" data-testid="tracks-empty">
-          No tracks in this sequence yet.
-        </p>
-      ) : (
-        <ul className="vs-scroll-fade-y flex max-h-32 flex-col overflow-y-auto" data-testid="track-list">
-          {tracks.map((track) => {
-            const on = focus?.trackId === track.id;
-            const observesHere = track.observations.some((one) => one.asset_id === assetId);
-            return (
-              <li key={track.id}>
-                <button
-                  type="button"
-                  data-testid={`track-row-${track.id}`}
-                  aria-pressed={on}
-                  onClick={() => {
-                    setOutcome(null);
-                    onFocus(on ? null : { trackId: track.id, position: null, passed: 0 });
-                  }}
-                  className={cn(
-                    "flex h-7 w-full items-center gap-1.5 rounded-md border-l-2 px-2 text-left text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring/30",
-                    on ? "border-primary bg-primary/10" : "border-transparent hover:bg-muted",
-                  )}
-                >
-                  <span aria-hidden="true" className="size-2.5 shrink-0 rounded-sm" style={{ background: props.colorOf(track.label_class) }} />
-                  <span className="min-w-0 truncate">{trackName(track, tracks)}</span>
-                  {observesHere && (
-                    <span className="shrink-0 text-xs text-primary" data-testid={`track-here-${track.id}`}>
-                      here
-                    </span>
-                  )}
-                  <span className="ml-auto shrink-0 text-xs text-muted-foreground tabular-nums">
-                    {track.observations.length} {track.observations.length === 1 ? "frame" : "frames"}
-                  </span>
-                </button>
-              </li>
-            );
-          })}
-        </ul>
+      {sequences.map((sequence) =>
+        sequence.name === null ? (
+          <TrackList key={sequence.sourceId} {...props} tracks={sequence.tracks} />
+        ) : (
+          <section key={sequence.sourceId} className="flex flex-col gap-1" data-testid={`track-source-${sequence.sourceId}`}>
+            <div className="flex items-center gap-2 px-2 text-xs text-muted-foreground">
+              <span className="min-w-0 truncate font-medium" data-testid="track-source-name">
+                {sequence.name}
+              </span>
+              <span className="ml-auto shrink-0 tabular-nums">{sequence.tracks.length}</span>
+            </div>
+            <TrackList {...props} tracks={sequence.tracks} />
+          </section>
+        ),
       )}
 
-      {focused !== undefined && (
+      {focused !== undefined && focusedSequence !== undefined && (
         <FocusedTrack
           {...props}
           track={focused}
-          here={here}
+          name={label(focused)}
+          label={label}
+          here={focusedSequence.here}
+          sourceName={focusedSequence.name}
           busy={busy}
           candidateServerId={candidateServerId}
           candidateOn={candidateOn}
@@ -197,7 +199,7 @@ export function TrackRegion(props: TrackRegionProps): JSX.Element {
             withStored((annotationId) =>
               observe
                 .mutateAsync({ trackId: focused.id, occurrenceId: occurrence.id, annotationId })
-                .then(() => setOutcome({ tone: "done", text: `Added at ${frameWord(occurrence.position)}` }), failed),
+                .then(() => setOutcome({ tone: "done", text: `Added at ${frameWord(occurrence.position, focusedSequence.name)}` }), failed),
             )
           }
           onUnobserve={(occurrence) => {
@@ -205,7 +207,11 @@ export function TrackRegion(props: TrackRegionProps): JSX.Element {
             unobserve
               .mutateAsync({ trackId: focused.id, occurrenceId: occurrence.id })
               .then(
-                () => setOutcome({ tone: "done", text: `Removed from the track at ${frameWord(occurrence.position)} — the object stays` }),
+                () =>
+                  setOutcome({
+                    tone: "done",
+                    text: `Removed from the track at ${frameWord(occurrence.position, focusedSequence.name)} — the object stays`,
+                  }),
                 failed,
               );
           }}
@@ -234,9 +240,64 @@ export function TrackRegion(props: TrackRegionProps): JSX.Element {
   );
 }
 
+function TrackList({
+  tracks,
+  assetId,
+  focus,
+  onFocus,
+  onOutcome,
+  colorOf,
+}: TrackRegionProps & { readonly tracks: readonly Track[] }): JSX.Element {
+  if (tracks.length === 0) {
+    return (
+      <p className="px-2 text-xs text-muted-foreground" data-testid="tracks-empty">
+        No tracks in this sequence yet.
+      </p>
+    );
+  }
+  return (
+    <ul className="vs-scroll-fade-y flex max-h-32 flex-col overflow-y-auto" data-testid="track-list">
+      {tracks.map((track) => {
+        const on = focus?.trackId === track.id;
+        const observesHere = track.observations.some((one) => one.asset_id === assetId);
+        return (
+          <li key={track.id}>
+            <button
+              type="button"
+              data-testid={`track-row-${track.id}`}
+              aria-pressed={on}
+              onClick={() => {
+                onOutcome(null);
+                onFocus(on ? null : { trackId: track.id, position: null, passed: 0 });
+              }}
+              className={cn(
+                "flex h-7 w-full items-center gap-1.5 rounded-md border-l-2 px-2 text-left text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring/30",
+                on ? "border-primary bg-primary/10" : "border-transparent hover:bg-muted",
+              )}
+            >
+              <span aria-hidden="true" className="size-2.5 shrink-0 rounded-sm" style={{ background: colorOf(track.label_class) }} />
+              <span className="min-w-0 truncate">{trackName(track, tracks)}</span>
+              {observesHere && (
+                <span className="shrink-0 text-xs text-primary" data-testid={`track-here-${track.id}`}>
+                  here
+                </span>
+              )}
+              <span className="ml-auto shrink-0 text-xs text-muted-foreground tabular-nums">
+                {track.observations.length} {track.observations.length === 1 ? "frame" : "frames"}
+              </span>
+            </button>
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
+
 function FocusedTrack({
   track,
-  tracks,
+  name,
+  label,
+  sourceName,
   batchId,
   here,
   focus,
@@ -253,6 +314,9 @@ function FocusedTrack({
   onUnobserve,
 }: TrackRegionProps & {
   readonly track: Track;
+  readonly name: string;
+  readonly label: (track: Track) => string;
+  readonly sourceName: string | null;
   readonly here: readonly FrameOccurrence[];
   readonly busy: boolean;
   readonly candidateServerId: string | null;
@@ -269,7 +333,6 @@ function FocusedTrack({
   const observedIds = new Set(track.observations.map((one) => one.occurrence_id));
   const observedHere = here.filter((one) => observedIds.has(one.id));
   const free = here.filter((one) => !observedIds.has(one.id));
-  const name = trackName(track, tracks);
 
   function stepReason(step: ReturnType<typeof trackStep>, way: "earlier" | "later"): string | null {
     if (step.target !== null) return null;
@@ -285,7 +348,7 @@ function FocusedTrack({
     openAsset(index, () => onFocus({ trackId: track.id, position: target.position, passed: step.skipped }));
   }
 
-  const addReason = addWithheld({ withheld: observeWithheld, candidate, track, candidateOn: candidateServerId === null ? null : candidateOn, tracks, here, free, busy });
+  const addReason = addWithheld({ withheld: observeWithheld, candidate, track, candidateOn: candidateServerId === null ? null : candidateOn, label, here, free, busy });
   const previousReason = stepReason(previous, "earlier");
   const nextReason = stepReason(next, "later");
 
@@ -342,6 +405,7 @@ function FocusedTrack({
       <div className="flex flex-wrap items-center gap-1">
         <PositionPicker
           positions={free}
+          sourceName={() => sourceName}
           reason={addReason}
           testId="track-observe"
           label="Add the selected object"
@@ -358,7 +422,7 @@ function FocusedTrack({
                 if (withheld === null && !busy) onUnobserve(occurrence);
               }}
             >
-              {observedHere.length > 1 ? `Remove at ${frameWord(occurrence.position)}` : "Remove from track"}
+              {observedHere.length > 1 ? `Remove at ${frameWord(occurrence.position, sourceName)}` : "Remove from track"}
             </Button>
           </Withheld>
         ))}
@@ -371,7 +435,7 @@ interface WithheldInputs {
   readonly withheld: string | null;
   readonly candidate: TrackCandidate | null;
   readonly candidateOn: ReturnType<typeof observationOf>;
-  readonly tracks: readonly Track[];
+  readonly label: (track: Track) => string;
   readonly here: readonly FrameOccurrence[];
   readonly busy: boolean;
 }
@@ -382,7 +446,7 @@ function startWithheld(input: WithheldInputs & { readonly selectionCount: number
   if (input.candidate === null) {
     return input.selectionCount === 0 ? "Select an object to start a track from it" : "Select one drawn object to start a track from it";
   }
-  if (input.candidateOn !== null) return `That object is already on ${trackName(input.candidateOn.track, input.tracks)}`;
+  if (input.candidateOn !== null) return `That object is already on ${input.label(input.candidateOn.track)}`;
   if (input.here.length === 0) return "This frame is not a position of its source";
   return input.busy ? "Working…" : null;
 }
@@ -400,7 +464,7 @@ function addWithheld(
   if (input.withheld !== null) return input.withheld;
   if (input.candidate === null) return "Select one drawn object to add it";
   if (input.candidate.labelClass !== input.track.label_class) return `This track follows “${input.track.label_class}”`;
-  if (input.candidateOn !== null) return `That object is already on ${trackName(input.candidateOn.track, input.tracks)}`;
+  if (input.candidateOn !== null) return `That object is already on ${input.label(input.candidateOn.track)}`;
   if (input.here.length === 0) return "This frame is not a position of its source";
   if (input.free.length === 0) return "The track already follows an object on this frame";
   return input.busy ? "Working…" : null;
@@ -408,10 +472,12 @@ function addWithheld(
 
 /**
  * A write that names a position of this frame. One position is the common case
- * and a plain button; a frame whose bytes repeat at several positions asks which.
+ * and a plain button; a frame whose bytes repeat at several positions, or that
+ * sits in several sources, asks which, naming the source when there is one to name.
  */
 function PositionPicker({
   positions,
+  sourceName,
   reason,
   testId,
   label,
@@ -420,6 +486,7 @@ function PositionPicker({
   iconOnly = false,
 }: {
   readonly positions: readonly FrameOccurrence[];
+  readonly sourceName: (sourceId: string) => string | null;
   readonly reason: string | null;
   readonly testId: string;
   readonly label: string;
@@ -453,8 +520,8 @@ function PositionPicker({
       <DropdownMenuTrigger asChild>{button}</DropdownMenuTrigger>
       <DropdownMenuContent align="end" data-testid={`${testId}-positions`}>
         {positions.map((occurrence) => (
-          <DropdownMenuItem key={occurrence.id} data-testid={`${testId}-at-${occurrence.position}`} onSelect={() => onPick(occurrence)}>
-            At {frameWord(occurrence.position)}
+          <DropdownMenuItem key={occurrence.id} data-testid={`${testId}-at-${occurrence.id}`} onSelect={() => onPick(occurrence)}>
+            At {frameWord(occurrence.position, sourceName(occurrence.source_id))}
           </DropdownMenuItem>
         ))}
       </DropdownMenuContent>
