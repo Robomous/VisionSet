@@ -58,6 +58,7 @@ from visionset.kernel.domain import (
     BackgroundJob,
     BackgroundJobState,
     BatchState,
+    FrameOccurrence,
     Modality,
     ObservedLabel,
     OrphanGuard,
@@ -798,6 +799,20 @@ class SqlUnitOfWork:
                 .order_by(t.BatchAssetRow.position)
             ).all()
         )
+
+    def occurrences_of(self, asset_id: UUID) -> list[FrameOccurrence]:
+        """Ordered in the statement, through the source's ``rowid``.
+
+        ``rowid`` is the order ``sources.list`` answers in, so this is source
+        registration order without reading a project's every source to rank a few.
+        """
+        rows = self._session.scalars(
+            select(t.FrameOccurrenceRow)
+            .join(t.SourceRow, t.SourceRow.id == t.FrameOccurrenceRow.source_id)
+            .where(t.FrameOccurrenceRow.asset_id == asset_id)
+            .order_by(text("source.rowid"), t.FrameOccurrenceRow.position)
+        ).all()
+        return [m.FRAME_OCCURRENCES.to_domain(self._session, row) for row in rows]
 
     def observation_of(self, annotation_id: UUID) -> TrackObservation | None:
         row = self._session.scalars(

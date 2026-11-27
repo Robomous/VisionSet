@@ -626,6 +626,7 @@ export const checkInferenceDownloadSize = checkDownloadSizeOut;
 export const checkLaunchThumbnailBackfill = checkBackgroundJobOut;
 export const checkListAssetAnnotations = checkAnnotationPage;
 export const checkListAssetBatches = checkBatchPage;
+export const checkListAssetOccurrences = checkFrameOccurrencePage;
 export const checkListBackgroundJobs = checkBackgroundJobPage;
 export const checkListBatchAssets = checkBatchAssetPage;
 export const checkListBatchJobs = checkJobPage;

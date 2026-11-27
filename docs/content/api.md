@@ -84,6 +84,7 @@ PUT    /projects/{project_id}/assets/{asset_id}/calibration  the override, repla
 DELETE /projects/{project_id}/assets/{asset_id}/calibration  204; falls back to the source's, if it fits; 409 CALIBRATION_IN_USE
 POST   /projects/{project_id}/thumbnail-backfill-jobs     launch; renders missing previews
 GET    /projects/{project_id}/assets/{asset_id}/batches    which batches carry it
+GET    /projects/{project_id}/assets/{asset_id}/occurrences frame occurrences in every source it sits in
 GET    /projects/{project_id}/batches
 POST   /projects/{project_id}/batches                     curate one by hand
 GET    /batches/{batch_id}

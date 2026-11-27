@@ -68,6 +68,7 @@ SHIPPED = {
     "update_annotations",
     "delete_annotations",
     "list_frame_occurrences",
+    "list_asset_occurrences",
     "list_tracks",
     "get_track_status",
     "create_track",

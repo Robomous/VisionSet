@@ -57,6 +57,7 @@ from visionset.kernel.services import (
     IngestService,
     JobService,
     ProjectService,
+    SourceService,
 )
 from visionset.server.dependencies import RunnerDep, WorkspaceDep, protected_router
 from visionset.server.errors import documented
@@ -68,6 +69,8 @@ from visionset.server.models import (
     BatchOut,
     BatchPage,
     CalibrationBody,
+    FrameOccurrenceOut,
+    FrameOccurrencePage,
     LimitQuery,
     OffsetQuery,
     window,
@@ -303,6 +306,23 @@ def list_asset_batches(workspace: WorkspaceDep, project_id: UUID, asset_id: UUID
         ],
         total=len(found),
     )
+
+
+@router.get("/{asset_id}/occurrences", responses=documented(404))
+def list_asset_occurrences(
+    workspace: WorkspaceDep, project_id: UUID, asset_id: UUID
+) -> FrameOccurrencePage:
+    """Every frame occurrence of this asset, across every sequence source it sits in.
+
+    Identical bytes imported into two sequences are one asset at occurrences of
+    both, and each source keeps its own tracks. Ordered by source registration,
+    then position. An asset no sequence holds answers `{"items": [], "total": 0}`.
+    An unknown project is 404 `PROJECT_NOT_FOUND` and an unknown asset 404
+    `ASSET_NOT_FOUND`.
+    """
+    asset = IngestService(workspace).asset(project_id, asset_id)
+    found = SourceService(workspace).asset_occurrences(asset.id)
+    return FrameOccurrencePage(items=[FrameOccurrenceOut.of(o) for o in found], total=len(found))
 
 
 @router.get(

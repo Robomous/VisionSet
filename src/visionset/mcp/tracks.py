@@ -52,6 +52,21 @@ def list_frame_occurrences(source_id: SourceRef) -> shapes.Page[shapes.FrameOccu
     return wire.page([wire.frame_occurrence(o) for o in found])
 
 
+def list_asset_occurrences(
+    asset_id: Annotated[str, Field(description="The asset, by id (from `list_project_assets`).")],
+) -> shapes.Page[shapes.FrameOccurrence]:
+    """List an asset's frame occurrences across every sequence source it sits in.
+
+    Identical bytes imported into two sequences are one asset at occurrences of
+    both, and each source keeps its own tracks: this is how to find every source
+    whose tracks may observe the asset. Ordered by source registration, then
+    position; an asset no sequence holds has none.
+    """
+    with opened_workspace() as workspace:
+        found = SourceService(workspace).asset_occurrences(identifier(asset_id, what="asset_id"))
+    return wire.page([wire.frame_occurrence(o) for o in found])
+
+
 def list_tracks(source_id: SourceRef) -> shapes.Page[shapes.Track]:
     """List a sequence source's tracks, in creation order, each with its observations."""
     with opened_workspace() as workspace:

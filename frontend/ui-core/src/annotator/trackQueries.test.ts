@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   observationOf,
-  occurrencesOf,
+  sequencesOf,
   trackAnchor,
   trackName,
   trackStatusLine,
@@ -95,9 +95,14 @@ describe("trackAnchor — one asset at two positions", () => {
 });
 
 describe("reads over the wire", () => {
-  it("finds every occurrence of an asset", () => {
-    const all = [occurrence(1, "a"), occurrence(2, "b"), occurrence(3, "a")];
-    expect(occurrencesOf(all, "a").map((one) => one.position)).toEqual([1, 3]);
+  it("groups an asset's occurrences by source, in the order the wire answered", () => {
+    const elsewhere = (position: number): FrameOccurrence => ({ ...occurrence(position, "a"), id: `other-${position}`, source_id: "source-2" });
+    const grouped = sequencesOf([occurrence(4, "a"), elsewhere(0), occurrence(9, "a"), elsewhere(2)]);
+    expect(grouped.map((one) => [one.sourceId, one.here.map((at) => at.position)])).toEqual([
+      [SOURCE, [4, 9]],
+      ["source-2", [0, 2]],
+    ]);
+    expect(sequencesOf([])).toEqual([]);
   });
 
   it("finds the one track observing an annotation, by the server's id only", () => {
