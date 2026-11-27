@@ -4,7 +4,8 @@
 #
 # The profile starts the `mlflow` service; this file installs the client into the api image
 # and turns tracking on there. `--build` on every switch in or out, because the image
-# differs. Stacks with docker/compose.cpu-inference.yaml, listed before this file.
+# differs. Stacks with docker/compose.cpu-inference.yaml or docker/compose.gpu.yaml, listed
+# before this file.
 # What is sent, and how to point at another server: docs/content/tracking.md.
 
 services:
