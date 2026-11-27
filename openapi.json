@@ -7560,7 +7560,8 @@
           "image_directory",
           "video",
           "point_cloud_directory",
-          "image_sequence"
+          "image_sequence",
+          "point_cloud_sequence"
         ],
         "title": "SourceKind",
         "type": "string"
@@ -8064,6 +8065,16 @@
               }
             ],
             "title": "External Id"
+          },
+          "geometry_kind": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/GeometryType"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "id": {
             "format": "uuid",
@@ -11252,7 +11263,7 @@
         ]
       },
       "post": {
-        "description": "Freeze the trunk as it stands into an immutable, named snapshot.\n\nWhat is frozen is the content: every member asset, every annotation on it as\nit was, and the schema version those labels were judged against. Deleting an\nannotation afterwards cannot reach backwards into a published release.\n\nPublishing twice from an unchanged dataset produces byte-identical manifests\nand therefore the same `manifest_hash`, because nothing time-, machine- or\nidentity-specific goes inside the document. The tag, the timestamp and the\nbuild live on the release row instead.\n\n`split` is stored as a recipe, not materialized. `GET\n/releases/{release_id}/assignment` cuts the folds on demand, deterministically\nand from the frozen asset set. Fractions must sum to 1.0.\n\nTags are unique per dataset and **case-sensitive**, like a git tag: `v1.0` and\n`V1.0` are two releases, and reusing one is 409 `RELEASE_TAG_TAKEN`; a blank\ntag is 422 `INVALID_NAME`. A dataset\nwith no assets is 409 `EMPTY_RELEASE`; zero *annotations* is fine, since\nunlabeled images are legitimate training data. A project with no schema is 404\n`SCHEMA_NOT_FOUND`, because there is no version to pin, and an unknown dataset\nis 404 `DATASET_NOT_FOUND`.\n\nOne refusal is about the labels rather than about the request: an annotation\ncarrying a coordinate canonical JSON cannot express \u2014 a NaN or an infinity \u2014\nis 409 `UNSERIALIZABLE_MANIFEST`, and the message names it. Nothing is\npublished, because writing that value as `null` would lose it silently and\nwriting it as `NaN` would produce a manifest no other tool can read. The\nremedy is to correct the annotation and publish again.\n\nThe active schema must also describe every annotation the release would\nfreeze. Otherwise publishing is 409\n`RELEASE_CONTENT_WOULD_VIOLATE_SCHEMA`, with per-class blockers in `detail`.\nReconcile those annotations or restore a compatible active schema, then\npublish again.\n\nEvery asset carrying a 3D label must have a calibration \u2014 its own, else its\nsource's \u2014 which the release embeds beside it. Without one publishing is\n409 `CALIBRATION_MISSING`, and with one measured at another size than the\nasset it is 422 `CALIBRATION_RESOLUTION_MISMATCH`. A release with no 3D\nlabel embeds no calibration and is written as manifest version 3.\n\nA track observing an annotation the release copies is listed with those\nobservations only, in source position order, and makes the release a\nmanifest version 7. A release no track observes omits `tracks`.\n\nA release holding an asset of an image-sequence source lists that source\nwith every occurrence whose asset it holds, as `sources`, and is a manifest\nversion 9; so is one whose observed timing is unknown (`null`, not `0`).\nA release holding no image-sequence asset omits `sources`.",
+        "description": "Freeze the trunk as it stands into an immutable, named snapshot.\n\nWhat is frozen is the content: every member asset, every annotation on it as\nit was, and the schema version those labels were judged against. Deleting an\nannotation afterwards cannot reach backwards into a published release.\n\nPublishing twice from an unchanged dataset produces byte-identical manifests\nand therefore the same `manifest_hash`, because nothing time-, machine- or\nidentity-specific goes inside the document. The tag, the timestamp and the\nbuild live on the release row instead.\n\n`split` is stored as a recipe, not materialized. `GET\n/releases/{release_id}/assignment` cuts the folds on demand, deterministically\nand from the frozen asset set. Fractions must sum to 1.0.\n\nTags are unique per dataset and **case-sensitive**, like a git tag: `v1.0` and\n`V1.0` are two releases, and reusing one is 409 `RELEASE_TAG_TAKEN`; a blank\ntag is 422 `INVALID_NAME`. A dataset\nwith no assets is 409 `EMPTY_RELEASE`; zero *annotations* is fine, since\nunlabeled images are legitimate training data. A project with no schema is 404\n`SCHEMA_NOT_FOUND`, because there is no version to pin, and an unknown dataset\nis 404 `DATASET_NOT_FOUND`.\n\nOne refusal is about the labels rather than about the request: an annotation\ncarrying a coordinate canonical JSON cannot express \u2014 a NaN or an infinity \u2014\nis 409 `UNSERIALIZABLE_MANIFEST`, and the message names it. Nothing is\npublished, because writing that value as `null` would lose it silently and\nwriting it as `NaN` would produce a manifest no other tool can read. The\nremedy is to correct the annotation and publish again.\n\nThe active schema must also describe every annotation the release would\nfreeze. Otherwise publishing is 409\n`RELEASE_CONTENT_WOULD_VIOLATE_SCHEMA`, with per-class blockers in `detail`.\nReconcile those annotations or restore a compatible active schema, then\npublish again.\n\nEvery asset carrying a 3D label must have a calibration \u2014 its own, else its\nsource's \u2014 which the release embeds beside it. Without one publishing is\n409 `CALIBRATION_MISSING`, and with one measured at another size than the\nasset it is 422 `CALIBRATION_RESOLUTION_MISMATCH`. A release with no 3D\nlabel embeds no calibration and is written as manifest version 3.\n\nA track observing an annotation the release copies is listed with those\nobservations only, in source position order, and makes the release a\nmanifest version 7. A release no track observes omits `tracks`.\n\nA release holding an asset of an image-sequence source lists that source\nwith every occurrence whose asset it holds, as `sources`, and is a manifest\nversion 9; so is one whose observed timing is unknown (`null`, not `0`).\nA point-cloud sequence is listed the same way with `kind`\n`point_cloud_sequence`, and makes the release a manifest version 11, as a\ntrack on a scan does. A release holding no sequenced asset omits `sources`.",
         "operationId": "publish_release",
         "parameters": [
           {
@@ -13323,7 +13334,7 @@
         ]
       },
       "patch": {
-        "description": "Replace stored annotations whole, judged against the same pinned version.\n\nAddressed by `id` and by nothing else \u2014 annotations are never reached by\nindex or position. There is no `asset_id` on the body because the stored one\nwins: moving a label from one asset to another is a delete and an add, not an\nedit, and doing it silently would take an asset's last annotation away\nwithout anything saying so. Who made a label is kept the same way: a\n`provenance` other than the stored one is 422 `INVALID_ANNOTATION`, and\n`model_ref` and `confidence` are taken from the stored annotation. An edit\nchanges what a label says, never who made it.\n\nAll-or-nothing, and `detail.index` names the culprit, exactly as on the POST.\nAn asset whose labeling is over is 409 `ASSET_NOT_WRITABLE`, as on the POST,\nand so are the two gates around it: a batch that is not open for annotation\nis 409 `BATCH_NOT_IN_ANNOTATION` and a job that was completed is 409\n`JOB_FINISHED`. An annotation a track observes keeps the track's class: an\nedit to any other class is 409 `TRACK_CLASS_MISMATCH`, so change the track's\nclass instead. An edit is a write, and every gate that stops a new label\nstops a replacement too \u2014 including 409 `CALIBRATION_MISSING` and 422\n`CALIBRATION_RESOLUTION_MISMATCH` for a 3D label, and on a scan 409\n`CALIBRATION_MISSING` for a source declaring no frame and 422\n`INVALID_ANNOTATION` for a `bbox`, `obb`, `polygon`, `polyline` or `mask`.",
+        "description": "Replace stored annotations whole, judged against the same pinned version.\n\nAddressed by `id` and by nothing else \u2014 annotations are never reached by\nindex or position. There is no `asset_id` on the body because the stored one\nwins: moving a label from one asset to another is a delete and an add, not an\nedit, and doing it silently would take an asset's last annotation away\nwithout anything saying so. Who made a label is kept the same way: a\n`provenance` other than the stored one is 422 `INVALID_ANNOTATION`, and\n`model_ref` and `confidence` are taken from the stored annotation. An edit\nchanges what a label says, never who made it.\n\nAll-or-nothing, and `detail.index` names the culprit, exactly as on the POST.\nAn asset whose labeling is over is 409 `ASSET_NOT_WRITABLE`, as on the POST,\nand so are the two gates around it: a batch that is not open for annotation\nis 409 `BATCH_NOT_IN_ANNOTATION` and a job that was completed is 409\n`JOB_FINISHED`. An annotation a track observes keeps the track's class: an\nedit to any other class is 409 `TRACK_CLASS_MISMATCH`, so change the track's\nclass instead, and its geometry type: an edit to another is 409\n`TRACK_GEOMETRY_MISMATCH`. An edit is a write, and every gate that stops a new label\nstops a replacement too \u2014 including 409 `CALIBRATION_MISSING` and 422\n`CALIBRATION_RESOLUTION_MISMATCH` for a 3D label, and on a scan 409\n`CALIBRATION_MISSING` for a source declaring no frame and 422\n`INVALID_ANNOTATION` for a `bbox`, `obb`, `polygon`, `polyline` or `mask`.",
         "operationId": "update_annotations",
         "parameters": [
           {
@@ -14704,7 +14715,7 @@
     },
     "/jobs/{job_id}/tracks/{track_id}/merge": {
       "post": {
-        "description": "Move every observation of `body.track_id` onto this track, and delete that one.\n\nThe tracks share a source and a class and observe disjoint occurrences. This\ntrack keeps its own `external_id`, and takes the absorbed one's when it has\nnone. 404: `JOB_NOT_FOUND`, `TRACK_NOT_FOUND`. 409: `BATCH_NOT_IN_ANNOTATION`,\n`JOB_FINISHED`, `ASSET_NOT_IN_JOB` (rendered as a 409 here: act through the\njob holding both tracks' observations), `ASSET_NOT_WRITABLE`,\n`TRACK_CLASS_MISMATCH`, `OCCURRENCE_ALREADY_OBSERVED`. 422:\n`TRACK_MERGE_WITH_ITSELF`, `TRACK_SOURCE_MISMATCH`.",
+        "description": "Move every observation of `body.track_id` onto this track, and delete that one.\n\nThe tracks share a source, a class and a geometry type, and observe disjoint\noccurrences. This\ntrack keeps its own `external_id`, and takes the absorbed one's when it has\nnone. 404: `JOB_NOT_FOUND`, `TRACK_NOT_FOUND`. 409: `BATCH_NOT_IN_ANNOTATION`,\n`JOB_FINISHED`, `ASSET_NOT_IN_JOB` (rendered as a 409 here: act through the\njob holding both tracks' observations), `ASSET_NOT_WRITABLE`,\n`TRACK_CLASS_MISMATCH`, `TRACK_GEOMETRY_MISMATCH`, `OCCURRENCE_ALREADY_OBSERVED`.\n422: `TRACK_MERGE_WITH_ITSELF`, `TRACK_SOURCE_MISMATCH`.",
         "operationId": "merge_tracks",
         "parameters": [
           {
@@ -14823,7 +14834,7 @@
     },
     "/jobs/{job_id}/tracks/{track_id}/observations": {
       "post": {
-        "description": "Record that the track is seen at an occurrence, as an annotation drawn there.\n\nThe annotation must sit on the occurrence's asset, carry the track's class\nand be 2D, and that asset must not be `pre_labeled`: a model's output nobody\nhas judged is not tracked. 404: `JOB_NOT_FOUND`, `TRACK_NOT_FOUND`,\n`FRAME_OCCURRENCE_NOT_FOUND`, `ANNOTATION_NOT_FOUND`. 409:\n`BATCH_NOT_IN_ANNOTATION`, `JOB_FINISHED`, `ASSET_NOT_IN_JOB` (rendered as a\n409 here: the job does not carry the occurrence's asset), `ASSET_NOT_WRITABLE`,\n`ASSET_NOT_JUDGED`, `TRACK_CLASS_MISMATCH`, `OCCURRENCE_ALREADY_OBSERVED`,\n`ANNOTATION_ALREADY_OBSERVED`. 422: `TRACK_SOURCE_MISMATCH`,\n`ANNOTATION_NOT_AT_OCCURRENCE`, `INVALID_ANNOTATION`.",
+        "description": "Record that the track is seen at an occurrence, as an annotation drawn there.\n\nThe annotation must sit on the occurrence's asset, carry the track's class\nand its geometry type, and be a 2D label on an image or a `cuboid_3d` on a\nscan, and that asset must not be `pre_labeled`: a model's output nobody has\njudged is not tracked. 404: `JOB_NOT_FOUND`, `TRACK_NOT_FOUND`,\n`FRAME_OCCURRENCE_NOT_FOUND`, `ANNOTATION_NOT_FOUND`. 409:\n`BATCH_NOT_IN_ANNOTATION`, `JOB_FINISHED`, `ASSET_NOT_IN_JOB` (rendered as a\n409 here: the job does not carry the occurrence's asset), `ASSET_NOT_WRITABLE`,\n`ASSET_NOT_JUDGED`, `TRACK_CLASS_MISMATCH`, `TRACK_GEOMETRY_MISMATCH`,\n`OCCURRENCE_ALREADY_OBSERVED`, `ANNOTATION_ALREADY_OBSERVED`. 422:\n`TRACK_SOURCE_MISMATCH`,\n`ANNOTATION_NOT_AT_OCCURRENCE`, `INVALID_ANNOTATION`.",
         "operationId": "observe_track",
         "parameters": [
           {
@@ -20786,7 +20797,7 @@
     },
     "/sources/{source_id}/occurrences": {
       "get": {
-        "description": "Every frame occurrence of this source, in position order.\n\nAn occurrence is one position of a clip's extraction grid and the asset it\ndecoded to; identical frames at two positions are one asset at two\noccurrences. A source that is neither a video nor an image sequence has\nnone. An unknown source is 404 `SOURCE_NOT_FOUND`.",
+        "description": "Every frame occurrence of this source, in position order.\n\nAn occurrence is one position of a clip's extraction grid and the asset it\ndecoded to; identical frames at two positions are one asset at two\noccurrences. A source that is not a video, an image sequence or a\npoint-cloud sequence has none. An unknown source is 404 `SOURCE_NOT_FOUND`.",
         "operationId": "list_frame_occurrences",
         "parameters": [
           {
@@ -20962,7 +20973,7 @@
         ]
       },
       "post": {
-        "description": "Start an empty track of one class on a video or image-sequence source.\n\nNot gated on a job: a track observes nothing until a job observes an\nannotation with it. The class must be declared by the project's active\nschema version. 404: `SOURCE_NOT_FOUND`, `SCHEMA_NOT_FOUND`. 409:\n`TRACK_EXTERNAL_ID_TAKEN`, for an `external_id` another track of the source\ncarries. 422: `SOURCE_NOT_SEQUENCE` for a source that is neither a video nor an image sequence,\n`LABEL_CLASS_NOT_IN_SCHEMA`, `INVALID_NAME` for a blank class or external id.",
+        "description": "Start an empty track of one class on a video, image-sequence or point-cloud-sequence source.\n\nNot gated on a job: a track observes nothing until a job observes an\nannotation with it. The class must be declared by the project's active\nschema version. 404: `SOURCE_NOT_FOUND`, `SCHEMA_NOT_FOUND`. 409:\n`TRACK_EXTERNAL_ID_TAKEN`, for an `external_id` another track of the source\ncarries. 422: `SOURCE_NOT_SEQUENCE` for a source that is not a video, an image\nsequence or a point-cloud sequence, `LABEL_CLASS_NOT_IN_SCHEMA`, `INVALID_NAME`\nfor a blank class or external id.",
         "operationId": "create_track",
         "parameters": [
           {

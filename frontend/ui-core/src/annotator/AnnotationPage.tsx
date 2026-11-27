@@ -1942,7 +1942,7 @@ function Workspace({
       ? null
       : (REFUSAL_PROSE[withheldCode(asset, ASSET_ACTION.observe) ?? ""] ?? "Adding to a track is not available on this frame.");
 
-  // Tracks are 2D and follow a sequence source's occurrences; a scan has none.
+  // The annotator shows tracks on images only; a scan's tracks are read through REST, the CLI and MCP.
   // One asset can sit in several sequences, and each keeps its own tracks.
   const jobAssetIds = useMemo(() => assets.map((one) => one.id), [assets]);
   const occurrences = useAssetOccurrences(projectId, isScan ? null : asset.id);
@@ -2077,7 +2077,7 @@ function Workspace({
     if (snapshot.selection.size !== 1) return null;
     const [id] = snapshot.selection;
     const one = id === undefined ? undefined : snapshot.document.annotations.get(id);
-    return one === undefined || isTagAnnotation(one) ? null : { localId: one.id, labelClass: one.label_class };
+    return one === undefined || isTagAnnotation(one) ? null : { localId: one.id, labelClass: one.label_class, geometry: one.geometry.type };
   }, [snapshot.selection, snapshot.document]);
   const detect =
     activeTarget.kind === "server" && !readOnly ? { blocker: detectBlocker, onDetect: detectAll } : undefined;

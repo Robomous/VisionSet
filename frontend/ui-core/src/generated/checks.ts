@@ -502,7 +502,7 @@ export const checkScanFrame: Check<Schemas["ScanFrame"]> =
   /*#__PURE__*/ oneOf(["lidar_flu", "camera_rdf", "lidar_rfu"] as const);
 
 export const checkSourceKind: Check<Schemas["SourceKind"]> =
-  /*#__PURE__*/ oneOf(["image_directory", "video", "point_cloud_directory", "image_sequence"] as const);
+  /*#__PURE__*/ oneOf(["image_directory", "video", "point_cloud_directory", "image_sequence", "point_cloud_sequence"] as const);
 
 export const checkClipRange: Check<Schemas["ClipRange"]> =
   /*#__PURE__*/ object({ "end_seconds": [true, isNumber], "start_seconds": [true, isNumber] } as const);
@@ -535,7 +535,7 @@ export const checkTrackObservationOut: Check<Schemas["TrackObservationOut"]> =
   /*#__PURE__*/ object({ "annotation_id": [true, isString], "asset_id": [true, isString], "occurrence_id": [true, isString], "position": [true, isInteger], "timestamp": [true, either([isNumber, isNull] as const)] } as const);
 
 export const checkTrackOut: Check<Schemas["TrackOut"]> =
-  /*#__PURE__*/ object({ "external_id": [true, either([isString, isNull] as const)], "id": [true, isString], "label_class": [true, isString], "observations": [true, arrayOf(checkTrackObservationOut)], "source_id": [true, isString] } as const);
+  /*#__PURE__*/ object({ "external_id": [true, either([isString, isNull] as const)], "geometry_kind": [false, either([checkGeometryType, isNull] as const)], "id": [true, isString], "label_class": [true, isString], "observations": [true, arrayOf(checkTrackObservationOut)], "source_id": [true, isString] } as const);
 
 export const checkTrackPage: Check<Schemas["TrackPage"]> =
   /*#__PURE__*/ object({ "items": [true, arrayOf(checkTrackOut)], "total": [true, isInteger] } as const);

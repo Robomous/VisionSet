@@ -17,7 +17,16 @@ from uuid import UUID, uuid4
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from visionset.kernel.domain.schema import GeometryType
 from visionset.kernel.domain.task import SETTLED_PROGRESS, AssetProgress
+
+#: Geometry types a track may mix: a box that turns is still the same box (#1209).
+_SAME_KIND: Mapping[GeometryType, GeometryType] = {GeometryType.OBB: GeometryType.BBOX}
+
+
+def track_geometry_kind(geometry: GeometryType) -> GeometryType:
+    """The kind every observation of one track shares: its type, with a rotated box a box."""
+    return _SAME_KIND.get(geometry, geometry)
 
 
 class Track(BaseModel):
@@ -67,12 +76,17 @@ class ObservedLabel(BaseModel):
 
 
 class TrackDetail(BaseModel):
-    """A track and its observations, in source position order."""
+    """A track and its observations, in source position order.
+
+    ``geometry_kind`` is the kind every observation shares, read off the first
+    one (:func:`track_geometry_kind`), and ``None`` while it observes nothing.
+    """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     track: Track
     observations: tuple[ObservedFrame, ...]
+    geometry_kind: GeometryType | None = None
 
 
 class TrackStatus(BaseModel):

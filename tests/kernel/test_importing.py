@@ -235,7 +235,7 @@ def test_a_track_id_needs_exactly_one_sequence_of_listed_images(
 
 
 def test_a_track_id_on_a_3d_label_is_refused() -> None:
-    with pytest.raises(ValidationError, match="2D geometry only"):
+    with pytest.raises(ValidationError, match="an image.s 2D labels only"):
         _tracked("a.png", sequences=(_sequence("a.png"),), geometry=CUBOID)
 
 

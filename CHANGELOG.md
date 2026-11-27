@@ -56,6 +56,21 @@ nothing was being distributed. This is the first version that is.
   writes one classification tag per asset declares `single_tag`; the report then counts each tag beside the one
   kept as dropped, and each asset with no tag in `untagged_assets`, which also makes the report incompatible and is named in the refusal. The
   field is carried by the REST, CLI and MCP surfaces and the report written into every export (#1165).
+- **nuScenes instance tokens land as 3D tracks over point-cloud sequences.** A track may now follow a
+  `cuboid_3d` through the scans of a new `point_cloud_sequence` source, which only an import writes, as it
+  writes an image sequence. The `nuscenes` importer turns each scene into one, ordered by its chain of samples
+  (`first_sample_token`, then `sample.next`), with each keyframe at its sample's index in the chain and timed
+  from the chain's first sample, so a sample with no LIDAR_TOP keyframe or no scan on disk is a gap; each box's
+  `instance_token` becomes a track with the token as its `external_id`, and is no longer reported lost. A broken
+  chain is reported and ordered by timestamp instead; a scene with neither keeps its boxes untracked and says so.
+  A repeated scan in a sequence is an occurrence of the first. A release holding a point-cloud sequence lists it in
+  `sources` with `kind` `point_cloud_sequence` at manifest version 11; every other release keeps its version,
+  bytes and hash. `mot` and `cvat-video` report the scans dropped by modality (#1189).
+- **A track keeps one geometry type.** Observing, editing or merging into a mix of geometry types, such as boxes
+  and polygons, is 409 `TRACK_GEOMETRY_MISMATCH`, and an import keeps such a label untracked with an `attribute`
+  loss. A rotated box counts as a box, so a track may still mix the two, and a track that mixed other types before
+  is judged only on a write that adds an observation or changes one's type. A camera-calibrated 3D label on an image and a `polyline_3d` on a scan stay `INVALID_ANNOTATION` (#1189).
+
 - **Apple Create ML object-detection JSON import and export as `createml`.** Only the object-detection annotation
   schema: an array of `{"image", "annotations": [{"label", "coordinates": {"x", "y", "width", "height"}}]}` with
   `x` and `y` the box's centre in pixels. The exporter writes the pictures and one `annotations.json` per folder, under

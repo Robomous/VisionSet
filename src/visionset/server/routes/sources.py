@@ -172,8 +172,8 @@ def list_frame_occurrences(workspace: WorkspaceDep, source_id: UUID) -> FrameOcc
 
     An occurrence is one position of a clip's extraction grid and the asset it
     decoded to; identical frames at two positions are one asset at two
-    occurrences. A source that is neither a video nor an image sequence has
-    none. An unknown source is 404 `SOURCE_NOT_FOUND`.
+    occurrences. A source that is not a video, an image sequence or a
+    point-cloud sequence has none. An unknown source is 404 `SOURCE_NOT_FOUND`.
     """
     found = SourceService(workspace).occurrences(source_id)
     return FrameOccurrencePage(items=[FrameOccurrenceOut.of(o) for o in found], total=len(found))

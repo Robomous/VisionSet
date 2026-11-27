@@ -43,6 +43,7 @@ from visionset.kernel.domain import (
     TrackDetail,
     TrackObservation,
     TrackStatus,
+    track_geometry_kind,
 )
 from visionset.kernel.errors import (
     AnnotationAlreadyObserved,
@@ -59,6 +60,7 @@ from visionset.kernel.errors import (
     SourceNotSequence,
     TrackClassMismatch,
     TrackExternalIdTaken,
+    TrackGeometryMismatch,
     TrackMergeWithItself,
     TrackNotFound,
     TrackSourceMismatch,
@@ -68,6 +70,7 @@ from visionset.kernel.errors import (
 from visionset.kernel.ports import UnitOfWork
 from visionset.kernel.services.annotation_service import (
     AnnotationService,
+    require_track_geometry,
     require_trackable,
     require_writable,
 )
@@ -153,7 +156,8 @@ class TrackService:
         Raises:
             InvalidName: the class or the external id is blank.
             SourceNotFound: no such source in this workspace.
-            SourceNotSequence: the source is neither a video nor an image sequence.
+            SourceNotSequence: the source is not a video, an image sequence or a
+                point-cloud sequence.
             SchemaNotFound: the project has no schema yet.
             LabelClassNotInSchema: the active schema version does not declare the class.
             TrackExternalIdTaken: another track of the source carries ``external_id``.
@@ -187,7 +191,8 @@ class TrackService:
             BatchNotEditable: the batch is past ``draft``.
             InvalidName: a class or an external id is blank.
             SourceNotFound: no such source in the batch's project.
-            SourceNotSequence: a source is neither a video nor an image sequence.
+            SourceNotSequence: a source is not a video, an image sequence or a
+                point-cloud sequence.
             SchemaNotFound: the project has no schema yet.
             LabelClassNotInSchema: the active schema version does not declare a class.
             TrackExternalIdTaken: another track of the source carries an external id.
@@ -196,8 +201,12 @@ class TrackService:
             AnnotationNotFound: no such annotation in this workspace.
             AnnotationNotAtOccurrence: an annotation sits on another asset.
             AssetNotInBatch: the batch does not hold an observed asset.
-            InvalidAnnotation: an annotation is not an import's, or is a 3D label.
+            InvalidAnnotation: an annotation is not an import's, or is a label no
+                track follows: a 3D label on an image, or a scan label other than
+                a cuboid.
             TrackClassMismatch: an annotation's class is not its track's.
+            TrackGeometryMismatch: an annotation's geometry type is not that of
+                its track's other observations.
             OccurrenceAlreadyObserved: a track observes one occurrence twice.
             AnnotationAlreadyObserved: an annotation is observed twice.
         """
@@ -216,6 +225,7 @@ class TrackService:
             _require_external_id_free(uow, track.source_id, track.external_id)
             uow.tracks.add(track)
             seen: set[UUID] = set()
+            kind = None
             for observation in observations:
                 occurrence = self._require_occurrence(uow, track, observation.occurrence_id)
                 annotation = self._annotations.require_annotation(uow, observation.annotation_id)
@@ -239,6 +249,14 @@ class TrackService:
                         f"{track.id} is {track.label_class!r}"
                     )
                 require_trackable(uow, annotation)
+                here = track_geometry_kind(annotation.geometry.type)
+                kind = here if kind is None else kind
+                if here is not kind:
+                    raise TrackGeometryMismatch(
+                        f"track {track.id} follows {kind.value} labels, and annotation "
+                        f"{annotation.id} is a {annotation.geometry.type.value}; a track never "
+                        f"mixes geometry kinds"
+                    )
                 if occurrence.id in seen:
                     raise OccurrenceAlreadyObserved(
                         f"track {track.id} observes occurrence {occurrence.id} twice"
@@ -270,7 +288,10 @@ class TrackService:
             AssetNotJudged: ``ASSET_WITHHOLDINGS`` withholds ``observe`` at that asset's
                 progress - today ``pre_labeled``, whose labels nobody has judged.
             TrackClassMismatch: the annotation's class is not the track's.
-            InvalidAnnotation: the annotation is a 3D label; tracks follow 2D ones.
+            InvalidAnnotation: the annotation is a label no track follows: a 3D
+                label on an image, or a scan label other than a cuboid.
+            TrackGeometryMismatch: the annotation's geometry type is not that of
+                the track's other observations.
             OccurrenceAlreadyObserved: the track already observes the occurrence.
             AnnotationAlreadyObserved: another observation names the annotation.
         """
@@ -298,14 +319,16 @@ class TrackService:
             BatchNotInAnnotation: the job's batch is not open for annotation.
             JobFinished: the job is already completed.
             FrameOccurrenceNotFound: no such occurrence in the job's project.
-            SourceNotSequence: the occurrence's source is neither a video nor an image sequence.
+            SourceNotSequence: the occurrence's source is not a video, an image
+                sequence or a point-cloud sequence.
             AnnotationNotFound: no such annotation in this workspace.
             AnnotationNotAtOccurrence: the annotation sits on another asset.
             AssetNotInJob: the job does not carry the occurrence's asset.
             AssetNotWritable: that asset's progress says its labeling is over.
             AssetNotJudged: ``ASSET_WITHHOLDINGS`` withholds ``observe`` at that asset's
                 progress - today ``pre_labeled``, whose labels nobody has judged.
-            InvalidAnnotation: the annotation is a 3D label; tracks follow 2D ones.
+            InvalidAnnotation: the annotation is a label no track follows: a 3D
+                label on an image, or a scan label other than a cuboid.
             AnnotationAlreadyObserved: another observation names the annotation.
             InvalidName: the annotation's class is blank.
             LabelClassNotInSchema: the batch's pinned version does not declare the class.
@@ -355,6 +378,7 @@ class TrackService:
                 f"{track.id} is {track.label_class!r}"
             )
         require_trackable(uow, annotation)
+        require_track_geometry(uow, track.id, annotation.geometry.type)
         if any(o.occurrence_id == occurrence.id for o in uow.track_observations.list(track.id)):
             raise OccurrenceAlreadyObserved(
                 f"track {track.id} already observes occurrence {occurrence.id} "
@@ -469,6 +493,7 @@ class TrackService:
             TrackNotFound: either track is not in the job's project.
             TrackSourceMismatch: the tracks belong to different sources.
             TrackClassMismatch: the tracks have different classes.
+            TrackGeometryMismatch: the tracks observe different geometry types.
             AssetNotInJob: the job does not carry an observed asset of either track.
             AssetNotWritable: an observed asset's progress says its labeling is over.
             OccurrenceAlreadyObserved: both tracks observe one occurrence.
@@ -492,6 +517,7 @@ class TrackService:
             kept = _detail(uow, track).observations
             moved = _detail(uow, absorbed).observations
             _require_scope(job, (*kept, *moved))
+            _require_same_geometry(uow, track, absorbed)
             shared = {f.occurrence_id for f in kept} & {f.occurrence_id for f in moved}
             if shared:
                 position = min(f.position for f in moved if f.occurrence_id in shared)
@@ -651,7 +677,9 @@ class TrackService:
 
 def _detail(uow: UnitOfWork, track: Track) -> TrackDetail:
     frames = []
-    for observation in uow.track_observations.list(track.id):
+    observations = uow.track_observations.list(track.id)
+    first = None if not observations else uow.annotations.get(observations[0].annotation_id)
+    for observation in observations:
         occurrence = uow.frame_occurrences.get(observation.occurrence_id)
         if occurrence is None:
             raise WorkspaceCorrupt(
@@ -668,14 +696,31 @@ def _detail(uow: UnitOfWork, track: Track) -> TrackDetail:
             )
         )
     frames.sort(key=lambda frame: frame.position)
-    return TrackDetail(track=track, observations=tuple(frames))
+    return TrackDetail(
+        track=track,
+        observations=tuple(frames),
+        geometry_kind=None if first is None else track_geometry_kind(first.geometry.type),
+    )
+
+
+def _require_same_geometry(uow: UnitOfWork, track: Track, absorbed: Track) -> None:
+    types = []
+    for one in (track, absorbed):
+        first = next(iter(uow.track_observations.list(one.id)), None)
+        annotation = None if first is None else uow.annotations.get(first.annotation_id)
+        types.append(None if annotation is None else track_geometry_kind(annotation.geometry.type))
+    if None not in types and types[0] is not types[1]:
+        raise TrackGeometryMismatch(
+            f"track {track.id} follows {types[0]} labels and track {absorbed.id} "
+            f"{types[1]} ones; a track never mixes geometry types"
+        )
 
 
 def _require_sequence(source: Source) -> Source:
     if source.kind not in SEQUENCE_KINDS:
         raise SourceNotSequence(
-            f"source {source.id} is a {source.kind.value}, and only a video or an image "
-            f"sequence has frame occurrences for a track to observe"
+            f"source {source.id} is a {source.kind.value}, and only a video, an image "
+            f"sequence or a point-cloud sequence has frame occurrences for a track to observe"
         )
     return source
 

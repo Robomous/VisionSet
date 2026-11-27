@@ -295,6 +295,11 @@ export interface TrackSequence {
   readonly failure: ReadFailure | null;
 }
 
+/** The kind of shape a track follows: its geometry type, a rotated box counted as a box. */
+export function trackGeometryKind(geometry: string): string {
+  return geometry === "obb" ? "bbox" : geometry;
+}
+
 /**
  * A track's name, and its source's when the frame sits in several: two sources
  * can each have a `car 7`.

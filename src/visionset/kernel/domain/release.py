@@ -41,7 +41,7 @@ import math
 from collections.abc import Sequence
 from datetime import UTC, datetime
 from enum import StrEnum
-from typing import BinaryIO
+from typing import BinaryIO, Literal
 from uuid import UUID, uuid4
 
 from pydantic import (
@@ -138,7 +138,14 @@ from visionset.kernel.errors import UnserializableManifest
 #: mask — to the geometry union. A release with no mask keeps the version, the
 #: bytes and the hash it had before, and only a release holding one is one a
 #: version-9 build refuses.
-MANIFEST_VERSION: int = 10
+#:
+#: **11** since #1189, which let ``sources`` list a point-cloud sequence, such
+#: as one nuScenes scene, with ``kind`` set to ``point_cloud_sequence``, and so
+#: let a track observe cuboids on scans. ``kind`` is omitted for an image
+#: sequence, so a release holding no point-cloud sequence keeps the version,
+#: the bytes and the hash it had before, and only a release holding one is one
+#: a version-10 build refuses.
+MANIFEST_VERSION: int = 11
 
 CALIBRATED_MANIFEST_VERSION: int = 4
 """The first manifest version that can carry a calibration, and so a 3D label."""
@@ -160,6 +167,9 @@ SEQUENCED_MANIFEST_VERSION: int = 9
 
 MASK_MANIFEST_VERSION: int = 10
 """The first manifest version that can carry a raster mask."""
+
+SCAN_SEQUENCE_MANIFEST_VERSION: int = 11
+"""The first manifest version that can carry a point-cloud sequence, and a track on scans."""
 
 
 class ManifestAnnotation(BaseModel):
@@ -308,14 +318,18 @@ class ManifestOccurrence(BaseModel):
 
 
 class ManifestSource(BaseModel):
-    """An image-sequence source, with every occurrence whose asset the release holds.
+    """An imported sequence, with every occurrence whose asset the release holds.
 
-    A position the release holds no asset for is absent, never a row.
+    A position the release holds no asset for is absent, never a row. ``kind``
+    says whether its occurrences are images or scans, and is omitted for images.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     source_id: UUID
+    kind: Literal["image_sequence", "point_cloud_sequence"] = Field(
+        default="image_sequence", exclude_if=lambda value: value == "image_sequence"
+    )
     occurrences: tuple[ManifestOccurrence, ...] = Field(min_length=1)
 
     @field_validator("occurrences")
@@ -478,14 +492,21 @@ class Manifest(BaseModel):
 
     @model_validator(mode="after")
     def _occurrences_name_what_the_release_holds(self) -> Manifest:
-        held = {asset.asset_id for asset in self.assets}
+        modality_of = {asset.asset_id: asset.modality for asset in self.assets}
         listed: dict[tuple[UUID, int], ManifestOccurrence] = {}
         for source in self.sources:
+            expected = "point_cloud" if source.kind == "point_cloud_sequence" else "image"
             for occurrence in source.occurrences:
-                if occurrence.asset_id not in held:
+                modality = modality_of.get(occurrence.asset_id)
+                if modality is None:
                     raise ValueError(
                         f"source {source.source_id} lists asset {occurrence.asset_id} at "
                         f"position {occurrence.position}, which this manifest does not hold"
+                    )
+                if modality != expected:
+                    raise ValueError(
+                        f"{source.kind} source {source.source_id} lists asset "
+                        f"{occurrence.asset_id}, whose modality is {modality}"
                     )
                 listed[(source.source_id, occurrence.position)] = occurrence
         for track in self.tracks:
@@ -568,6 +589,13 @@ class Manifest(BaseModel):
                 f"a version-{self.manifest_version} manifest carries no masks; "
                 f"a mask label needs version {MASK_MANIFEST_VERSION}"
             )
+        if self.manifest_version < SCAN_SEQUENCE_MANIFEST_VERSION and _scan_sequenced(
+            self.assets, self.tracks, self.sources
+        ):
+            raise ValueError(
+                f"a version-{self.manifest_version} manifest carries no point-cloud sequences "
+                f"and no track on a scan; they need version {SCAN_SEQUENCE_MANIFEST_VERSION}"
+            )
         return self
 
     @property
@@ -590,6 +618,8 @@ def manifest_version_for(
     Publishing writes this rather than :data:`MANIFEST_VERSION`, so content a
     version-3 build can read is still written as version 3 and keeps its hash.
     """
+    if _scan_sequenced(assets, tracks, sources):
+        return SCAN_SEQUENCE_MANIFEST_VERSION
     if _holds(assets, GeometryType.MASK):
         return MASK_MANIFEST_VERSION
     if sources or _unknown_timing(tracks):
@@ -605,6 +635,18 @@ def manifest_version_for(
     if any(asset.calibration is not None for asset in assets):
         return CALIBRATED_MANIFEST_VERSION
     return 3
+
+
+def _scan_sequenced(
+    assets: Sequence[ManifestAsset],
+    tracks: Sequence[ManifestTrack],
+    sources: Sequence[ManifestSource],
+) -> bool:
+    """Whether a source is a point-cloud sequence or a track observes a scan."""
+    if any(source.kind == "point_cloud_sequence" for source in sources):
+        return True
+    scans = {asset.asset_id for asset in assets if asset.modality != "image"}
+    return any(one.asset_id in scans for track in tracks for one in track.observations)
 
 
 def _holds(assets: Sequence[ManifestAsset], geometry: GeometryType) -> bool:

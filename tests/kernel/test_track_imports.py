@@ -19,6 +19,7 @@ from visionset.kernel import (
     SourceNotSequence,
     TrackClassMismatch,
     TrackExternalIdTaken,
+    TrackGeometryMismatch,
 )
 from visionset.kernel.domain import (
     Annotation,
@@ -26,6 +27,9 @@ from visionset.kernel.domain import (
     Cuboid3DGeometry,
     FrameOccurrence,
     Geometry,
+    GeometryType,
+    ObbGeometry,
+    PolygonGeometry,
     Track,
     TrackDetail,
     TrackObservation,
@@ -170,7 +174,7 @@ def test_an_asset_the_batch_does_not_hold_is_refused(world: Importing) -> None:
         (
             "import",
             Cuboid3DGeometry(center=(0.0, 0.0, 5.0), size=(1.0, 1.0, 1.0), yaw=0.0),
-            "2D geometry only",
+            "an image.s 2D labels only",
         ),
     ],
 )
@@ -232,3 +236,28 @@ def test_occurrences_are_written_only_onto_an_image_sequence(
         video = world.sources.require_source(uow, clip.source_id)
         with pytest.raises(ValueError, match="its import writes"):
             world.sources.add_occurrences_in(uow, video, [(9, 9.0, asset_id)])
+
+
+def test_an_imported_track_takes_one_geometry_kind_and_a_turned_box_is_a_box(
+    world: Importing,
+) -> None:
+    seq = world.sequence()
+    first, second, third = seq.occurrences
+    box = world.label(seq.batch_id, first.asset_id)
+    turned = world.label(
+        seq.batch_id,
+        second.asset_id,
+        geometry=ObbGeometry(cx=4.0, cy=4.0, width=4.0, height=2.0, angle=0.4),
+    )
+    outline = world.label(
+        seq.batch_id,
+        third.asset_id,
+        geometry=PolygonGeometry(points=[(1.0, 1.0), (5.0, 1.0), (5.0, 5.0)]),
+    )
+
+    with pytest.raises(TrackGeometryMismatch):
+        world.write(seq.batch_id, seq.source_id, [(first, box), (second, turned), (third, outline)])
+    assert world.tracks.list(seq.source_id) == []
+    (detail,) = world.write(seq.batch_id, seq.source_id, [(first, box), (second, turned)])
+    assert [f.position for f in detail.observations] == [0, 1]
+    assert detail.geometry_kind is GeometryType.BBOX

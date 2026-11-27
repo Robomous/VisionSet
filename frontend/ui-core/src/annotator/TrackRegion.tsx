@@ -16,12 +16,13 @@ import { Button, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMe
 import { ChevronLeft, ChevronRight, Plus } from "lucide-react";
 import { useEffect, type JSX } from "react";
 
-import { refusalProse } from "../data/refusals";
+import { REFUSAL_PROSE, refusalProse } from "../data/refusals";
 import { Withheld } from "./Withheld";
 import {
   observationOf,
   sequenceTrackLabel,
   trackAnchor,
+  trackGeometryKind,
   trackName,
   trackStatusLine,
   trackStep,
@@ -49,6 +50,8 @@ export interface TrackFocus {
 export interface TrackCandidate {
   readonly localId: string;
   readonly labelClass: string;
+  /** The object's geometry type, as the wire spells it. */
+  readonly geometry: string;
 }
 
 export interface TrackRegionProps {
@@ -461,7 +464,8 @@ function startWithheld(input: WithheldInputs & { readonly selectionCount: number
  *
  * The class is listed-and-refused, as the reassignment menu lists a class whose
  * geometry does not fit: the kernel judges it (`TRACK_CLASS_MISMATCH`), and the
- * reason says which class the track follows.
+ * reason says which class the track follows. A shape of another kind than the
+ * track's is withheld with the kernel's own refusal (`TRACK_GEOMETRY_MISMATCH`).
  */
 function addWithheld(
   input: WithheldInputs & { readonly track: Track; readonly free: readonly FrameOccurrence[] },
@@ -469,6 +473,8 @@ function addWithheld(
   if (input.withheld !== null) return input.withheld;
   if (input.candidate === null) return "Select one drawn object to add it";
   if (input.candidate.labelClass !== input.track.label_class) return `This track follows “${input.track.label_class}”`;
+  const kind = input.track.geometry_kind;
+  if (kind != null && trackGeometryKind(input.candidate.geometry) !== kind) return REFUSAL_PROSE.TRACK_GEOMETRY_MISMATCH ?? null;
   if (input.candidateOn !== null) return `That object is already on ${input.label(input.candidateOn.track)}`;
   if (input.here.length === 0) return "This frame is not a position of its source";
   if (input.free.length === 0) return "The track already follows an object on this frame";

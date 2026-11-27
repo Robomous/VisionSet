@@ -552,7 +552,7 @@ lifecycle must be drivable from a script, not because this is how labelling happ
 
 ### `visionset track`
 
-A track follows one object through the frame occurrences of a video or image-sequence source (see
+A track follows one object through the frame occurrences of a video, image-sequence or point-cloud-sequence source (see
 [annotations.md](annotations.md#a-track-observes-annotations-an-annotation-knows-nothing-of-tracks)). `occurrences` and `list` read a source's occurrences and
 tracks, `occurrences --asset` an asset's occurrences in every source it sits in (identical bytes
 imported into two sequences are one asset in both), `show` one track with its observations in position order, and `status --batch B` counts

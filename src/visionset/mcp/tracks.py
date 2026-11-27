@@ -25,7 +25,11 @@ from visionset.wire import shapes
 
 SourceRef = Annotated[
     str,
-    Field(description="The video or image-sequence source, by id (from `list_sources`)."),
+    Field(
+        description=(
+            "The video, image-sequence or point-cloud-sequence source, by id (from `list_sources`)."
+        )
+    ),
 ]
 TrackRef = Annotated[str, Field(description="The track, by id (from `list_tracks`).")]
 JobRef = Annotated[
@@ -102,11 +106,12 @@ def create_track(
         ),
     ] = None,
 ) -> shapes.Track:
-    """Start an empty track of one class on a video or image-sequence source.
+    """Start an empty track of one class on a video, image-sequence or point-cloud-sequence source.
 
     The class must be declared by the project's active schema version. Then
-    attach annotations with `observe_track`. Refused on a source that is neither a
-    video nor an image sequence, and for an `external_id` another track of the source carries.
+    attach annotations with `observe_track`. Refused on a source that is not a
+    video, an image sequence or a point-cloud sequence, and for an `external_id`
+    another track of the source carries.
     """
     with opened_workspace() as workspace:
         created = TrackService(workspace).create(
@@ -126,7 +131,8 @@ def observe_track(
     """Record that the track is seen at an occurrence, as an annotation drawn there.
 
     Draw the annotation first with `add_annotations` on the occurrence's asset.
-    It must carry the track's class and be 2D, the job must carry that asset at
+    It must carry the track's class and geometry type and be a 2D label on an
+    image or a `cuboid_3d` on a scan, the job must carry that asset at
     a writable progress other than `pre_labeled` (edit or confirm a model's
     labels first), the track may observe an occurrence once, and an annotation
     belongs to at most one observation.
@@ -152,8 +158,9 @@ def start_track(
 
     One write: a refused observation leaves no track behind, where `create_track`
     then `observe_track` would leave an empty one. Every rule of both holds: the
-    source must be a video or image sequence, the class declared by the batch's
-    pinned schema, the annotation 2D and on the occurrence's asset, and the job
+    source must be a video, image sequence or point-cloud sequence, the class
+    declared by the batch's pinned schema, the annotation a 2D label on an image
+    or a `cuboid_3d` on a scan and on the occurrence's asset, and the job
     must carry that asset at a writable progress other than `pre_labeled`.
     """
     with opened_workspace() as workspace:
@@ -199,8 +206,8 @@ def merge_tracks(
 ) -> shapes.Track:
     """Move every observation of `absorbed_track_id` onto `track_id`, and delete the absorbed one.
 
-    The tracks share a source and a class and observe disjoint occurrences, and
-    the job must carry every observed asset of both. The kept track keeps its
+    The tracks share a source, a class and a geometry type and observe disjoint
+    occurrences, and the job must carry every observed asset of both. The kept track keeps its
     external id, and takes the absorbed one's when it has none.
     """
     with opened_workspace() as workspace:

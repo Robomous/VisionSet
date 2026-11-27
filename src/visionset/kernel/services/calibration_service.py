@@ -70,7 +70,7 @@ class CalibrationService:
             SourceNotFound: no such source in this workspace, or in ``project_id``.
             CalibrationResolutionMismatch: a clip's stored frame size, or an asset
                 that would inherit it, is not the size it was measured at.
-            CalibrationNotApplicable: the source is a point-cloud directory.
+            CalibrationNotApplicable: the source is a point-cloud directory or sequence.
             CalibrationInUse: it replaces a different calibration that an asset
                 inheriting it holds 3D labels against.
         """
@@ -80,6 +80,11 @@ class CalibrationService:
                 raise CalibrationNotApplicable(
                     f"source {source.id} is a point-cloud directory, which has no camera "
                     f"intrinsics; its scans are read against its declared {source.frame} frame"
+                )
+            if source.kind is SourceKind.POINT_CLOUD_SEQUENCE:
+                raise CalibrationNotApplicable(
+                    f"source {source.id} is a point-cloud sequence, which has no camera "
+                    f"intrinsics; each scan is read against its directory source's frame"
                 )
             source = _held(uow, source)
             if source.video is not None and not calibration.fits(

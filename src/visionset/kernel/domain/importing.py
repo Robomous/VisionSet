@@ -217,15 +217,19 @@ class ImportedScan(BaseModel):
 
 
 class ImportedFrame(BaseModel):
-    """One still of a sequence, and its time since the sequence's first frame.
+    """One still or scan of a sequence, and its time since the sequence's first frame.
 
     ``timestamp`` is ``None`` when the dataset records no timing for it.
+    ``position`` is set when the dataset's own order has places no listed file
+    fills, such as a nuScenes sample with no lidar keyframe; ``None`` means the
+    frame's index in its sequence.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid", allow_inf_nan=False)
 
     path: PurePosixPath
     timestamp: float | None = Field(ge=0)
+    position: int | None = Field(default=None, ge=0)
 
     @field_validator("path", mode="before")
     @classmethod
@@ -236,10 +240,11 @@ class ImportedFrame(BaseModel):
 
 
 class ImportedSequence(BaseModel):
-    """Stills the dataset itself orders, such as one OpenLane segment.
+    """Stills or scans the dataset itself orders, such as one OpenLane segment.
 
-    A frame's position is its index in ``frames``, so a frame the source names
-    but does not hold leaves its position empty rather than shifting the rest.
+    A frame's position is its index in ``frames``, or the ``position`` every
+    frame then states, so a frame the source names but does not hold leaves its
+    position empty rather than shifting the rest.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
@@ -264,7 +269,19 @@ class ImportedSequence(BaseModel):
             raise ValueError(f"sequence {self.name!r} times some frames and not others")
         if times != sorted(times):
             raise ValueError(f"sequence {self.name!r} is not in time order")
+        stated = [frame.position for frame in self.frames if frame.position is not None]
+        if stated and len(stated) != len(self.frames):
+            raise ValueError(f"sequence {self.name!r} positions some frames and not others")
+        if any(later <= earlier for earlier, later in zip(stated, stated[1:], strict=False)):
+            raise ValueError(f"sequence {self.name!r} does not list its positions in order")
         return self
+
+    def positioned(self) -> list[tuple[int, ImportedFrame]]:
+        """Each frame with its position in the sequence."""
+        return [
+            (index if frame.position is None else frame.position, frame)
+            for index, frame in enumerate(self.frames)
+        ]
 
 
 class ImportLoss(BaseModel):
@@ -284,8 +301,9 @@ class ImportedDataset(BaseModel):
     ``frame`` is the scan frame every scan and every scan label is written in,
     and it is set exactly when the dataset is one of scans, even an empty one.
 
-    ``sequences`` order some of the images; an image is in at most one, and only
-    a label on one may name a ``track``, which must be 2D.
+    ``sequences`` order some of the images or scans; each is in at most one, and
+    only a label on one may name a ``track``: a 2D label on an image, a
+    ``cuboid_3d`` on a scan.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
@@ -340,30 +358,40 @@ class ImportedDataset(BaseModel):
         return self
 
     def _sequences_consistent(self) -> None:
-        listed = {image.path for image in self.images}
+        what = "image" if self.frame is None else "scan"
+        items: tuple[ImportedImage | ImportedScan, ...] = (*self.images, *self.scans)
+        listed = {item.path for item in items}
         sequenced: set[PurePosixPath] = set()
         for sequence in self.sequences:
             for frame in sequence.frames:
                 if frame.path not in listed:
                     raise ValueError(
                         f"sequence {sequence.name!r} names {str(frame.path)!r}, "
-                        "which is not a listed image"
+                        f"which is not a listed {what}"
                     )
                 if frame.path in sequenced:
-                    raise ValueError(f"image {str(frame.path)!r} is in two sequences")
+                    raise ValueError(f"{what} {str(frame.path)!r} is in two sequences")
                 sequenced.add(frame.path)
-        for image in self.images:
-            for label in image.labels:
+        for item in items:
+            for label in item.labels:
                 if label.track is None:
                     continue
-                if image.path not in sequenced:
+                if item.path not in sequenced:
                     raise ValueError(
-                        f"image {str(image.path)!r} names a track but is in no sequence"
+                        f"{what} {str(item.path)!r} names a track but is in no sequence"
                     )
-                if geometry_reference(label.geometry, modality="image") is not None:
+                if what == "scan" and label.geometry.type is not GeometryType.CUBOID_3D:
                     raise ValueError(
-                        f"image {str(image.path)!r} names a track on a "
-                        f"{label.geometry.type.value}; a track follows 2D geometry only"
+                        f"scan {str(item.path)!r} names a track on a "
+                        f"{label.geometry.type.value}; a track follows a scan's cuboids only"
+                    )
+                if (
+                    what == "image"
+                    and geometry_reference(label.geometry, modality="image") is not None
+                ):
+                    raise ValueError(
+                        f"image {str(item.path)!r} names a track on a "
+                        f"{label.geometry.type.value}; a track follows an image's 2D labels only"
                     )
 
 
@@ -403,8 +431,8 @@ class ImportPlan(BaseModel):
     ``sequences`` counts the sequences a commit would write, those holding an
     asset it creates or labels, and ``tracks`` the tracks over them, one per
     sequence and track id among the labels it would write. A label whose id
-    repeats within a frame, or names a track of another class, is kept
-    untracked and reported as an ``attribute`` loss.
+    repeats within a frame, or names a track of another class or geometry type,
+    is kept untracked and reported as an ``attribute`` loss.
 
     Attribute values are judged against the classes the labels land under, the
     active schema's or the ones a commit derives: a value its class does not
@@ -451,7 +479,7 @@ class ImportRun(BaseModel):
     ``schema_version`` is ``None`` only when nothing was written and the
     project has no schema.
 
-    ``source_ids`` are the image-sequence sources the run wrote, one per
+    ``source_ids`` are the sequence sources the run wrote, one per
     sequence holding an asset it created or labelled; ``tracks_written`` counts
     the tracks over them. A label already on its asset is not written again, so
     it is not observed again either.

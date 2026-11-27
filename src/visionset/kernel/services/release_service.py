@@ -47,7 +47,7 @@ from collections.abc import Callable, Collection, Mapping
 from dataclasses import dataclass
 from io import BytesIO
 from pathlib import Path
-from typing import BinaryIO, Final
+from typing import BinaryIO, Final, Literal
 from uuid import UUID
 
 from PIL import __version__ as PILLOW_VERSION
@@ -1036,14 +1036,18 @@ def _manifest_tracks(
 def _manifest_sources(
     uow: UnitOfWork, project_id: UUID, assets: tuple[ManifestAsset, ...]
 ) -> tuple[ManifestSource, ...]:
-    """Each image-sequence source of the project, with the occurrences of released assets.
+    """Each imported sequence of the project, with the occurrences of released assets.
 
     A source none of whose occurrences the release holds is not listed.
     """
     held = {asset.asset_id for asset in assets}
     listed = []
     for source in uow.sources.list(project_id):
-        if source.kind is not SourceKind.IMAGE_SEQUENCE:
+        if source.kind is SourceKind.IMAGE_SEQUENCE:
+            kind: Literal["image_sequence", "point_cloud_sequence"] = "image_sequence"
+        elif source.kind is SourceKind.POINT_CLOUD_SEQUENCE:
+            kind = "point_cloud_sequence"
+        else:
             continue
         occurrences = tuple(
             ManifestOccurrence(
@@ -1053,7 +1057,7 @@ def _manifest_sources(
             if one.asset_id in held
         )
         if occurrences:
-            listed.append(ManifestSource(source_id=source.id, occurrences=occurrences))
+            listed.append(ManifestSource(source_id=source.id, kind=kind, occurrences=occurrences))
     return tuple(listed)
 
 

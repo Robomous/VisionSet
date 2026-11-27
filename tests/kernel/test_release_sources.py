@@ -1,4 +1,4 @@
-"""A manifest lists its image-sequence sources, and timing may be unknown (#1199)."""
+"""A manifest lists its imported sequences, and timing may be unknown (#1199, #1189)."""
 
 from __future__ import annotations
 
@@ -6,21 +6,26 @@ from uuid import UUID, uuid4
 
 import pytest
 from pydantic import ValidationError
+from tests.kernel.test_point_cloud_modality import BOX, SCAN
 from tests.kernel.test_release_tracks import _asset, _observing
 
 from visionset.kernel.domain import (
     MANIFEST_VERSION,
     MASK_MANIFEST_VERSION,
     OBB_MANIFEST_VERSION,
+    SCAN_SEQUENCE_MANIFEST_VERSION,
     SEQUENCED_MANIFEST_VERSION,
     TRACKED_MANIFEST_VERSION,
     ImportedFrame,
     ImportedSequence,
     Manifest,
+    ManifestAnnotation,
+    ManifestAsset,
     ManifestObservation,
     ManifestOccurrence,
     ManifestSource,
     ManifestTrack,
+    ScanFrame,
     canonical_bytes,
     manifest_version_for,
     manifest_within,
@@ -58,7 +63,8 @@ def test_a_version_7_document_reads_and_hashes_as_it_was_published() -> None:
     assert canonical_bytes(manifest) == _VERSION_7.encode()
     assert manifest_version_for(manifest.assets, manifest.tracks) == TRACKED_MANIFEST_VERSION
     assert SEQUENCED_MANIFEST_VERSION == OBB_MANIFEST_VERSION + 1 == 9
-    assert MANIFEST_VERSION == MASK_MANIFEST_VERSION == SEQUENCED_MANIFEST_VERSION + 1
+    assert MASK_MANIFEST_VERSION == SEQUENCED_MANIFEST_VERSION + 1
+    assert MANIFEST_VERSION == SCAN_SEQUENCE_MANIFEST_VERSION == MASK_MANIFEST_VERSION + 1
 
 
 def test_sources_and_unknown_timing_need_version_9() -> None:
@@ -199,5 +205,86 @@ def test_a_sequence_is_timed_throughout_or_not_at_all() -> None:
             frames=(
                 ImportedFrame(path="a.png", timestamp=0.0),
                 ImportedFrame(path="b.png", timestamp=None),
+            ),
+        )
+
+
+def _scan(seed: int) -> ManifestAsset:
+    return ManifestAsset(
+        asset_id=uuid4(),
+        content_hash=f"{seed:064x}",
+        uri=f"/scans/{seed}.pcd",
+        modality="point_cloud",
+        point_cloud=SCAN,
+        frame=ScanFrame.LIDAR_RFU,
+        annotations=(
+            ManifestAnnotation(
+                id=uuid4(),
+                label_class="car",
+                schema_version=1,
+                geometry=BOX,
+                provenance="import",
+            ),
+        ),
+    )
+
+
+def test_a_point_cloud_sequence_needs_version_11_and_an_image_sequence_keeps_its_bytes() -> None:
+    scan, image = _scan(1), _asset(2, 1)
+    scans = ManifestSource(
+        source_id=uuid4(),
+        kind="point_cloud_sequence",
+        occurrences=(_occurrence(scan.asset_id, 0, 0.0),),
+    )
+    images = ManifestSource(source_id=uuid4(), occurrences=(_occurrence(image.asset_id, 0, 0.0),))
+
+    assert manifest_version_for((scan, image), (), (scans, images)) == 11
+    assert manifest_version_for((image,), (), (images,)) == SEQUENCED_MANIFEST_VERSION
+    assert b'"kind"' not in canonical_bytes(images)
+    assert b'"kind":"point_cloud_sequence"' in canonical_bytes(scans)
+    with pytest.raises(ValidationError, match="need version 11"):
+        Manifest(manifest_version=10, schema_version=1, assets=(scan,), sources=(scans,))
+    listed = Manifest(manifest_version=11, schema_version=1, assets=(scan,), sources=(scans,))
+    assert Manifest.model_validate_json(canonical_bytes(listed)) == listed
+
+
+def test_a_track_on_a_scan_needs_version_11() -> None:
+    scan = _scan(1)
+    track = ManifestTrack(
+        id=uuid4(),
+        source_id=uuid4(),
+        label_class="car",
+        observations=(_observing(scan, 0, 0),),
+    )
+
+    assert manifest_version_for((scan,), (track,)) == SCAN_SEQUENCE_MANIFEST_VERSION
+    with pytest.raises(ValidationError, match="need version 11"):
+        Manifest(manifest_version=10, schema_version=1, assets=(scan,), tracks=(track,))
+
+
+def test_a_sequence_lists_only_assets_of_its_own_modality() -> None:
+    scan, image = _scan(1), _asset(2, 1)
+    with pytest.raises(ValidationError, match="whose modality is image"):
+        Manifest(
+            manifest_version=11,
+            schema_version=1,
+            assets=(image,),
+            sources=(
+                ManifestSource(
+                    source_id=uuid4(),
+                    kind="point_cloud_sequence",
+                    occurrences=(_occurrence(image.asset_id, 0, 0.0),),
+                ),
+            ),
+        )
+    with pytest.raises(ValidationError, match="whose modality is point_cloud"):
+        Manifest(
+            manifest_version=11,
+            schema_version=1,
+            assets=(scan,),
+            sources=(
+                ManifestSource(
+                    source_id=uuid4(), occurrences=(_occurrence(scan.asset_id, 0, 0.0),)
+                ),
             ),
         )

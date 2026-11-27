@@ -8,8 +8,8 @@ this service only ever writes one row.
 
 **Two registration methods, and each registers a directory**: one of stills,
 one of point-cloud scans, which also declares the scan frame. An
-``IMAGE_SEQUENCE`` source is never registered: an import writes one, and its
-occurrences, inside its own transaction. A ``VIDEO`` source
+``IMAGE_SEQUENCE`` or ``POINT_CLOUD_SEQUENCE`` source is never registered: an
+import writes one, and its occurrences, inside its own transaction. A ``VIDEO`` source
 is not made here at all: the server never sees a clip, so there is nothing to
 open and nothing to probe. ``VideoImportService.start`` is the only door to one,
 and it writes its ``VideoProvenance`` from what a client's decoder declared.
@@ -50,6 +50,7 @@ from pathlib import Path
 from uuid import UUID, uuid4
 
 from visionset.kernel.domain import (
+    IMPORTED_SEQUENCE_KINDS,
     SEQUENCE_KINDS,
     FrameOccurrence,
     Project,
@@ -251,11 +252,37 @@ class SourceService:
         Raises:
             InvalidName: ``display_name`` is blank.
         """
+        return self._add_sequence_in(
+            uow, project_id, display_name, SourceKind.IMAGE_SEQUENCE, "image-sequence-import"
+        )
+
+    def add_point_cloud_sequence_in(
+        self, uow: UnitOfWork, project_id: UUID, display_name: str
+    ) -> Source:
+        """A new point-cloud-sequence source, in an import's transaction.
+
+        Every call is a new source, as :meth:`add_image_sequence_in` is. It
+        declares no frame: each scan's frame is its directory source's.
+
+        Raises:
+            InvalidName: ``display_name`` is blank.
+        """
+        return self._add_sequence_in(
+            uow,
+            project_id,
+            display_name,
+            SourceKind.POINT_CLOUD_SEQUENCE,
+            "point-cloud-sequence-import",
+        )
+
+    def _add_sequence_in(
+        self, uow: UnitOfWork, project_id: UUID, display_name: str, kind: SourceKind, scheme: str
+    ) -> Source:
         return uow.sources.add(
             Source(
                 project_id=project_id,
-                kind=SourceKind.IMAGE_SEQUENCE,
-                locator=f"image-sequence-import:{uuid4()}",
+                kind=kind,
+                locator=f"{scheme}:{uuid4()}",
                 display_name=normalize_name(display_name, what="source name"),
             )
         )
@@ -263,7 +290,7 @@ class SourceService:
     def add_occurrences_in(
         self, uow: UnitOfWork, source: Source, occurrences: Sequence[tuple[int, float | None, UUID]]
     ) -> list[FrameOccurrence]:
-        """Write an image sequence's ``(position, timestamp, asset_id)`` occurrences.
+        """Write an imported sequence's ``(position, timestamp, asset_id)`` occurrences.
 
         Raises:
             SourceNotSequence: the source is no sequence, so it has no positions.
@@ -274,7 +301,7 @@ class SourceService:
             raise SourceNotSequence(
                 f"source {source.id} is a {source.kind.value}, which has no frame occurrences"
             )
-        if source.kind is not SourceKind.IMAGE_SEQUENCE:
+        if source.kind not in IMPORTED_SEQUENCE_KINDS:
             raise ValueError(f"source {source.id} is a video; its import writes its occurrences")
         return uow.frame_occurrences.add_many(
             [

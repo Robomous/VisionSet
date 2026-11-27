@@ -74,6 +74,8 @@ class SensorBox:
     yaw: float
     lean: Quaternion = (1.0, 0.0, 0.0, 0.0)
     attributes: tuple[str, ...] = ("attr-moving",)
+    #: The object's ``instance_token``; ``None`` gives each box an instance of its own.
+    instance: str | None = None
 
     def box_rotation(self) -> Quaternion:
         # The box's own +x is its heading, cos(yaw)·(0, 1, 0) + sin(yaw)·(-1, 0, 0).
@@ -160,6 +162,7 @@ def build(root: Path, keyframes: Sequence[Keyframe], *, sweeps: int = 1) -> Root
         "sample_annotation": [],
     }
     categories: dict[str, str] = {}
+    chains: dict[str, list[dict[str, Any]]] = {}
     (root / LIDAR_DIR).mkdir(parents=True, exist_ok=True)
     for index, keyframe in enumerate(keyframes):
         sample = f"sample-{keyframe.name}"
@@ -168,9 +171,9 @@ def build(root: Path, keyframes: Sequence[Keyframe], *, sweeps: int = 1) -> Root
             tables["scene"].append(
                 {"token": scene, "name": keyframe.scene, "log_token": "log-1", "description": ""}
             )
-        tables["sample"].append(
-            {"token": sample, "timestamp": 1_000_000 * index, "scene_token": scene}
-        )
+        row = {"token": sample, "timestamp": 1_000_000 * index, "scene_token": scene}
+        tables["sample"].append(row)
+        chains.setdefault(scene, []).append(row)
         tables["ego_pose"].append(
             {
                 "token": f"ego-{keyframe.name}",
@@ -201,8 +204,9 @@ def build(root: Path, keyframes: Sequence[Keyframe], *, sweeps: int = 1) -> Root
             )
         for number, box in enumerate(keyframe.boxes):
             category = categories.setdefault(box.category, f"cat-{len(categories)}")
-            instance = f"inst-{keyframe.name}-{number}"
-            tables["instance"].append({"token": instance, "category_token": category})
+            instance = box.instance or f"inst-{keyframe.name}-{number}"
+            if not any(row["token"] == instance for row in tables["instance"]):
+                tables["instance"].append({"token": instance, "category_token": category})
             center, rotation = to_global(box, keyframe)
             length, width, height = box.size_lwh
             tables["sample_annotation"].append(
@@ -220,6 +224,16 @@ def build(root: Path, keyframes: Sequence[Keyframe], *, sweeps: int = 1) -> Root
                 }
             )
     tables["category"] = [{"token": token, "name": name} for name, token in categories.items()]
+    for scene in tables["scene"]:
+        chain = chains[scene["token"]]
+        for before, after in zip(chain, chain[1:], strict=False):
+            before["next"], after["prev"] = after["token"], before["token"]
+        chain[0]["prev"], chain[-1]["next"] = "", ""
+        scene.update(
+            first_sample_token=chain[0]["token"],
+            last_sample_token=chain[-1]["token"],
+            nbr_samples=len(chain),
+        )
     return Root(tables)
 
 

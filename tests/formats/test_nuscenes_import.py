@@ -36,6 +36,7 @@ from visionset.formats.nuscenes.poses import (
 from visionset.formats.registry import importer, importers
 from visionset.kernel import CalibrationInUse, ImportSourceUnreadable
 from visionset.kernel.domain import (
+    SCAN_SEQUENCE_MANIFEST_VERSION,
     AssetProgress,
     BatchState,
     Cuboid3DGeometry,
@@ -235,8 +236,8 @@ def test_what_the_domain_cannot_hold_is_counted_by_kind(tmp_path: Path) -> None:
         (ImportLossKind.SCAN, "LIDAR_TOP"): 2,
         (ImportLossKind.ATTRIBUTE, "ego_pose"): 2,
         (ImportLossKind.ATTRIBUTE, "scene"): 1,
-        (ImportLossKind.ATTRIBUTE, "vehicle.car"): 3,
-        (ImportLossKind.ATTRIBUTE, "human.pedestrian.adult"): 3,
+        (ImportLossKind.ATTRIBUTE, "vehicle.car"): 2,
+        (ImportLossKind.ATTRIBUTE, "human.pedestrian.adult"): 2,
     }
 
 
@@ -261,8 +262,17 @@ def test_each_keyframe_carries_its_scene_name_as_its_group(tmp_path: Path) -> No
     assert (scene.kind, scene.count) == (ImportLossKind.ATTRIBUTE, 2)
     assert "carried as the group label" in scene.reason
     assert "description, log and map are not" in scene.reason
-    (tracked,) = {loss.reason for loss in dataset.losses if "instance token" in loss.reason}
-    assert "is not carried" in tracked
+    assert not [loss for loss in dataset.losses if "instance token" in loss.reason]
+    assert [
+        (one.name, [(str(f.path), f.position, f.timestamp) for f in one.frames])
+        for one in dataset.sequences
+    ] == [
+        (
+            "scene-0061",
+            [("samples/LIDAR_TOP/a1.pcd.bin", 0, 0.0), ("samples/LIDAR_TOP/a2.pcd.bin", 1, 2.0)],
+        ),
+        ("scene-0103", [("samples/LIDAR_TOP/b1.pcd.bin", 0, 0.0)]),
+    ]
 
 
 def test_malformed_and_degenerate_boxes_are_label_losses(tmp_path: Path) -> None:
@@ -454,8 +464,14 @@ def test_a_commit_is_an_approved_batch_of_scans_under_a_lidar_rfu_source(
 
     assert run.batch_id is not None
     assert (len(run.created_asset_ids), run.annotations_written) == (2, 2)
-    (source,) = SourceService(workspace).list(project.id)
+    source, sequence = sorted(SourceService(workspace).list(project.id), key=lambda s: s.kind)
     assert (source.kind, source.frame) == (SourceKind.POINT_CLOUD_DIRECTORY, ScanFrame.LIDAR_RFU)
+    assert (sequence.kind, sequence.frame, sequence.name) == (
+        SourceKind.POINT_CLOUD_SEQUENCE,
+        None,
+        "scene-0001",
+    )
+    assert run.source_ids == (sequence.id,)
     assets = IngestService(workspace).assets(project.id)
     assert {asset.modality for asset in assets} == {"point_cloud"}
     assert all(asset.thumbnail_hash is not None for asset in assets)
@@ -531,7 +547,7 @@ def test_a_grouped_release_split_keeps_each_scene_in_one_fold(
     assert set().union(*scenes_in) == set(scene_of.values())
     assert sum(len(members) for members in (folds.train, folds.val, folds.test)) == 20
     manifest = releases.manifest(grouped.id)
-    assert manifest.manifest_version == 6
+    assert manifest.manifest_version == SCAN_SEQUENCE_MANIFEST_VERSION
     assert {asset.group_label for asset in manifest.assets} == set(scene_of.values())
     assert releases.verify(grouped.id).ok
     assert grouped.manifest_hash == releases.get(published.release_id).manifest_hash

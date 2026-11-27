@@ -235,7 +235,8 @@ def update_annotations(
 
     An annotation a track observes keeps the track's class: changing it is
     refused as `TRACK_CLASS_MISMATCH`; use `set_track_class` to rename the
-    track and every annotation it observes together.
+    track and every annotation it observes together. It keeps the track's
+    geometry type too: changing it is refused as `TRACK_GEOMETRY_MISMATCH`.
 
     Same validation and the same all-or-nothing rule as `add_annotations`, and
     the same `job_started` in the answer.

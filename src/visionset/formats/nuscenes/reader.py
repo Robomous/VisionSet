@@ -10,15 +10,23 @@ touches a workspace; it returns an ``ImportedDataset`` of scans in the
 A ``sample_annotation`` is in the global frame, so each box is moved into the
 scan's frame through that keyframe's ego pose and calibrated sensor (see
 :mod:`.poses`), an explicit conversion the loss report names. What the domain
-cannot hold is counted into ``losses``: attributes and visibility, the instance
-token that tracks an object across samples, the lidar and radar point counts,
-the poses themselves, a box leaning too far for a cuboid, the sweeps between
-keyframes and every other sensor's data. A keyframe with no annotations is
-imported unlabelled.
+cannot hold is counted into ``losses``: attributes and visibility, the lidar
+and radar point counts, the poses themselves, a box leaning too far for a
+cuboid, the sweeps between keyframes and every other sensor's data. A keyframe
+with no annotations is imported unlabelled.
 
 Each keyframe carries its scene's name as its ``group_label``, read through
 ``sample.scene_token``, so a release split can keep a scene in one fold. The
 scene's other fields are counted as lost.
+
+Each scene is a sequence of its keyframes, ordered by the scene's chain of
+samples (``first_sample_token``, then each ``sample.next``): a keyframe's
+position is its sample's index in that chain, so a sample with no LIDAR_TOP
+keyframe is an absent position, and its time is the sample's timestamp since
+the chain's first. A box's ``instance_token`` is its track id within the
+scene. A chain that does not hold exactly the scene's samples is reported, and
+the scene is ordered by timestamp instead; a scene that cannot be ordered at
+all keeps its boxes untracked.
 """
 
 from __future__ import annotations
@@ -27,7 +35,7 @@ import json
 import math
 from collections import Counter, defaultdict
 from collections.abc import Mapping
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any, Final
 
 from pydantic import ValidationError
@@ -47,14 +55,17 @@ from visionset.kernel.domain import (
     GeometryType,
     ImportedClass,
     ImportedDataset,
+    ImportedFrame,
     ImportedLabel,
     ImportedScan,
+    ImportedSequence,
     ImportLoss,
     ImportLossKind,
     ScanFrame,
     ScanLayout,
 )
-from visionset.kernel.errors import ImportSourceUnreadable
+from visionset.kernel.domain.names import normalize_name
+from visionset.kernel.errors import ImportSourceUnreadable, InvalidName
 
 CHANNEL: Final = "LIDAR_TOP"
 
@@ -74,6 +85,8 @@ TABLES: Final = (
 
 _Losses = Counter[tuple[ImportLossKind, str, str]]
 _Table = dict[str, Mapping[str, Any]]
+
+_MICROSECONDS: Final = 1_000_000
 
 
 class NuScenesImporter:
@@ -100,13 +113,20 @@ class NuScenesImporter:
         scans: list[ImportedScan] = []
         sampled: set[str] = set()
         scenes: set[str] = set()
+        keyframe_of: dict[str, PurePosixPath] = {}
+        scene_tokens: set[str] = set()
         for row in sorted(keyframes, key=lambda row: str(row["filename"])):
             sample = _text(row, "sample_token", "sample_data")
             sampled.add(sample)
             scene = _scene_of(tables, row, sample)
             scenes.add(scene)
+            scene_tokens.add(_text(tables["sample"][sample], "scene_token", "sample"))
             path = inside(_text(row, "filename", "sample_data"), "sample_data.json")
             file = src / path
+            if sample not in keyframe_of or (
+                file.is_file() and not (src / keyframe_of[sample]).is_file()
+            ):
+                keyframe_of[sample] = path
             if file.is_file():
                 _require_whole_points(src, contained(src, root, file))
             transform = _transform(tables, lidar, row)
@@ -124,6 +144,7 @@ class NuScenesImporter:
                 if label is not None:
                     labels.append(label)
                     used.add(label.class_name)
+
             scans.append(
                 ImportedScan(path=path, layout=LAYOUT, labels=tuple(labels), group_label=scene)
             )
@@ -147,6 +168,8 @@ class NuScenesImporter:
                     )
                 ] += 1
 
+        sequences = _sequences(tables, scene_tokens, keyframe_of, losses)
+        scans = _tracked(scans, sequences, losses)
         classes = tuple(
             ImportedClass(name=name, geometries=(GeometryType.CUBOID_3D,)) for name in sorted(used)
         )
@@ -154,6 +177,7 @@ class NuScenesImporter:
             return ImportedDataset(
                 classes=classes,
                 scans=tuple(scans),
+                sequences=tuple(sequences),
                 frame=ScanFrame.LIDAR_RFU,
                 losses=tuple(
                     ImportLoss(kind=kind, subject=subject, count=count, reason=reason)
@@ -398,25 +422,161 @@ def _label(
         losses[
             (ImportLossKind.ATTRIBUTE, name, "nuScenes attributes and visibility are not carried")
         ] += 1
-    if annotation.get("instance_token"):
-        losses[
-            (
-                ImportLossKind.ATTRIBUTE,
-                name,
-                (
-                    "the instance token that tracks an object across samples is not carried; "
-                    "a track follows 2D labels only, and these are 3D boxes in lidar scans"
-                ),
-            )
-        ] += 1
     if "num_lidar_pts" in annotation or "num_radar_pts" in annotation:
         losses[
             (ImportLossKind.ATTRIBUTE, name, "num_lidar_pts and num_radar_pts are not carried")
         ] += 1
+    instance = annotation.get("instance_token")
     return ImportedLabel(
         class_name=name,
         geometry=Cuboid3DGeometry(center=box.center, size=box.size, yaw=box.yaw),
+        track=instance if isinstance(instance, str) and instance.strip() else None,
     )
+
+
+def _sequences(
+    tables: Mapping[str, _Table],
+    scenes: set[str],
+    keyframe_of: Mapping[str, PurePosixPath],
+    losses: _Losses,
+) -> list[ImportedSequence]:
+    """One sequence per scene holding a keyframe, in the scene's own sample order."""
+    members: dict[str, list[str]] = defaultdict(list)
+    for token, row in tables["sample"].items():
+        members[str(row.get("scene_token"))].append(token)
+    sequences: list[ImportedSequence] = []
+    for token in sorted(scenes):
+        scene = tables["scene"][token]
+        name = _text(scene, "name", "scene").strip()
+        order = _chain(tables, token, scene, set(members[token]))
+        if order is None:
+            order = _by_time(tables, members[token])
+            if order is None:
+                losses[
+                    (
+                        ImportLossKind.ATTRIBUTE,
+                        name,
+                        "the scene's samples are neither chained nor timed, so its keyframes "
+                        "have no order and its instance tokens are not carried as tracks",
+                    )
+                ] += 1
+                continue
+            losses[
+                (
+                    ImportLossKind.ATTRIBUTE,
+                    name,
+                    "the scene's sample.next chain does not hold exactly its samples, so its "
+                    "keyframes are ordered by timestamp instead",
+                )
+            ] += 1
+        times = _times(tables, order)
+        if times is None:
+            losses[
+                (
+                    ImportLossKind.ATTRIBUTE,
+                    name,
+                    "the scene's samples are not all timed in order, so its keyframes keep their "
+                    "order and carry no time",
+                )
+            ] += 1
+        frames = tuple(
+            ImportedFrame(
+                path=keyframe_of[sample],
+                timestamp=None if times is None else times[position],
+                position=position,
+            )
+            for position, sample in enumerate(order)
+            if sample in keyframe_of
+        )
+        if not frames:
+            continue
+        try:
+            normalize_name(name, what="source name")
+        except InvalidName:
+            losses[
+                (
+                    ImportLossKind.ATTRIBUTE,
+                    name[:40],
+                    "the scene's name cannot name a source, so its instance tokens are not "
+                    "carried as tracks",
+                )
+            ] += 1
+            continue
+        try:
+            sequences.append(ImportedSequence(name=name, frames=frames))
+        except ValidationError as exc:
+            raise ImportSourceUnreadable(f"scene {name!r} is inconsistent: {exc}") from None
+    return sequences
+
+
+def _chain(
+    tables: Mapping[str, _Table], token: str, scene: Mapping[str, Any], members: set[str]
+) -> list[str] | None:
+    """The scene's samples from ``first_sample_token`` along ``next``, or ``None`` if broken."""
+    order: list[str] = []
+    sample = scene.get("first_sample_token")
+    while isinstance(sample, str) and sample:
+        row = tables["sample"].get(sample)
+        if row is None or row.get("scene_token") != token or sample in order:
+            return None
+        order.append(sample)
+        sample = row.get("next")
+    if sample not in ("", None) or set(order) != members:
+        return None
+    return order
+
+
+def _timestamp(tables: Mapping[str, _Table], sample: str) -> int | None:
+    value = tables["sample"][sample].get("timestamp")
+    return value if isinstance(value, int) and not isinstance(value, bool) else None
+
+
+def _by_time(tables: Mapping[str, _Table], samples: list[str]) -> list[str] | None:
+    stamped = [(_timestamp(tables, sample), sample) for sample in samples]
+    if any(time is None for time, _ in stamped):
+        return None
+    return [sample for _, sample in sorted(stamped, key=lambda pair: (pair[0] or 0, pair[1]))]
+
+
+def _times(tables: Mapping[str, _Table], order: list[str]) -> list[float] | None:
+    """Each sample's time in seconds since the first; ``None`` unless all are timed in order."""
+    stamps = [_timestamp(tables, sample) for sample in order]
+    known = [stamp for stamp in stamps if stamp is not None]
+    if len(known) != len(stamps) or known != sorted(known):
+        return None
+    return [(stamp - known[0]) / _MICROSECONDS for stamp in known]
+
+
+def _tracked(
+    scans: list[ImportedScan], sequences: list[ImportedSequence], losses: _Losses
+) -> list[ImportedScan]:
+    """The scans, with the track id taken off each label of a scan in no sequence."""
+    sequenced = {frame.path for sequence in sequences for frame in sequence.frames}
+    kept: list[ImportedScan] = []
+    for scan in scans:
+        if scan.path in sequenced or not any(label.track for label in scan.labels):
+            kept.append(scan)
+            continue
+        for label in scan.labels:
+            if label.track is not None:
+                losses[
+                    (
+                        ImportLossKind.ATTRIBUTE,
+                        label.class_name,
+                        "the instance token of a box on a keyframe in no ordered scene is not "
+                        "carried as a track",
+                    )
+                ] += 1
+        kept.append(
+            scan.model_copy(
+                update={
+                    "labels": tuple(
+                        label.model_copy(update={"track": None}) for label in scan.labels
+                    )
+                }
+            )
+        )
+    return kept
 
 
 def _require_whole_points(src: Path, path: Path) -> None:

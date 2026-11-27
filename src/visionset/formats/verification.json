@@ -394,7 +394,7 @@
       }
     },
     "nuscenes": {
-      "task": "3D object detection on lidar scans",
+      "task": "3D object detection and tracking on lidar scans",
       "dialects": [
         "nuScenes version folder of tables beside samples/LIDAR_TOP keyframes"
       ],
@@ -405,7 +405,9 @@
         "evidence": [
           {"kind": "fixture", "test": "tests/formats/test_nuscenes_import.py::test_keyframes_read_as_scans_in_the_lidar_rfu_frame", "gate": "python"},
           {"kind": "fixture", "test": "tests/formats/test_nuscenes_import.py::test_a_sensor_frame_box_survives_the_trip_through_global", "gate": "python"},
-          {"kind": "fixture", "test": "tests/formats/test_nuscenes_samples.py::test_the_full_box_through_the_pose_chain_holds_nuscenes_own_point_count", "gate": "opt-in"}
+          {"kind": "fixture", "test": "tests/formats/test_nuscenes_tracks.py::test_each_instance_is_a_track_over_its_scene_in_sample_order", "gate": "python"},
+          {"kind": "fixture", "test": "tests/formats/test_nuscenes_samples.py::test_the_full_box_through_the_pose_chain_holds_nuscenes_own_point_count", "gate": "opt-in"},
+          {"kind": "fixture", "test": "tests/formats/test_nuscenes_samples.py::test_each_instance_token_is_a_track_over_its_scene_in_sample_order", "gate": "opt-in"}
         ],
         "notes": "CI reads a synthetic root. A real nuScenes root, checked against nuScenes' own num_lidar_pts, is exercised only when VISIONSET_POINTCLOUD_SAMPLES is set locally."
       }

@@ -16,7 +16,7 @@ tables the surfaces use, so it cannot drift from what they answer.
 The framework's own codes - `VALIDATION_ERROR`, `NOT_FOUND`, `METHOD_NOT_ALLOWED`, `UNAUTHORIZED`
 and `INTERNAL_ERROR` - are not raised by the kernel and are described in [api.md](api.md).
 
-125 codes, alphabetical.
+126 codes, alphabetical.
 
 | Code | Status | Meaning | Remedy | Retry with |
 | --- | --- | --- | --- | --- |
@@ -124,6 +124,7 @@ and `INTERNAL_ERROR` - are not raised by the kernel and are described in [api.md
 | `TRACKING_UNAVAILABLE` | 500 | Experiment tracking is turned on, and this installation cannot carry it out. |  |  |
 | `TRACK_CLASS_MISMATCH` | 409 | An annotation's class, or a merge partner's, is not the track's class. |  |  |
 | `TRACK_EXTERNAL_ID_TAKEN` | 409 | Another track of the same source already carries that external id. |  |  |
+| `TRACK_GEOMETRY_MISMATCH` | 409 | An annotation's geometry type, or a merge partner's, is not the track's. |  |  |
 | `TRACK_MERGE_WITH_ITSELF` | 422 | A track was asked to merge with itself. |  |  |
 | `TRACK_NOT_FOUND` | 404 | No track with that id lives in this workspace. |  |  |
 | `TRACK_SOURCE_MISMATCH` | 422 | A track was asked to reach an occurrence or a track of another source. |  |  |

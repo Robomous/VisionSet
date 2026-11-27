@@ -134,6 +134,7 @@ export const REFUSAL_PROSE: Record<string, string> = {
   TRACK_EXTERNAL_ID_TAKEN: "Another track of this source already carries that id.",
   ANNOTATION_NOT_AT_OCCURRENCE: "That object is not drawn on the frame at that position.",
   TRACK_CLASS_MISMATCH: "The object's class is not the track's — every object a track follows carries the track's class.",
+  TRACK_GEOMETRY_MISMATCH: "The object's shape is not the track's — a track follows one kind of shape, and a rotated box counts as a box.",
   OCCURRENCE_ALREADY_OBSERVED: "The track already follows an object at that frame — remove it from the track first.",
   ANNOTATION_ALREADY_OBSERVED: "That object is already on a track. A repeated frame needs one object per position it is tracked at.",
   ASSET_NOT_JUDGED: "A model's labels on this frame have not been judged yet — confirm or edit them first, then add the object to the track.",

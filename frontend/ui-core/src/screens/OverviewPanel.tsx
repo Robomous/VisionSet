@@ -75,6 +75,7 @@ import {
   cn,
 } from "@robomous/ui-core";
 import { formatCount, formatPercent } from "../lib/format";
+import { holdsAssets } from "./images/imageFacts";
 import { EmptyState, ErrorState } from "../patterns/AsyncStates";
 import { BatchSheet, type BatchDetails, type SheetJob } from "../patterns/project/BatchSheet";
 import { BatchesActions } from "../patterns/project/BatchesActions";
@@ -347,16 +348,14 @@ function Kpis({
       : [];
   const batchesWord = (n: number): string => `${formatCount(n)} ${n === 1 ? "batch" : "batches"}`;
 
+  const sourceCount = sources.data === undefined ? undefined : sources.data.total - sources.data.items.filter((one) => !holdsAssets(one)).length;
   const cards: KpiCard[] = [
     {
       key: "images",
       label: "Assets",
       icon: Images,
       value: formatCount(counted.asset_count),
-      context:
-        sources.data === undefined
-          ? undefined
-          : `from ${formatCount(sources.data.total)} ${sources.data.total === 1 ? "source" : "sources"}`,
+      context: sourceCount === undefined ? undefined : `from ${formatCount(sourceCount)} ${sourceCount === 1 ? "source" : "sources"}`,
       "data-testid": "kpi-images",
       ...door(onOpenImages, "Assets"),
       ...(reviewSteps.length === 0

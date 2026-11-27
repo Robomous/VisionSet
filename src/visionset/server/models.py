@@ -2631,6 +2631,9 @@ class TrackOut(BaseModel):
     #: An identity an imported dataset brought with it, unique within the source.
     external_id: str | None
     observations: list[TrackObservationOut]
+    #: The geometry every observation shares, a rotated box counted as `bbox`;
+    #: null while the track observes nothing.
+    geometry_kind: GeometryType | None = None
 
     @classmethod
     def of(cls, value: TrackDetail) -> Self:
@@ -2640,6 +2643,7 @@ class TrackOut(BaseModel):
             label_class=value.track.label_class,
             external_id=value.track.external_id,
             observations=[TrackObservationOut.of(frame) for frame in value.observations],
+            geometry_kind=value.geometry_kind,
         )
 
 

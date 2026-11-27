@@ -30,6 +30,8 @@ from visionset.kernel.domain import (
     ImportLossKind,
     ImportPlan,
     ImportRun,
+    ObbGeometry,
+    PolygonGeometry,
 )
 from visionset.kernel.services import (
     BatchService,
@@ -352,3 +354,34 @@ def test_a_3d_label_only_on_a_repeat_still_needs_a_calibration(world: World) -> 
     assert any("calibration" in conflict for conflict in world.inspect(dataset).conflicts)
     with pytest.raises(CalibrationMissing):
         world.run(dataset)
+
+
+def test_a_track_id_on_another_geometry_is_kept_untracked_but_a_turned_box_is_not(
+    world: World,
+) -> None:
+    classes = (
+        ImportedClass(
+            name="car",
+            geometries=(GeometryType.BBOX, GeometryType.OBB, GeometryType.POLYGON),
+        ),
+    )
+    turned = ObbGeometry(cx=8.0, cy=6.0, width=6.0, height=4.0, angle=0.3)
+    outline = PolygonGeometry(points=[(2.0, 2.0), (12.0, 2.0), (12.0, 10.0)])
+    dataset = world.dataset(
+        (
+            "seq",
+            [
+                ("0.png", 0, [_car(track="1")]),
+                ("1.png", 1, [ImportedLabel(class_name="car", geometry=turned, track="1")]),
+                ("2.png", 2, [ImportedLabel(class_name="car", geometry=outline, track="1")]),
+            ],
+        ),
+        classes=classes,
+    )
+
+    run = world.run(dataset, ImportLossKind.ATTRIBUTE)
+
+    (source_id,) = run.source_ids
+    assert [position for position, _, _ in world.observed(source_id)["1"]] == [0, 1]
+    (lost,) = [loss for loss in run.losses if "geometry type" in loss.reason]
+    assert (lost.kind, lost.subject, lost.count) == (ImportLossKind.ATTRIBUTE, "car", 1)

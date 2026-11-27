@@ -144,6 +144,7 @@ EXPECTED: dict[str, tuple[int, str]] = {
     "ObservationNotFound": (404, "OBSERVATION_NOT_FOUND"),
     "TrackExternalIdTaken": (409, "TRACK_EXTERNAL_ID_TAKEN"),
     "TrackClassMismatch": (409, "TRACK_CLASS_MISMATCH"),
+    "TrackGeometryMismatch": (409, "TRACK_GEOMETRY_MISMATCH"),
     "OccurrenceAlreadyObserved": (409, "OCCURRENCE_ALREADY_OBSERVED"),
     "AnnotationAlreadyObserved": (409, "ANNOTATION_ALREADY_OBSERVED"),
     "AssetNotJudged": (409, "ASSET_NOT_JUDGED"),

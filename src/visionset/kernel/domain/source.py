@@ -64,6 +64,8 @@ class SourceKind(StrEnum):
     POINT_CLOUD_DIRECTORY = "point_cloud_directory"
     #: Stills an imported dataset orders itself, such as one OpenLane segment.
     IMAGE_SEQUENCE = "image_sequence"
+    #: Scans an imported dataset orders itself, such as one nuScenes scene.
+    POINT_CLOUD_SEQUENCE = "point_cloud_sequence"
 
 
 #: The kinds whose locator is a directory this process opens and reads.
@@ -71,8 +73,20 @@ DIRECTORY_KINDS: frozenset[SourceKind] = frozenset(
     {SourceKind.IMAGE_DIRECTORY, SourceKind.POINT_CLOUD_DIRECTORY}
 )
 
+#: The kinds whose assets are point-cloud scans, which carry no camera calibration.
+SCAN_KINDS: frozenset[SourceKind] = frozenset(
+    {SourceKind.POINT_CLOUD_DIRECTORY, SourceKind.POINT_CLOUD_SEQUENCE}
+)
+
 #: The kinds whose frame occurrences are ordered, so a track may observe them.
-SEQUENCE_KINDS: frozenset[SourceKind] = frozenset({SourceKind.VIDEO, SourceKind.IMAGE_SEQUENCE})
+SEQUENCE_KINDS: frozenset[SourceKind] = frozenset(
+    {SourceKind.VIDEO, SourceKind.IMAGE_SEQUENCE, SourceKind.POINT_CLOUD_SEQUENCE}
+)
+
+#: The sequence kinds only an import writes, together with their occurrences.
+IMPORTED_SEQUENCE_KINDS: frozenset[SourceKind] = frozenset(
+    {SourceKind.IMAGE_SEQUENCE, SourceKind.POINT_CLOUD_SEQUENCE}
+)
 
 
 def canonical_path(path: Path) -> str:
@@ -315,7 +329,9 @@ class Source(BaseModel):
 
     :attr:`frame` is the axis convention a point-cloud directory's scans are
     written in, present exactly on a :attr:`SourceKind.POINT_CLOUD_DIRECTORY`.
-    A scan has no intrinsics, so such a source never carries a calibration.
+    A scan has no intrinsics, so such a source never carries a calibration, and
+    neither does a :attr:`SourceKind.POINT_CLOUD_SEQUENCE`, which orders scans
+    whose frame their directory source declares.
     """
 
     model_config = ConfigDict(validate_assignment=True)
@@ -362,8 +378,8 @@ class Source(BaseModel):
         if (self.frame is not None) != scans:
             carry = "declare" if scans else "not declare"
             raise ValueError(f"a {self.kind.value} source must {carry} a scan frame")
-        if scans and self.calibration is not None:
-            raise ValueError("a point_cloud_directory source carries no camera calibration")
+        if self.calibration is not None and self.kind in SCAN_KINDS:
+            raise ValueError(f"a {self.kind.value} source carries no camera calibration")
         return self
 
     def require_video(self) -> VideoProvenance:

@@ -75,7 +75,8 @@ express the release**: **3** for a release of images with no 3D label, **4** for
 any, **5** for one that holds a point-cloud asset, **6** for one that holds an asset with a
 group label, **7** for one that holds an annotation a track observes, **8** for one that
 holds a rotated box (`obb`), **9** for one that holds an asset of an image-sequence source or
-an observation whose timing is unknown, and **10** for one that holds a `mask`.
+an observation whose timing is unknown, **10** for one that holds a `mask`, and **11** for one
+that holds an asset of a point-cloud sequence or a track observing a scan.
 
 | Version | Since | What changed |
 | --- | --- | --- |
@@ -89,6 +90,7 @@ an observation whose timing is unknown, and **10** for one that holds a `mask`.
 | 8 | #1160 | the `obb` geometry, a rotated pixel rectangle |
 | 9 | #1199 | `sources`, each image-sequence source with the occurrences the release holds; a `timestamp` may be `null` |
 | 10 | #1162 | the `mask` geometry, a run-length encoded raster |
+| 11 | #1189 | a source's `kind`, `point_cloud_sequence` for a point-cloud sequence, and tracks over its scans |
 
 An older document keeps the version it was written with, so its bytes and its hash never move and
 `verify` still passes. Version 3 changes no existing bytes: a polyline with unknown visibility
@@ -163,6 +165,15 @@ publishes of an unchanged dataset still agree byte for byte. Three exporters wri
 [`coco`](#the-coco-format) as RLE, [`segmentation-png`](#the-segmentation-png-format) as a
 class-index PNG and [`coco-panoptic`](#the-coco-panoptic-format) as one segment of an RGB segment
 map; every other export reports each one **dropped**, never degraded.
+
+Version 11 changes no existing bytes either. A source in `sources` gains a `kind`, **omitted** for an
+image sequence, so a release holding no point-cloud sequence keeps the version and the hash it had.
+A point-cloud sequence, such as an imported nuScenes scene, is listed like an image sequence with
+`kind` set to `point_cloud_sequence`, and its tracks observe `cuboid_3d` labels on its scans. A
+manifest listing a point-cloud sequence, or a track observing a scan, under a version below 11 does
+not load, and neither does a source listing an asset of the other modality. The formats that write
+tracks, [`mot`](#the-motchallenge-format) and [`cvat-video`](#the-cvat-xml-formats), open images
+only: they report the scans **dropped** by modality and write nothing for them.
 
 Publishing content that needs a newer version than an older build wrote still produces a
 different manifest hash, because the version number is part of the document.

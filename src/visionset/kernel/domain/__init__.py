@@ -342,6 +342,7 @@ from visionset.kernel.domain.release import (
     MASK_MANIFEST_VERSION,
     MODALITY_MANIFEST_VERSION,
     OBB_MANIFEST_VERSION,
+    SCAN_SEQUENCE_MANIFEST_VERSION,
     SEQUENCED_MANIFEST_VERSION,
     TRACKED_MANIFEST_VERSION,
     ClassCompatibility,
@@ -405,6 +406,8 @@ from visionset.kernel.domain.segmentation import (
 )
 from visionset.kernel.domain.source import (
     DIRECTORY_KINDS,
+    IMPORTED_SEQUENCE_KINDS,
+    SCAN_KINDS,
     SEQUENCE_KINDS,
     Source,
     SourceKind,
@@ -467,6 +470,7 @@ from visionset.kernel.domain.track import (
     TrackDetail,
     TrackObservation,
     TrackStatus,
+    track_geometry_kind,
 )
 from visionset.kernel.domain.transitions import require_move, require_state
 from visionset.kernel.domain.video_import import (
@@ -550,6 +554,7 @@ __all__ = [
     "OBB_MANIFEST_VERSION",
     "SEQUENCED_MANIFEST_VERSION",
     "MASK_MANIFEST_VERSION",
+    "SCAN_SEQUENCE_MANIFEST_VERSION",
     "ModalityCompatibility",
     "manifest_version_for",
     "MARK_TRANSITIONS",
@@ -611,6 +616,8 @@ __all__ = [
     "thinned",
     "require_image",
     "DIRECTORY_KINDS",
+    "IMPORTED_SEQUENCE_KINDS",
+    "SCAN_KINDS",
     "SEQUENCE_KINDS",
     "require_calibration",
     "AssetPrediction",
@@ -680,6 +687,7 @@ __all__ = [
     "ObservedFrame",
     "Track",
     "TrackDetail",
+    "track_geometry_kind",
     "ObservedLabel",
     "TrackObservation",
     "TrackStatus",
