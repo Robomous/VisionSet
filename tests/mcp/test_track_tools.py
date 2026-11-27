@@ -4,9 +4,10 @@ from __future__ import annotations
 
 from pathlib import Path
 from typing import Any
+from uuid import uuid4
 
 import pytest
-from tests.fixtures.tracks import FRAMES, TrackWorld, track_world
+from tests.fixtures.tracks import FRAMES, TrackWorld, repeat_clip, track_world
 from tests.mcp._flow import call, error, payload, workspace
 
 
@@ -31,6 +32,20 @@ def test_occurrences_tracks_and_status_are_read(world: TrackWorld) -> None:
     status = payload(call("get_track_status", track_id=world.track, batch_id=world.batch))
     assert status["settled"] is True
     assert status["progress"]["annotated"] == 2
+
+
+def test_an_asset_s_occurrences_name_every_source_it_sits_in(
+    world: TrackWorld, tmp_path: Path
+) -> None:
+    second = repeat_clip(tmp_path / "ws", [0])
+    found = payload(call("list_asset_occurrences", asset_id=world.assets[0]))
+    assert [(o["source_id"], o["position"]) for o in found["items"]] == [
+        (world.source, 0),
+        (second, 0),
+    ]
+    assert error(call("list_asset_occurrences", asset_id=str(uuid4())))["code"] == (
+        "ASSET_NOT_FOUND"
+    )
 
 
 def test_an_agent_builds_and_restructures_a_track(world: TrackWorld) -> None:

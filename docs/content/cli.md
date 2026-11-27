@@ -54,6 +54,7 @@ visionset job mark JOB_ID ASSET_ID --progress STATE
 visionset job pre-label JOB_ID CONNECTION [--minimum-confidence FLOAT] [--replace-model-labels] [--geometry SHAPE]...
 
 visionset track occurrences|list --source SOURCE_ID
+visionset track occurrences --asset ASSET_ID
 visionset track show TRACK_ID
 visionset track status TRACK_ID --batch BATCH_ID
 visionset track create --source SOURCE_ID --class C [--external-id X]
@@ -551,7 +552,8 @@ lifecycle must be drivable from a script, not because this is how labelling happ
 
 A track follows one object through the frame occurrences of a video or image-sequence source (see
 [annotations.md](annotations.md#a-track-observes-annotations-an-annotation-knows-nothing-of-tracks)). `occurrences` and `list` read a source's occurrences and
-tracks, `show` one track with its observations in position order, and `status --batch B` counts
+tracks, `occurrences --asset` an asset's occurrences in every source it sits in (identical bytes
+imported into two sequences are one asset in both), `show` one track with its observations in position order, and `status --batch B` counts
 its observations by the progress their assets hold in that batch: `OUTSIDE` is those the batch
 does not hold, and `SETTLED` is yes only when the track has an observation, the batch holds every
 one, and each is settled. `create` prints the new track's id; its class must be one the active

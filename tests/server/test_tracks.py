@@ -9,7 +9,7 @@ from uuid import UUID, uuid4
 
 import pytest
 from fastapi.testclient import TestClient
-from tests.fixtures.tracks import FRAMES, TrackWorld, track_world
+from tests.fixtures.tracks import FRAMES, TrackWorld, repeat_clip, track_world
 from tests.server._api import api_workspace, served_app
 
 from visionset.kernel.domain import Annotation, BboxGeometry
@@ -64,6 +64,45 @@ def test_a_video_source_lists_its_occurrences_in_position_order(rig: Rig) -> Non
     }
     assert rig.client.get(f"/sources/{rig.world.stills}/occurrences").json()["total"] == 0
     _refused(rig.client.get(f"/sources/{uuid4()}/occurrences"), 404, "SOURCE_NOT_FOUND")
+
+
+@pytest.fixture()
+def repeated(tmp_path: Path) -> Iterator[tuple[Rig, str]]:
+    """The world, plus a second clip repeating frame 2 at its positions 0 and 1."""
+    root = tmp_path / "ws"
+    secret = api_workspace(root)
+    world = track_world(root, tmp_path)
+    second = repeat_clip(root, [2, 2, 99])
+    with TestClient(served_app(root), headers={"Authorization": f"Bearer {secret}"}) as client:
+        yield Rig(client, world), second
+
+
+def test_an_asset_lists_its_occurrences_in_every_source(repeated: tuple[Rig, str]) -> None:
+    rig, second = repeated
+    world = rig.world
+    url = f"/projects/{world.project_id}/assets/{world.assets[2]}/occurrences"
+    page = rig.client.get(url).json()
+    assert [(o["source_id"], o["position"]) for o in page["items"]] == [
+        (world.source, 2),
+        (second, 0),
+        (second, 1),
+    ]
+    assert page["total"] == 3
+    assert {o["asset_id"] for o in page["items"]} == {world.assets[2]}
+    assert page["items"][0]["id"] == world.occurrences[2]
+
+    only = rig.client.get(f"/projects/{world.project_id}/assets/{world.assets[0]}/occurrences")
+    assert [o["source_id"] for o in only.json()["items"]] == [world.source]
+    _refused(
+        rig.client.get(f"/projects/{world.project_id}/assets/{uuid4()}/occurrences"),
+        404,
+        "ASSET_NOT_FOUND",
+    )
+    _refused(
+        rig.client.get(f"/projects/{uuid4()}/assets/{world.assets[2]}/occurrences"),
+        404,
+        "PROJECT_NOT_FOUND",
+    )
 
 
 def test_a_track_reads_with_its_observations(rig: Rig) -> None:

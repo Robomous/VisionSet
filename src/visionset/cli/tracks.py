@@ -1,10 +1,11 @@
 # usage: from visionset.cli.tracks import track_app
 """``visionset track`` — one object followed through the frames of a sequence source.
 
-``occurrences``, ``list``, ``show``, ``status`` and ``create`` read or start
-tracks; every other command names the job acting with ``--job``, because a track
-write passes the same gates an annotation write does and the job's write scope
-must hold every observation the operation touches.
+``occurrences`` (of a source, or of an asset across sources), ``list``, ``show``,
+``status`` and ``create`` read or start tracks; every other command names the job
+acting with ``--job``, because a track write passes the same gates an annotation
+write does and the job's write scope must hold every observation the operation
+touches.
 
 Ids only, as ``job``'s commands take them: tracks, occurrences and annotations
 have no names, and each id comes off a previous command's stdout.
@@ -38,6 +39,7 @@ OccurrenceOption = Annotated[
 ClassOption = Annotated[str, typer.Option("--class", help="The label class.")]
 
 _OCCURRENCE_COLUMNS: Final = ("ID", "POSITION", "TIMESTAMP", "ASSET")
+_ASSET_OCCURRENCE_COLUMNS: Final = ("ID", "SOURCE", "POSITION", "TIMESTAMP")
 _TRACK_COLUMNS: Final = ("ID", "CLASS", "EXTERNAL_ID", "OBSERVATIONS", "FIRST", "LAST")
 _OBSERVATION_COLUMNS: Final = ("POSITION", "TIMESTAMP", "OCCURRENCE", "ASSET", "ANNOTATION")
 _STATUS_COLUMNS: Final = tuple(state.value.upper() for state in AssetProgress) + (
@@ -88,17 +90,38 @@ def _print_track(detail: TrackDetail, *, json_out: bool) -> None:
 
 @track_app.command("occurrences")
 def track_occurrences(
-    source: SourceOption, json_out: JsonOption = False, workspace: WorkspaceOption = None
+    source: Annotated[
+        UUID | None,
+        typer.Option("--source", help="The video or image-sequence source, by id. Or --asset."),
+    ] = None,
+    asset: Annotated[
+        UUID | None,
+        typer.Option("--asset", help="The asset, by id, across every source. Or --source."),
+    ] = None,
+    json_out: JsonOption = False,
+    workspace: WorkspaceOption = None,
 ) -> None:
-    """List a source's frame occurrences, in position order. Empty unless it is a sequence."""
+    """List a source's frame occurrences in position order, or an asset's in every source."""
+    if (source is None) == (asset is None):
+        raise typer.BadParameter("Give exactly one of --source and --asset.")
     with opened_workspace(workspace) as service:
-        found = SourceService(service).occurrences(source)
+        sources = SourceService(service)
+        if source is not None:
+            found = sources.occurrences(source)
+        elif asset is not None:
+            found = sources.asset_occurrences(asset)
     if json_out:
         document(wire.page([wire.frame_occurrence(o) for o in found]))
         return
+    if source is not None:
+        table(
+            _OCCURRENCE_COLUMNS,
+            [(str(o.id), str(o.position), _seconds(o.timestamp), str(o.asset_id)) for o in found],
+        )
+        return
     table(
-        _OCCURRENCE_COLUMNS,
-        [(str(o.id), str(o.position), _seconds(o.timestamp), str(o.asset_id)) for o in found],
+        _ASSET_OCCURRENCE_COLUMNS,
+        [(str(o.id), str(o.source_id), str(o.position), _seconds(o.timestamp)) for o in found],
     )
 
 

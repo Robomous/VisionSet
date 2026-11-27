@@ -13,6 +13,7 @@ from PIL import Image
 from visionset.kernel import (
     AnnotationAlreadyObserved,
     AnnotationNotAtOccurrence,
+    AssetNotFound,
     AssetNotInJob,
     AssetNotJudged,
     AssetNotWritable,
@@ -66,6 +67,7 @@ from visionset.kernel.ports import UnitOfWork
 from visionset.kernel.services import (
     AnnotationService,
     BatchService,
+    IngestService,
     JobService,
     ProjectService,
     SchemaService,
@@ -252,6 +254,64 @@ def test_an_unknown_track_is_not_found(world: World) -> None:
 
 
 # --- observing ---------------------------------------------------------------
+
+
+def test_an_asset_lists_its_occurrences_across_sources(world: World) -> None:
+    first = world.clip(seeds=(0, 1, 2))
+    second = world.clip(seeds=(1, 5, 1))
+    shared = first.at(1).asset_id
+    assert second.at(0).asset_id == shared == second.at(2).asset_id
+
+    found = SourceService(world.workspace).asset_occurrences(shared)
+    assert [(o.source_id, o.position) for o in found] == [
+        (first.source_id, 1),
+        (second.source_id, 0),
+        (second.source_id, 2),
+    ]
+    assert [o.id for o in found] == [first.at(1).id, second.at(0).id, second.at(2).id]
+    assert SourceService(world.workspace).asset_occurrences(first.at(0).asset_id) == [first.at(0)]
+
+
+def test_the_store_walks_from_an_asset_to_its_occurrences(world: World) -> None:
+    first = world.clip(seeds=(3, 4))
+    second = world.clip(seeds=(4,))
+    with world.workspace.unit_of_work() as uow:
+        assert {o.id for o in uow.occurrences_of(first.at(1).asset_id)} == {
+            first.at(1).id,
+            second.at(0).id,
+        }
+        assert uow.occurrences_of(uuid4()) == []
+
+
+def test_an_asset_outside_any_sequence_has_no_occurrences(world: World, tmp_path: Path) -> None:
+    stills = tmp_path / "stills"
+    stills.mkdir()
+    (stills / "a.jpg").write_bytes(_jpeg(8))
+    source = SourceService(world.workspace).register_images(world.project.id, stills)
+    (asset,) = IngestService(world.workspace).ingest(source.id).assets
+    assert SourceService(world.workspace).asset_occurrences(asset.id) == []
+    with pytest.raises(AssetNotFound):
+        SourceService(world.workspace).asset_occurrences(uuid4())
+
+
+def test_each_source_s_track_observes_the_shared_asset_at_its_own_occurrence(
+    world: World,
+) -> None:
+    first = world.clip(seeds=(0, 1))
+    second = world.clip(seeds=(1,))
+    (job,) = world.working(first.batch_id)
+    shared = first.at(1).asset_id
+    one = world.tracks.create(first.source_id, "car").track
+    other = world.tracks.create(second.source_id, "car").track
+    world.tracks.observe(job.id, one.id, first.at(1).id, world.box(job, shared).id)
+    world.tracks.observe(job.id, other.id, second.at(0).id, world.box(job, shared).id)
+
+    for clip, track in ((first, one), (second, other)):
+        (listed,) = world.tracks.list(clip.source_id)
+        assert listed.track.id == track.id
+        assert [f.asset_id for f in listed.observations] == [shared]
+    with pytest.raises(TrackSourceMismatch):
+        world.tracks.observe(job.id, one.id, second.at(0).id, world.box(job, shared).id)
 
 
 def test_identical_frames_need_one_annotation_per_occurrence(world: World) -> None:

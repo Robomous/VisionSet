@@ -8,8 +8,8 @@ from typing import Any
 from uuid import uuid4
 
 import pytest
-from tests.cli._flow import ok, payload, project, run, workspace
-from tests.fixtures.tracks import FRAMES, TrackWorld, track_world
+from tests.cli._flow import ok, payload, project, run, usage_error, workspace
+from tests.fixtures.tracks import FRAMES, TrackWorld, repeat_clip, track_world
 from tests.formats.test_cvat import TRACKS, _video_source
 
 from visionset.kernel.domain import ImportLossKind
@@ -52,6 +52,34 @@ def test_occurrences_and_tracks_are_listed(root: Path, world: TrackWorld) -> Non
     text = ok(root, "track", "show", world.track)
     assert world.track in text
     assert world.observed[1] in text
+
+
+def test_an_asset_lists_its_occurrences_in_every_source(root: Path, world: TrackWorld) -> None:
+    second = repeat_clip(root, [99, 1])
+    found = payload(root, "track", "occurrences", "--asset", world.assets[1])
+    assert [(o["source_id"], o["position"]) for o in found["items"]] == [
+        (world.source, 1),
+        (second, 1),
+    ]
+    text = ok(root, "track", "occurrences", "--asset", world.assets[1])
+    assert "SOURCE" in text
+    assert second in text
+
+
+@pytest.mark.parametrize("targets", [(), ("--source", "s", "--asset", "a")])
+def test_occurrences_take_exactly_one_target(
+    root: Path, world: TrackWorld, targets: tuple[str, ...]
+) -> None:
+    argv = {"s": world.source, "a": world.assets[0]}
+    result = run(root, "track", "occurrences", *(argv.get(a, a) for a in targets))
+    assert result.exit_code == 2
+    assert "exactly one of --source and --asset" in usage_error(result)
+
+
+def test_an_unknown_asset_has_no_occurrences_to_list(root: Path, world: TrackWorld) -> None:
+    assert _refusal(root, "track", "occurrences", "--asset", str(uuid4()))["code"] == (
+        "ASSET_NOT_FOUND"
+    )
 
 
 def test_status_counts_the_batch_progress(root: Path, world: TrackWorld) -> None:

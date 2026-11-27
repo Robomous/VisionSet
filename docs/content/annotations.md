@@ -480,6 +480,10 @@ everything above - schema validation, provenance, progress - is untouched by tra
   once, and an annotation is observed at most once anywhere. Two occurrences that decoded to the
   same bytes are one asset, so tracking an object at both needs two annotations on it
   (`OCCURRENCE_ALREADY_OBSERVED`, `ANNOTATION_ALREADY_OBSERVED`).
+- **One asset, several sources.** Identical bytes imported into two sequences are one asset at
+  occurrences of both, and each source keeps its own tracks. `GET
+  /projects/{id}/assets/{id}/occurrences` (`track occurrences --asset`, `list_asset_occurrences`)
+  lists an asset's occurrences in every source, by source registration then position.
 - **One source, one class.** Observing another source's occurrence, or merging tracks of two
   sources, is `TRACK_SOURCE_MISMATCH`; a track is created only on a video or image-sequence
   source (`SOURCE_NOT_SEQUENCE`). An observed annotation carries the track's class

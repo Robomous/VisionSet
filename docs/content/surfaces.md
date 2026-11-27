@@ -30,7 +30,7 @@ what each one exposes. This page says, step by step, which surface can do what.
 | Create and edit annotations | yes | yes | **no** | `add_annotations`, `update_annotations`, `delete_annotations` |
 | See the image | yes | yes | no | `get_asset_image` |
 | View a scan | a 3D view | `GET .../points` (thinned points) | no | `get_asset_image` (the top-down thumbnail only) |
-| Tracks across a video's frame occurrences | - | `.../occurrences`, `.../tracks`, writes under `/jobs/{id}/tracks` | `track ...` | `list_frame_occurrences`, `*_track`, `*_tracks`, `get_track_status` |
+| Tracks across a video's frame occurrences | - | `.../occurrences`, `.../tracks`, writes under `/jobs/{id}/tracks` | `track ...` | `list_frame_occurrences`, `list_asset_occurrences`, `*_track`, `*_tracks`, `get_track_status` |
 | Camera calibration of a source or an asset | - | `GET/PUT/DELETE .../calibration` | `calibration show/set/clear` | `get_calibration`, `set_calibration`, `clear_calibration` |
 | Pre-label with a model | yes | yes | `batch pre-label`, `job pre-label` | `pre_label_batch`, `pre_label_job` |
 | Configure model connections | yes | yes | `inference ...` | `*_inference_connection`, `download_connection_weights` |

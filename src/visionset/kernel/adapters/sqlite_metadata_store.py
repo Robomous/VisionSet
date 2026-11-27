@@ -58,6 +58,7 @@ from visionset.kernel.domain import (
     BackgroundJob,
     BackgroundJobState,
     BatchState,
+    FrameOccurrence,
     Modality,
     ObservedLabel,
     OrphanGuard,
@@ -798,6 +799,12 @@ class SqlUnitOfWork:
                 .order_by(t.BatchAssetRow.position)
             ).all()
         )
+
+    def occurrences_of(self, asset_id: UUID) -> list[FrameOccurrence]:
+        rows = self._session.scalars(
+            select(t.FrameOccurrenceRow).where(t.FrameOccurrenceRow.asset_id == asset_id)
+        ).all()
+        return [m.FRAME_OCCURRENCES.to_domain(self._session, row) for row in rows]
 
     def observation_of(self, annotation_id: UUID) -> TrackObservation | None:
         row = self._session.scalars(

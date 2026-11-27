@@ -138,6 +138,7 @@ TOOLS: Final[tuple[tuple[Callable[..., Any], ToolAnnotations], ...]] = (
     (annotations.delete_annotations, WRITES),
     # Beside the annotations they follow: a track observes annotations already drawn.
     (tracks.list_frame_occurrences, READS),
+    (tracks.list_asset_occurrences, READS),
     (tracks.list_tracks, READS),
     (tracks.get_track_status, READS),
     (tracks.create_track, WRITES),

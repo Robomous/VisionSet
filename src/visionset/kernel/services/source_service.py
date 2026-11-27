@@ -61,6 +61,7 @@ from visionset.kernel.domain import (
     normalize_name,
 )
 from visionset.kernel.errors import (
+    AssetNotFound,
     CalibrationInUse,
     ProjectNotFound,
     SourceNotFound,
@@ -96,6 +97,25 @@ class SourceService:
         with self._workspace.unit_of_work() as uow:
             self.require_source(uow, source_id)
             return sorted(uow.frame_occurrences.list(source_id), key=lambda o: o.position)
+
+    def asset_occurrences(self, asset_id: UUID) -> list[FrameOccurrence]:
+        """Every frame occurrence of the asset, across every source it sits in.
+
+        Identical bytes imported into two sequences are one asset at occurrences
+        of both. Ordered by source registration, then position. An asset no
+        sequence holds answers ``[]``.
+
+        Raises:
+            AssetNotFound: no such asset in this workspace.
+        """
+        with self._workspace.unit_of_work() as uow:
+            asset = uow.assets.get(asset_id)
+            if asset is None:
+                raise AssetNotFound(f"no asset {asset_id}")
+            order = {source.id: i for i, source in enumerate(uow.sources.list(asset.project_id))}
+            return sorted(
+                uow.occurrences_of(asset_id), key=lambda o: (order[o.source_id], o.position)
+            )
 
     # --- writing -----------------------------------------------------------
 
