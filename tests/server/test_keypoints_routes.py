@@ -12,6 +12,7 @@ from fastapi.testclient import TestClient
 from tests.server._api import api_client
 from tests.server._flow import SIGN, batch_from_ingest, dataset_of, project_with_schema
 from tests.server._jobs import InlineDispatcher
+from tests.server.test_point_cloud_routes import upload_scans
 
 from visionset.kernel.domain import KEYPOINTS_MANIFEST_VERSION
 
@@ -351,6 +352,29 @@ def test_an_invalid_visibility_is_a_validation_error(
     assert refused.status_code == 422, refused.text
     assert refused.json()["code"] == "VALIDATION_ERROR"
     assert _stored(client, job_id, asset) == []
+
+
+def test_keypoints_on_a_scan_are_invalid_annotation(
+    client: TestClient, runner: InlineDispatcher
+) -> None:
+    project = project_with_schema(client, name="scans", classes=[POSE])
+    source = upload_scans(client, project, frame="lidar_flu").json()
+    ingest = client.post(f"/sources/{source['id']}/ingest-jobs").json()
+    runner.wait()
+    batch_id = client.get(f"/ingest-jobs/{ingest['id']}").json()["batch_id"]
+    client.post(f"/batches/{batch_id}/approve")
+    client.post(f"/batches/{batch_id}/start")
+    job_id = client.get(f"/batches/{batch_id}/jobs").json()["items"][0]["id"]
+    client.post(f"/jobs/{job_id}/start")
+    scan = client.get(f"/batches/{batch_id}/assets").json()["items"][0]["id"]
+
+    refused = client.post(
+        f"/jobs/{job_id}/annotations", json=[_keypoints(scan, [[1.0, 1.0]], label_class="pose")]
+    )
+
+    assert refused.status_code == 422, refused.text
+    assert refused.json()["code"] == "INVALID_ANNOTATION"
+    assert _stored(client, job_id, scan) == []
 
 
 def test_no_points_is_a_validation_error(client: TestClient, working: tuple[str, str, str]) -> None:

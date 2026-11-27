@@ -523,9 +523,10 @@ def test_the_published_contract_describes_labels_on_a_scan() -> None:
     assert "up axis" in cuboid
     assert "point-cloud scan" in schemas["Polyline3DBody"]["description"]
     refusals = {
-        "post": "a `bbox`, `obb`, `polygon`, `polyline` or `mask` on one is 422 "
+        "post": "a `bbox`, `obb`, `polygon`, `polyline`, `keypoints` or `mask` on one is 422 "
         "`INVALID_ANNOTATION`",
-        "patch": "422 `INVALID_ANNOTATION` for a `bbox`, `obb`, `polygon`, `polyline` or `mask`",
+        "patch": "422 `INVALID_ANNOTATION` for a `bbox`, `obb`, `polygon`, `polyline`, "
+        "`keypoints` or `mask`",
     }
     for method, refusal in refusals.items():
         operation = spec["paths"]["/jobs/{job_id}/annotations"][method]
