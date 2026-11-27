@@ -1,20 +1,28 @@
 # usage: from visionset.formats.coco import CocoImporter
-"""COCO instances in: boxes and single-ring polygons, with everything else reported.
+"""COCO instances in: boxes, polygons and RLE masks, with everything else reported.
 
 Reads the layout :class:`CocoExporter` writes — ``annotations/instances_<fold>.json``
 beside ``images/<fold>/`` — and the common variants of it: instance files at the
 top of the source, images directly under ``images/`` or beside the JSON. Nothing
 here touches a workspace; it returns an ``ImportedDataset``.
 
+A ``segmentation`` object is an RLE mask, its ``counts`` compressed (a string)
+or uncompressed (a list of runs), and becomes a mask whose ``size`` must be the
+image entry's ``[height, width]``. A list of one ring is a polygon. A list of
+several rings is one object in several parts: each part is rasterized at pixel
+centres on its own and the parts are unioned into one mask, a ``geometry``
+loss. ``iscrowd`` has no field to land in, so a crowd row keeps its shape and
+loses the flag, an ``attribute`` loss.
+
 What the kernel cannot represent is counted into ``losses`` by kind, never
-dropped silently: an RLE or crowd mask, a multi-ring polygon and a degenerate
-shape lose the whole label; keypoints lose part of one (its box or polygon is
-kept). Attribute values are read from the ``"visionset"`` object the exporter
-writes, else from the row's own ``attributes``; a string, a boolean or a number
-is carried and anything else is an ``attribute`` loss. COCO has no attribute
-definitions, so each class defines an attribute by the first value it sees:
-a number, a boolean or a string, never required and with no options. Whether a
-given file is lossy depends on its content, so there is no ``lossy`` flag here.
+dropped silently: a malformed or wrongly sized mask and a degenerate shape lose
+the whole label; keypoints lose part of one (its shape is kept). Attribute
+values are read from the ``"visionset"`` object the exporter writes, else from
+the row's own ``attributes``; a string, a boolean or a number is carried and
+anything else is an ``attribute`` loss. COCO has no attribute definitions, so
+each class defines an attribute by the first value it sees: a number, a
+boolean or a string, never required and with no options. Whether a given file
+is lossy depends on its content, so there is no ``lossy`` flag here.
 """
 
 from __future__ import annotations
@@ -40,10 +48,15 @@ from visionset.kernel.domain import (
     ImportedLabel,
     ImportLoss,
     ImportLossKind,
+    MaskGeometry,
     PolygonGeometry,
+    mask_area,
+    mask_union,
+    rasterize_rings,
     require_relative_path,
 )
 from visionset.kernel.domain.geometry import geometry_intersects_asset
+from visionset.kernel.domain.rle import MaskEncodingError, canonical_runs, encode_counts
 from visionset.kernel.domain.schema import Attribute, AttributeValue
 from visionset.kernel.errors import ImportSourceUnreadable
 
@@ -51,6 +64,12 @@ ANNOTATIONS_DIRNAME: Final = "annotations"
 _INSTANCES_PREFIX: Final = "instances_"
 #: Below this many square pixels a ring is a line or a point, not a shape.
 _DEGENERATE_AREA: Final = 1e-9
+
+_CROWD: Final = "iscrowd is not imported; the region is kept as an ordinary label"
+_PARTS: Final = "a polygon of several rings is rasterized into one mask at pixel centres"
+_MALFORMED_RING: Final = "its polygon has fewer than three points or is malformed"
+_MALFORMED_RLE: Final = "its RLE mask is malformed"
+_MASK_SIZE: Final = "its mask's size is not its image's height and width"
 
 
 @dataclass
@@ -161,13 +180,17 @@ class CocoImporter:
             losses[(ImportLossKind.LABEL, name, "it names an image the file does not list")] += 1
             return
 
-        geometry, refusal = _geometry(row)
+        geometry, refusal, converted = _geometry(row, width=image.width, height=image.height)
         if geometry is None:
             losses[(ImportLossKind.LABEL, name, refusal)] += 1
             return
         if not geometry_intersects_asset(geometry, width=image.width, height=image.height):
             losses[(ImportLossKind.LABEL, name, "it lies wholly outside its image")] += 1
             return
+        if converted:
+            losses[(ImportLossKind.GEOMETRY, name, _PARTS)] += 1
+        if row.get("iscrowd") == 1:
+            losses[(ImportLossKind.ATTRIBUTE, name, _CROWD)] += 1
         if _has_keypoints(row):
             losses[
                 (ImportLossKind.GEOMETRY, name, "keypoints are not imported; the shape is kept")
@@ -279,13 +302,17 @@ def _dimension(row: Mapping[str, Any], key: str) -> int | None:
     return value if isinstance(value, int) and not isinstance(value, bool) and value > 0 else None
 
 
-def _geometry(row: Mapping[str, Any]) -> tuple[Geometry | None, str]:
+def _geometry(
+    row: Mapping[str, Any], *, width: int | None, height: int | None
+) -> tuple[Geometry | None, str, bool]:
+    """The row's shape or why there is none, and whether it was rasterized from parts."""
     segmentation = row.get("segmentation")
-    if row.get("iscrowd") == 1 or isinstance(segmentation, dict):
-        return None, "an RLE or crowd mask cannot be represented"
+    if isinstance(segmentation, dict):
+        mask, refusal = _rle(segmentation, width=width, height=height)
+        return mask, refusal, False
     if isinstance(segmentation, list) and segmentation:
         if len(segmentation) > 1:
-            return None, "a polygon of several rings cannot be represented"
+            return _parts(segmentation, width=width, height=height)
         ring = segmentation[0]
         if (
             not isinstance(ring, list)
@@ -293,18 +320,80 @@ def _geometry(row: Mapping[str, Any]) -> tuple[Geometry | None, str]:
             or len(ring) % 2
             or not all(_is_number(value) for value in ring)
         ):
-            return None, "its polygon has fewer than three points or is malformed"
-        points = [(float(x), float(y)) for x, y in zip(*[iter(ring)] * 2, strict=True)]
+            return None, _MALFORMED_RING, False
+        points = _points(ring)
         if _shoelace(points) <= _DEGENERATE_AREA:
-            return None, "its polygon encloses no area"
-        return PolygonGeometry(points=points), ""
+            return None, "its polygon encloses no area", False
+        return PolygonGeometry(points=points), "", False
     box = row.get("bbox")
     if not isinstance(box, list) or len(box) != 4 or not all(_is_number(value) for value in box):
-        return None, "it has neither a polygon nor a well-formed box"
-    x, y, width, height = (float(value) for value in box)
-    if width <= 0 or height <= 0:
-        return None, "its box has no area"
-    return BboxGeometry(x=x, y=y, width=width, height=height), ""
+        return None, "it has neither a polygon nor a well-formed box", False
+    x, y, box_width, box_height = (float(value) for value in box)
+    if box_width <= 0 or box_height <= 0:
+        return None, "its box has no area", False
+    return BboxGeometry(x=x, y=y, width=box_width, height=box_height), "", False
+
+
+def _points(ring: list[Any]) -> list[tuple[float, float]]:
+    return [(float(x), float(y)) for x, y in zip(*[iter(ring)] * 2, strict=True)]
+
+
+def _rle(
+    segmentation: Mapping[str, Any], *, width: int | None, height: int | None
+) -> tuple[MaskGeometry | None, str]:
+    """An RLE ``segmentation`` object as a mask; compressed and uncompressed counts alike."""
+    size, counts = segmentation.get("size"), segmentation.get("counts")
+    if (
+        not isinstance(size, list)
+        or len(size) != 2
+        or not all(isinstance(side, int) and not isinstance(side, bool) for side in size)
+    ):
+        return None, _MALFORMED_RLE
+    mask_height, mask_width = size
+    if width is not None and height is not None and (mask_height, mask_width) != (height, width):
+        return None, _MASK_SIZE
+    try:
+        if isinstance(counts, list):
+            counts = encode_counts(canonical_runs(counts, mask_height, mask_width))
+        if not isinstance(counts, str):
+            return None, _MALFORMED_RLE
+        return MaskGeometry(size=(mask_height, mask_width), counts=counts), ""
+    except (ValidationError, MaskEncodingError):
+        return None, _MALFORMED_RLE
+
+
+def _parts(
+    segmentation: list[Any], *, width: int | None, height: int | None
+) -> tuple[MaskGeometry | PolygonGeometry | None, str, bool]:
+    """Several rings as the union of each one rasterized alone.
+
+    A COCO object drawn in several parts is their union, so one ring inside
+    another is not a hole. A ring of fewer than three points or no area draws
+    nothing, as it does for ``pycocotools``, so one ring left is a polygon.
+    """
+    rings: list[list[tuple[float, float]]] = []
+    for ring in segmentation:
+        if not isinstance(ring, list) or len(ring) % 2 or not all(_is_number(v) for v in ring):
+            return None, _MALFORMED_RING, False
+        if len(ring) >= 6 and _shoelace(points := _points(ring)) > _DEGENERATE_AREA:
+            rings.append(points)
+    if not rings:
+        return None, "its polygon encloses no area", False
+    if len(rings) == 1:
+        return PolygonGeometry(points=rings[0]), "", False
+    if width is None or height is None:
+        return None, "a polygon of several rings needs its image's width and height", False
+    try:
+        mask = mask_union(
+            (rasterize_rings([ring], height=height, width=width) for ring in rings),
+            height=height,
+            width=width,
+        )
+    except MaskEncodingError:
+        return None, "its image is too large for a mask", False
+    if mask_area(mask) == 0:
+        return None, "its polygon covers no pixel centre", False
+    return mask, "", True
 
 
 def _is_number(value: object) -> bool:

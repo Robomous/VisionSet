@@ -28,8 +28,15 @@ annotations present, a read failure that aborts rather than being swallowed, and
 pixel dimensions that are required rather than defaulted to ``(1, 1)``. See
 :mod:`visionset.formats.ultralytics` for what each of those costs when it is wrong.
 
+**A mask is written as COCO's compressed RLE**, ``{"size": [height, width],
+"counts": "..."}``, with its ``bbox`` and ``area`` read off its pixels and
+``iscrowd`` ``0``: VisionSet has no crowd flag, a mask is one object, and
+``pycocotools`` decodes an RLE ``segmentation`` whatever ``iscrowd`` says. The
+counts are the stored ones, so an export read back is the same mask pixel for
+pixel.
+
 **This format is not lossy, and that is the point of having it.**
-``supported_geometries`` is ``{bbox, polygon}``, and everything COCO has no field
+``supported_geometries`` is ``{bbox, polygon, mask}``, and everything COCO has no field
 for — attributes, confidence, provenance, the annotation's own id — is carried in
 a ``"visionset"`` object on each annotation. COCO is JSON and every reader
 tolerates keys it does not know; one nested object cannot collide with a future
@@ -71,6 +78,8 @@ from visionset.kernel.domain import (
     PolylineGeometry,
     Release,
     SplitAssignment,
+    mask_area,
+    mask_enclosing_box,
 )
 from visionset.kernel.errors import ExportSourceUnreadable
 from visionset.kernel.ports import ContentReader
@@ -113,15 +122,15 @@ class CocoExporter:
     #: consent, which is the contrast with the YOLO dialects and the reason both exist.
     lossy = False
 
-    #: The two geometries COCO instances describe. A classification tag has no
+    #: The three geometries COCO instances describe. A classification tag has no
     #: location, and COCO has no place for a label that is about the whole image —
     #: that is a different task with a different file — so the compatibility
     #: report is what refuses a release holding one, by class and with a count.
-    supported_geometries = frozenset({GeometryType.BBOX, GeometryType.POLYGON})
+    supported_geometries = frozenset({GeometryType.BBOX, GeometryType.POLYGON, GeometryType.MASK})
 
     #: Empty, and it is the interesting empty set of the four: COCO writes a
-    #: polygon *as a polygon*, with the shoelace area rather than the box's, so it
-    #: reduces nothing.
+    #: polygon *as a polygon*, with the shoelace area rather than the box's, and a
+    #: mask as its own RLE, so it reduces nothing.
     degraded_geometries: frozenset[GeometryType] = frozenset()
 
     supported_modalities = frozenset({"image"})
@@ -275,7 +284,7 @@ def _annotation(
             # alternative — writing the box's own rectangle — would claim the object
             # fills its bounding box, which a mask consumer would take literally. A
             # box says where something is, not what shape it is.
-            segmentation: list[list[float]] = []
+            segmentation: list[list[float]] | dict[str, Any] = []
             area = round(geometry.width * geometry.height, PRECISION)
         case PolygonGeometry():
             xs = [x for x, _ in geometry.points]
@@ -285,13 +294,26 @@ def _annotation(
                 [round(value, PRECISION) for point in geometry.points for value in point]
             ]
             area = round(_shoelace(geometry.points), PRECISION)
+        case MaskGeometry():
+            if geometry.size != tuple(reversed(dimensions_of(asset))):
+                raise ExportSourceUnreadable(
+                    f"asset {asset.asset_id} carries a {geometry.size[0]} by {geometry.size[1]} "
+                    f"mask, which is not the size of its picture"
+                )
+            enclosing = mask_enclosing_box(geometry)
+            box = (
+                (0.0, 0.0, 0.0, 0.0)
+                if enclosing is None
+                else (enclosing.x, enclosing.y, enclosing.width, enclosing.height)
+            )
+            segmentation = {"size": list(geometry.size), "counts": geometry.counts}
+            area = float(mask_area(geometry))
         case (
             ObbGeometry()
             | ClassificationGeometry()
             | PolylineGeometry()
             | Polyline3DGeometry()
             | Cuboid3DGeometry()
-            | MaskGeometry()
         ):
             return None
         case _:
@@ -302,10 +324,9 @@ def _annotation(
         "bbox": list(box),
         "area": area,
         "segmentation": segmentation,
-        # Zero always: `iscrowd=1` means an RLE-encoded region covering many
-        # instances, which the domain cannot represent — a polygon here is one
-        # object, and saying otherwise would change how every evaluation treats
-        # it.
+        # Zero always: `iscrowd=1` marks a region covering many instances, which
+        # the domain cannot represent — a polygon or a mask here is one object,
+        # and saying otherwise would have every evaluation ignore it.
         "iscrowd": 0,
         "visionset": {
             "annotation_id": str(annotation.id),

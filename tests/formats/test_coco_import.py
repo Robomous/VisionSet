@@ -86,8 +86,16 @@ def test_boxes_and_single_ring_polygons_are_read_without_loss(tmp_path: Path) ->
     ("row", "kind", "kept"),
     [
         ({"category_id": 1, "segmentation": {"counts": "x", "size": [24, 32]}}, "label", 0),
-        ({"category_id": 1, "bbox": [1, 1, 4, 4], "iscrowd": 1}, "label", 0),
-        ({"category_id": 2, "segmentation": [[0, 0, 4, 0, 0, 4], [8, 8, 9, 8, 8, 9]]}, "label", 0),
+        ({"category_id": 1, "bbox": [1, 1, 4, 4], "iscrowd": 1}, "attribute", 1),
+        (
+            {"category_id": 2, "segmentation": [[0, 0, 4, 0, 0, 4], [8, 8, 9, 8, 8, 9]]},
+            "geometry",
+            1,
+        ),
+        ({"category_id": 1, "segmentation": {"counts": [3, 1], "size": [2, 3]}}, "label", 0),
+        ({"category_id": 1, "segmentation": {"counts": [700, 69], "size": [24, 32]}}, "label", 0),
+        ({"category_id": 1, "segmentation": {"counts": "PP", "size": [24]}}, "label", 0),
+        ({"category_id": 2, "segmentation": [[0, 0, 4, 0, 0, 4], [8, 8, 9]]}, "label", 0),
         ({"category_id": 2, "segmentation": [[0, 0, 4, 0]]}, "label", 0),
         ({"category_id": 1, "bbox": [1, 1, 0, 4]}, "label", 0),
         ({"category_id": 2, "segmentation": [[0, 0, 4, 4, 8, 8]]}, "label", 0),

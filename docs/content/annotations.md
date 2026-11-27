@@ -292,8 +292,9 @@ an empty mask. `trace_mask` goes the other way along pixel edges, on integer cor
 each 4-connected region's outer ring and its holes, and rasterizing the result gives the mask back
 exactly. A `polygon` has no holes, so keeping only the outer rings loses them.
 
-PNG class maps and COCO RLE import and export are not yet supported, and the annotator does not
-draw or edit masks yet. See [releases](releases.md#the-manifests-own-format-version) for the
+COCO RLE masks are imported and exported by `coco`, and class-index PNG maps by `segmentation-png`
+(see [import](import.md#formats) and [releases](releases.md#the-segmentation-png-format)); the
+annotator does not draw or edit masks yet. See [releases](releases.md#the-manifests-own-format-version) for the
 manifest and [pre-processing](preprocessing.md) for how a step treats one.
 
 ## A 3D polyline is read against a calibration

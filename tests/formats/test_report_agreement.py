@@ -29,6 +29,7 @@ from pathlib import Path
 from uuid import UUID, uuid4
 
 import pytest
+from PIL import Image
 from tests.formats.test_kitti_export import Released
 from tests.formats.test_ultralytics import CLASSES, Fixture, _box
 
@@ -36,6 +37,7 @@ from visionset.formats.classification import LABELS_FILENAME as CLASSIFICATION_L
 from visionset.formats.coco import ANNOTATIONS_DIRNAME as COCO_ANNOTATIONS_DIRNAME
 from visionset.formats.lanes import LABELS_DIRNAME as LANE_LABELS_DIRNAME
 from visionset.formats.registry import exporters
+from visionset.formats.segmentation_png import DESCRIPTOR_FILENAME as SEGMENTATION_DESCRIPTOR
 from visionset.formats.ultralytics import DATA_FILENAME, LABELS_DIRNAME
 from visionset.formats.voc import ANNOTATIONS_DIRNAME as VOC_ANNOTATIONS_DIRNAME
 from visionset.kernel.domain import (
@@ -211,6 +213,23 @@ def _dota_counts(root: Path) -> Counter[str]:
     return found
 
 
+def _segmentation_png_counts(root: Path) -> Counter[str]:
+    """Every class present in a mask, once per mask, by the name the descriptor gives its id.
+
+    A class map cannot tell two instances of one class apart, so this counts what
+    it can: each class a picture's mask holds. ``DRAWING`` puts at most one
+    polygon of a class on a picture, so that equals the annotations written.
+    """
+    descriptor = json.loads((root / SEGMENTATION_DESCRIPTOR).read_text(encoding="utf-8"))
+    names = {int(key): name for key, name in descriptor["classes"].items()}
+    found: Counter[str] = Counter()
+    for path in sorted((root / descriptor["masks"]).rglob("*.png")):
+        with Image.open(path) as image:
+            present = set(image.tobytes())
+        found.update(names[value] for value in present if value in names)
+    return found
+
+
 #: How to count what each format actually wrote, keyed by ``format_name``.
 COUNTERS: dict[str, Callable[[Path], Counter[str]]] = {
     "ultralytics": _yolo_counts,
@@ -224,6 +243,7 @@ COUNTERS: dict[str, Callable[[Path], Counter[str]]] = {
     "mot": _mot_counts,
     "cvat-images": _cvat_images_counts,
     "cvat-video": _cvat_video_counts,
+    "segmentation-png": _segmentation_png_counts,
 }
 
 #: Formats whose layout depends on what the release holds, and are therefore

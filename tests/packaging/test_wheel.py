@@ -360,6 +360,7 @@ def test_the_installed_command_finds_every_exporter(installed: Path) -> None:
         "kitti",
         "mot",
         "openlane-2d",
+        "segmentation-png",
         "tusimple",
         "ultralytics",
         "voc",

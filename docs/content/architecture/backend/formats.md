@@ -27,10 +27,10 @@ target - never through a dict, so a typo answers a `VisionSetError` rather than 
 
 ## What ships
 
-Thirty-one plugins in [`pyproject.toml`](../../../../pyproject.toml)'s
-`[project.entry-points."visionset.formats"]`: the seventeen exporters below and fourteen importers,
+Thirty-three plugins in [`pyproject.toml`](../../../../pyproject.toml)'s
+`[project.entry-points."visionset.formats"]`: the eighteen exporters below and fifteen importers,
 `ultralytics-import`, `yolov5-yaml-import`, `darknet-import`, `yolo-obb-import`, `dota-import`,
-`coco-import`, `voc-import`,
+`coco-import`, `segmentation-png-import`, `voc-import`,
 `classification-import`, `openlane-2d-import`, `kitti-import`, `mot-import`, `cvat-images-import`,
 `cvat-video-import` and `nuscenes-import` (see [Importers](#importers)).
 
@@ -41,7 +41,8 @@ Thirty-one plugins in [`pyproject.toml`](../../../../pyproject.toml)'s
 | `darknet` | [`darknet/`](../../../../src/visionset/formats/darknet/) - `obj.data`, `obj.names` and `train.txt`/`valid.txt` image lists; shares [`_yolo_writer.py`](../../../../src/visionset/formats/_yolo_writer.py) with `ultralytics` |
 | `yolo-obb` | [`yolo_obb/`](../../../../src/visionset/formats/yolo_obb/) - Ultralytics OBB rows, four normalized corners per rotated box, under the `ultralytics` layout and `data.yaml`; shares [`_yolo_writer.py`](../../../../src/visionset/formats/_yolo_writer.py) and the corner rules in [`_obb.py`](../../../../src/visionset/formats/_obb.py) |
 | `dota` | [`dota/`](../../../../src/visionset/formats/dota/) - `<fold>/images` and `<fold>/labelTxt`, four pixel corners, a category and `difficult` per rotated box; shares [`_obb.py`](../../../../src/visionset/formats/_obb.py) with `yolo-obb` |
-| `coco` | [`coco/`](../../../../src/visionset/formats/coco/) |
+| `coco` | [`coco/`](../../../../src/visionset/formats/coco/) - boxes, polygons and masks as compressed RLE |
+| `segmentation-png` | [`segmentation_png/`](../../../../src/visionset/formats/segmentation_png/) - one class-index PNG per picture and the `segmentation.json` descriptor its importer requires; masks whole, polygons rasterized |
 | `voc` | [`voc/`](../../../../src/visionset/formats/voc/) |
 | `classification` | [`classification/`](../../../../src/visionset/formats/classification/) - `labels.csv`, one row per (image, tag) |
 | `tusimple`, `curvelanes`, `bdd100k-lane`, `culane`, `openlane-2d` | [`lanes/`](../../../../src/visionset/formats/lanes/) - five plugins over one shared core |
@@ -64,7 +65,7 @@ and labels in the one `ScanFrame` the dataset declares; `ImportService` stores e
 of the same bytes under a point-cloud source declaring that frame. `registry.importers()` filters the scan by that
 port, and `registry.pick_importer(installed, name)` resolves a name with the same aliases,
 refusing with `ImportFormatNotFound`. `ImportService` takes the instance, as `ReleaseService.export`
-takes an exporter. The built-ins are fourteen, thirteen of them answering to their exporter's `format_name`:
+takes an exporter. The built-ins are fifteen, fourteen of them answering to their exporter's `format_name`:
 [`ultralytics-import`](../../../../src/visionset/formats/ultralytics/reader.py),
 [`yolov5-yaml-import`](../../../../src/visionset/formats/yolov5_yaml/reader.py),
 [`darknet-import`](../../../../src/visionset/formats/darknet/reader.py) and
@@ -74,6 +75,8 @@ takes an exporter. The built-ins are fourteen, thirteen of them answering to the
 [`dota-import`](../../../../src/visionset/formats/dota/reader.py), which with `yolo-obb-import`
 reads corners through [`_obb.py`](../../../../src/visionset/formats/_obb.py);
 [`coco-import`](../../../../src/visionset/formats/coco/reader.py),
+[`segmentation-png-import`](../../../../src/visionset/formats/segmentation_png/reader.py), which
+reads masks only as its descriptor states them,
 [`voc-import`](../../../../src/visionset/formats/voc/reader.py),
 [`classification-import`](../../../../src/visionset/formats/classification/reader.py) and
 [`openlane-2d-import`](../../../../src/visionset/formats/lanes/reader.py), which with
@@ -109,8 +112,12 @@ part:
   `degraded_detect_rows`, so the `ultralytics` dialect, which does not declare
   it, writes none.
 
-No current exporter writes a `mask`: none declares it supported or degraded, so every export
-reports each mask annotation as dropped through the same compatibility and loss report.
+Two exporters write a `mask`: `coco` and `segmentation-png` declare it supported, and
+`segmentation-png` declares `polygon` degraded because it rasterizes one into its class map. Every
+other export reports each mask annotation as dropped through the same compatibility and loss
+report. A class map holds one class per pixel, so `segmentation-png` writes several masks of one
+class as their union and gives a contested pixel the lower id; the export report cannot see that
+per picture, so the descriptor it writes lists those pictures under `visionset.overlaps`.
 
 The last two are disjoint, and a geometry in neither is not written at all. An optional
 `tracked_only` says the format writes a label only as an observation of a released track, as `mot`

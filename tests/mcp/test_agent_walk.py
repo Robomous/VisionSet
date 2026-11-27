@@ -191,16 +191,17 @@ def test_an_agent_can_take_a_folder_of_images_to_an_exported_release(
         "kitti",
         "mot",
         "openlane-2d",
+        "segmentation-png",
         "tusimple",
         "ultralytics",
         "voc",
         "yolo-obb",
         "yolov5-yaml",
     }
-    # Lossless: boxes and polygons are native, and everything COCO has no
+    # Lossless: boxes, polygons and masks are native, and everything COCO has no
     # field for rides in a `visionset` object.
     assert formats["coco"]["lossy"] is False
-    assert formats["coco"]["geometries"] == ["bbox", "polygon"]
+    assert formats["coco"]["geometries"] == ["bbox", "mask", "polygon"]
     # A box format says so, and names the polygon it reduces rather than
     # dropping it silently.
     assert formats["yolov5-yaml"]["geometries"] == ["bbox"]
