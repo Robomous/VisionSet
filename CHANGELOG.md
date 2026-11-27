@@ -24,6 +24,25 @@ nothing was being distributed. This is the first version that is.
   loss; a malformed row, an undescribed or doubly-described `LabelName`, two used MIDs sharing a `DisplayName`, an
   `ImageID` in two splits or matching two pictures, and an unreadable picture refuse it. Masks, relationships and
   image-level labels are not read (#1169).
+- **Class-directory image classification import and export as `classification-dir`.** A single-label dialect,
+  independent of the multi-label `classification` CSV, whose behaviour is unchanged. The exporter writes
+  `<fold>/<class>/<content-hash>.<ext>`: every tag-capable class is a directory under every fold written, an
+  empty one kept empty, and each picture is written once, its bytes as stored. A picture with several tags is
+  filed under the first by class name and the others are reported dropped; a picture with no tag is left out and
+  counted in the new `untagged_assets` field of the export compatibility report. The format is lossy, so neither
+  happens without consent. Class names that are not one portable directory name (not NFC-normalized, a control
+  character, `/`, `\`, a leading dot, surrounding whitespace) or that collide ignoring case refuse the export.
+  The importer reads `<split>/<class>/<picture>` with splits `train`, `val` (or `valid`, `validation`) and
+  `test`, or a flat `<class>/<picture>` source; the split is not imported. Every class directory is a class,
+  sorted by name, an empty one included. Nested directories, split directories beside others, two directories
+  naming one split, non-NFC or case-colliding class names, the same picture under two classes and links to a
+  directory or out of the source refuse the import; stray pictures and non-pictures in class directories are
+  `image` losses; dot-entries are skipped, a skipped picture or split-level directory being an `image` loss
+  too (#1165).
+- **`single_tag` exporter declaration and `untagged_assets` on the export compatibility report.** A format that
+  writes one classification tag per asset declares `single_tag`; the report then counts each tag beside the one
+  kept as dropped, and each asset with no tag in `untagged_assets`, which also makes the report incompatible and is named in the refusal. The
+  field is carried by the REST, CLI and MCP surfaces and the report written into every export (#1165).
 - **Apple Create ML object-detection JSON import and export as `createml`.** Only the object-detection annotation
   schema: an array of `{"image", "annotations": [{"label", "coordinates": {"x", "y", "width", "height"}}]}` with
   `x` and `y` the box's centre in pixels. The exporter writes the pictures and one `annotations.json` per folder, under

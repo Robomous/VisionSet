@@ -105,6 +105,7 @@ from visionset.kernel.domain import (
     require_scan_frame,
     sha256_hex,
     sha256_hex_of_stream,
+    single_tag,
     source_of_content_hash,
     transform_manifest,
     validate_schema_annotation,
@@ -1586,6 +1587,12 @@ def _compatibility(
     observation of a track. A label it would otherwise write that no released
     track observes leaves its row for a ``dropped`` row of its own, unless the
     crop already drops it.
+
+    **A single-tag format keeps one tag per asset.** An exporter may declare
+    ``single_tag``, the way a class-directory tree files each picture under one
+    class. The tags :func:`single_tag` does not keep leave their row for a
+    ``dropped`` row of their own, and an asset with no tag to keep is counted
+    in ``untagged_assets``: it is not written at all.
     """
     writes = supported_modalities_of(exporter)
     unopenable = [asset for asset in manifest.assets if asset.modality not in writes]
@@ -1617,6 +1624,8 @@ def _compatibility(
 
     untracked = _untracked(manifest, exporter)
     untracked_rows: dict[tuple[str, GeometryType], tuple[int, set[UUID]]] = {}
+    surplus, untagged_assets = _single_tagged(manifest, exporter, target)
+    surplus_rows: dict[tuple[str, GeometryType], tuple[int, set[UUID]]] = {}
     solitary: frozenset[GeometryType] = getattr(exporter, "solitary_geometries", frozenset())
     crowded = any(
         GeometryType(annotation.geometry.type) not in solitary
@@ -1624,6 +1633,7 @@ def _compatibility(
         is not ClassExportStatus.DROPPED
         and _crop_status(cropping, annotation.id) is not ClassExportStatus.DROPPED
         and annotation.id not in untracked
+        and annotation.id not in surplus
         for asset in manifest.assets
         for annotation in asset.annotations
     )
@@ -1652,7 +1662,13 @@ def _compatibility(
             # undeclared label here would make the report silently wrong.
             status = status_of(geometry)
             crop = _crop_status(cropping, annotation.id)
-            if (
+            if annotation.id in surplus and status is not ClassExportStatus.DROPPED:
+                status = ClassExportStatus.DROPPED
+                key = (annotation.label_class, geometry)
+                count, assets = surplus_rows.get(key, (0, set()))
+                surplus_rows[key] = (count + 1, assets | {asset.asset_id})
+                per_shape.setdefault(key, (0, set()))
+            elif (
                 annotation.id in untracked
                 and status is not ClassExportStatus.DROPPED
                 and crop is not ClassExportStatus.DROPPED
@@ -1725,6 +1741,22 @@ def _compatibility(
                     ),
                 ),
             )
+        surplus_count, surplus_assets = surplus_rows.get((name, geometry), (0, set()))
+        if surplus_count:
+            crop_rows.insert(
+                0,
+                ClassCompatibility(
+                    label_class=name,
+                    geometry=geometry,
+                    status=ClassExportStatus.DROPPED,
+                    annotations=surplus_count,
+                    assets=len(surplus_assets),
+                    reason=(
+                        f"{exporter.format_name} files a picture under one class, the first "
+                        f"of its tags by name, and drops these {surplus_count} beside it"
+                    ),
+                ),
+            )
         if count or not crop_rows:
             classes.append(
                 ClassCompatibility(
@@ -1748,7 +1780,9 @@ def _compatibility(
         # Degraded counts against `compatible` exactly as dropped does: a polygon
         # arriving as a box has lost its shape, and the caller is asked before
         # that happens rather than told after.
-        compatible=dropped == 0 and degraded == 0 and not dropped_modalities,
+        compatible=(
+            dropped == 0 and degraded == 0 and not dropped_modalities and not untagged_assets
+        ),
         format_is_lossy=exporter.lossy,
         excluded_annotations=dropped,
         excluded_assets=len(touched[ClassExportStatus.DROPPED]),
@@ -1756,6 +1790,7 @@ def _compatibility(
         degraded_assets=len(touched[ClassExportStatus.DEGRADED]),
         classes=tuple(classes),
         dropped_modalities=dropped_modalities,
+        untagged_assets=untagged_assets,
     )
 
 
@@ -1779,6 +1814,23 @@ def _untracked(manifest: Manifest, exporter: Exporter) -> frozenset[UUID]:
         for annotation in asset.annotations
         if annotation.id not in observed
     )
+
+
+def _single_tagged(
+    manifest: Manifest, exporter: Exporter, target: ExportTarget | None
+) -> tuple[frozenset[UUID], int]:
+    """The tags a single-tag format drops beside the one it keeps, and the assets it leaves out."""
+    if not getattr(exporter, "single_tag", False):
+        return frozenset(), 0
+    if _status_of(GeometryType.CLASSIFICATION_TAG, exporter, target) is ClassExportStatus.DROPPED:
+        return frozenset(), len(manifest.assets)
+    surplus: set[UUID] = set()
+    untagged = 0
+    for asset in manifest.assets:
+        kept, dropped = single_tag(asset.annotations)
+        untagged += kept is None
+        surplus.update(one.id for one in dropped)
+    return frozenset(surplus), untagged
 
 
 def _crop_status(cropping: _Cropping | None, annotation_id: UUID) -> ClassExportStatus | None:
@@ -1915,6 +1967,8 @@ def _loss_reason(compatibility: ExportCompatibility) -> str:
         parts.append(f"{compatibility.excluded_annotations} annotation(s) would be left out")
     if compatibility.degraded_annotations:
         parts.append(f"{compatibility.degraded_annotations} would be reduced")
+    if compatibility.untagged_assets:
+        parts.append(f"{compatibility.untagged_assets} asset(s) carry no tag and would be left out")
     if not parts:
         parts.append("the format is lossy by declaration")
     return "; ".join(parts)

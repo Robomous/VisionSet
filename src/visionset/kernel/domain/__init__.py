@@ -366,6 +366,7 @@ from visionset.kernel.domain.release import (
     manifest_within,
     sha256_hex,
     sha256_hex_of_stream,
+    single_tag,
     tracks_within,
 )
 from visionset.kernel.domain.rle import (
@@ -887,6 +888,7 @@ __all__ = [
     "scaled_dimension",
     "sha256_hex",
     "sha256_hex_of_stream",
+    "single_tag",
     "tracks_within",
     "manifest_within",
 ]

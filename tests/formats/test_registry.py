@@ -142,6 +142,7 @@ def test_every_installed_exporter_stays_discovered() -> None:
         "coco-panoptic",
         "voc",
         "classification",
+        "classification-dir",
         "tusimple",
         "curvelanes",
         "bdd100k-lane",

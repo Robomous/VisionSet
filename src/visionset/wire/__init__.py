@@ -1105,6 +1105,7 @@ def export_compatibility(value: ExportCompatibility) -> shapes.ExportCompatibili
             }
             for one in value.dropped_modalities
         ],
+        "untagged_assets": value.untagged_assets,
     }
 
 

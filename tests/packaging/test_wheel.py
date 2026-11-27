@@ -352,6 +352,7 @@ def test_the_installed_command_finds_every_exporter(installed: Path) -> None:
     assert names == [
         "bdd100k-lane",
         "classification",
+        "classification-dir",
         "coco",
         "coco-panoptic",
         "createml",

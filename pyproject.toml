@@ -183,6 +183,9 @@ labelme-import = "visionset.formats.labelme:LabelmeImporter"
 # COCO panoptic: RGB segment PNGs and their segments_info, independent of coco instances.
 coco-panoptic = "visionset.formats.coco_panoptic:CocoPanopticExporter"
 coco-panoptic-import = "visionset.formats.coco_panoptic:CocoPanopticImporter"
+# Class directories: <split>/<class>/<image>, one label per picture, independent of classification.
+classification-dir = "visionset.formats.classification_dir:ClassificationDirExporter"
+classification-dir-import = "visionset.formats.classification_dir:ClassificationDirImporter"
 # Create ML object detection: one JSON array per folder, centre-based boxes in pixels.
 createml = "visionset.formats.createml:CreatemlExporter"
 createml-import = "visionset.formats.createml:CreatemlImporter"

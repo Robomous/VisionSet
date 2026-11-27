@@ -3133,6 +3133,8 @@ class ExportCompatibilityOut(BaseModel):
     # Assets absent whole because the format cannot open their modality; their
     # labels are in `excluded_annotations` too, and in no row of `classes`.
     dropped_modalities: list[ModalityCompatibilityOut]
+    # Assets a single-tag format leaves out whole because they carry no tag.
+    untagged_assets: int
 
     @classmethod
     def of(cls, compatibility: ExportCompatibility) -> Self:
@@ -3150,6 +3152,7 @@ class ExportCompatibilityOut(BaseModel):
             dropped_modalities=[
                 ModalityCompatibilityOut.of(one) for one in compatibility.dropped_modalities
             ],
+            untagged_assets=compatibility.untagged_assets,
         )
 
 

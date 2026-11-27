@@ -44,6 +44,36 @@
         ]
       }
     },
+    "classification-dir": {
+      "task": "image classification",
+      "dialects": [
+        "class directories, <split>/<class>/<image> with splits train, val (or valid, validation) and test, or a flat <class>/<image>; one label per picture"
+      ],
+      "export": {
+        "lossy": true,
+        "geometries": ["classification_tag"],
+        "degraded_geometries": [],
+        "modalities": ["image"],
+        "evidence": [
+          {"kind": "fixture", "test": "tests/formats/test_classification_dir.py::test_each_picture_is_written_once_under_the_first_of_its_tags_by_name", "gate": "python"},
+          {"kind": "fixture", "test": "tests/formats/test_classification_dir.py::test_the_report_drops_the_extra_tag_and_counts_the_untagged_assets", "gate": "python"},
+          {"kind": "fixture", "test": "tests/formats/test_classification_dir.py::test_an_image_folder_loader_reads_every_fold_with_one_class_numbering", "gate": "python"},
+          {"kind": "round_trip", "test": "tests/formats/test_classification_dir.py::test_export_import_export_keeps_classes_bytes_and_empty_classes", "gate": "python"},
+          {"kind": "round_trip", "test": "tests/formats/test_classification_dir.py::test_the_split_survives_the_export_and_the_import_reads_every_fold", "gate": "python"}
+        ],
+        "notes": "One tag per picture: extra tags are reported dropped (the first by class name is kept) and untagged pictures are left out, both behind consent. The loader check restates ImageFolder's rules; torchvision does not run."
+      },
+      "import": {
+        "geometries": ["classification_tag"],
+        "modalities": ["image"],
+        "evidence": [
+          {"kind": "fixture", "test": "tests/formats/test_classification_dir.py::test_split_directories_give_each_picture_its_class_and_keep_an_empty_class", "gate": "python"},
+          {"kind": "fixture", "test": "tests/formats/test_classification_dir.py::test_an_ambiguous_or_malformed_tree_is_refused", "gate": "python"},
+          {"kind": "round_trip", "test": "tests/formats/test_classification_dir.py::test_export_import_export_keeps_classes_bytes_and_empty_classes", "gate": "python"}
+        ],
+        "notes": "The split is not imported. Nested directories, case-insensitive class collisions, non-NFC names and one picture under two classes refuse the import; non-pictures in class directories are image losses."
+      }
+    },
     "coco": {
       "task": "object detection, instance segmentation",
       "dialects": [

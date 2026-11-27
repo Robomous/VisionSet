@@ -239,6 +239,14 @@ def test_the_installed_exporters_declare_what_they_can_carry() -> None:
                 "targets": ["classification"],
             },
             {
+                "name": "classification-dir",
+                "lossy": True,
+                "geometries": ["classification_tag"],
+                "degraded_geometries": [],
+                "modalities": ["image"],
+                "targets": ["classification-dir"],
+            },
+            {
                 # Lossless: boxes and polygons are native, and everything
                 # COCO has no field for rides in a `visionset` object.
                 "name": "coco",
@@ -429,7 +437,7 @@ def test_the_installed_exporters_declare_what_they_can_carry() -> None:
                 "targets": ["yolov7"],
             },
         ],
-        "total": 23,
+        "total": 24,
     }
 
 

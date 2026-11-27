@@ -849,6 +849,7 @@ describe("export, and the third gate word", () => {
                   degraded_annotations: 0,
                   degraded_assets: 0,
                   dropped_modalities: [],
+                  untagged_assets: 0,
                   classes: [
                     {
                       label_class: "car",

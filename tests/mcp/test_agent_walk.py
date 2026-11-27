@@ -180,6 +180,7 @@ def test_an_agent_can_take_a_folder_of_images_to_an_exported_release(
     assert set(formats) == {
         "bdd100k-lane",
         "classification",
+        "classification-dir",
         "coco",
         "coco-panoptic",
         "createml",

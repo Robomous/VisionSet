@@ -3695,6 +3695,10 @@
               }
             ],
             "title": "Target"
+          },
+          "untagged_assets": {
+            "title": "Untagged Assets",
+            "type": "integer"
           }
         },
         "required": [
@@ -3707,7 +3711,8 @@
           "degraded_annotations",
           "degraded_assets",
           "classes",
-          "dropped_modalities"
+          "dropped_modalities",
+          "untagged_assets"
         ],
         "title": "ExportCompatibilityOut",
         "type": "object"

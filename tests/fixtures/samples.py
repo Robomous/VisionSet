@@ -424,6 +424,7 @@ EXPORT_COMPATIBILITY = ExportCompatibility(
             reason="dummy cannot place a classification_tag and drops it",
         ),
     ),
+    untagged_assets=2,
 )
 
 EXPORT_RESULT = ExportResult(

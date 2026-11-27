@@ -1087,6 +1087,10 @@ class ExportCompatibility(BaseModel):
     #: are counted here and in ``excluded_annotations``, and not in ``classes``,
     #: which judge only what reaches the format.
     dropped_modalities: tuple[ModalityCompatibility, ...] = ()
+    #: Assets a single-tag format leaves out whole because they carry no tag it
+    #: writes. Counted here for being absent; one also carrying a dropped label
+    #: is counted in ``excluded_assets`` and ``classes`` for that label as usual.
+    untagged_assets: int = Field(default=0, ge=0)
 
     @field_validator("classes")
     @classmethod
@@ -1115,3 +1119,21 @@ class ExportCompatibility(BaseModel):
             for one in self.classes
             if one.status is ClassExportStatus.DEGRADED and one.annotations > 0
         )
+
+
+def single_tag(
+    annotations: Sequence[ManifestAnnotation],
+) -> tuple[ManifestAnnotation | None, tuple[ManifestAnnotation, ...]]:
+    """The tag a single-tag format keeps on one asset, and the tags it drops.
+
+    The first by class name in code-point order, the order a class-directory
+    loader sorts its directories in, so the choice depends on the tags alone.
+    The kernel refuses a second tag of one class, so names do not tie.
+    """
+    tags = sorted(
+        (one for one in annotations if one.geometry.type == GeometryType.CLASSIFICATION_TAG),
+        key=lambda one: one.label_class,
+    )
+    if not tags:
+        return None, ()
+    return tags[0], tuple(tags[1:])
