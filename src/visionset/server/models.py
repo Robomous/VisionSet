@@ -1561,8 +1561,8 @@ class PreLabelRunOut(BaseModel):
     counted in the unit its own work is over.
 
     **The outcome, once the job has one.** `stopped_early`, `assets_labeled`,
-    `regions_discarded`, `regions_out_of_bounds` and `annotations_replaced` are
-    the handler's own account of what a settled run did.
+    `regions_discarded`, `regions_out_of_bounds`, `annotations_replaced` and
+    `assets_protected` are the handler's own account of what a settled run did.
     They are `null` while the job is still `queued` or `running`, and `null`
     where it ended `failed` before producing one — but a `cancelled` run still
     carries them: stopping partway is a coherent outcome for a handler whose
@@ -1602,6 +1602,10 @@ class PreLabelRunOut(BaseModel):
     #: Model labels a replacing run superseded. `null` until the job settles
     #: with a result.
     annotations_replaced: int | None
+    #: `pre_labeled` frames a replacing run passed over because a completed
+    #: batch confirmed their labels or they are in the dataset. `null` until the
+    #: job settles with a result.
+    assets_protected: int | None
 
     @classmethod
     def of(cls, run: PreLabelRun) -> Self:
@@ -1618,6 +1622,7 @@ class PreLabelRunOut(BaseModel):
             regions_discarded=run.regions_discarded,
             regions_out_of_bounds=run.regions_out_of_bounds,
             annotations_replaced=run.annotations_replaced,
+            assets_protected=run.assets_protected,
         )
 
 

@@ -668,6 +668,32 @@ def test_a_model_label_a_person_edited_is_observed_and_survives_a_replacing_run(
     assert world.tracks.get(track.id) == observed
 
 
+def test_a_label_confirmed_in_a_completed_batch_survives_a_replacing_run_in_the_next(
+    world: World,
+) -> None:
+    """#1211: the next batch opens the frame ``pre_labeled``, but its labels were judged."""
+    clip = world.clip()
+    (job,) = world.working(clip.batch_id)
+    track = world.tracks.create(clip.source_id, "car").track
+    asset_id = clip.at(0).asset_id
+    model_box = _pre_labeled(world, job, asset_id)
+    world.jobs.mark(job.id, asset_id, AssetProgress.ANNOTATED)
+    observed = world.tracks.observe(job.id, track.id, clip.at(0).id, model_box.id)
+    for occurrence in clip.occurrences[1:]:
+        world.jobs.mark(job.id, occurrence.asset_id, AssetProgress.SKIPPED)
+    world.jobs.complete(job.id)
+    world.batches.complete(clip.batch_id)
+
+    second = world.batches.create(world.project.id, "second", [asset_id])
+    (again,) = world.working(second.id)
+    assert world.progress(again, asset_id) is AssetProgress.PRE_LABELED
+
+    with pytest.raises(AssetNotWritable, match="confirmed in a completed batch"):
+        world.annotations.enter_unreviewed(again.id, [], replacing=[asset_id])
+    assert [a.id for a in world.annotations.for_asset(again.id, asset_id)] == [model_box.id]
+    assert world.tracks.get(track.id) == observed
+
+
 class _AcceptedAfterFirstRead(JobService):
     """Accepts ``asset_id`` from another workspace right after the call first reads the job.
 
