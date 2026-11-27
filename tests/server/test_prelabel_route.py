@@ -418,6 +418,7 @@ def test_a_settled_run_is_readable_with_no_job_id_of_its_own(
     assert run["state"] == "failed"
     assert run["error"]
     assert run["annotations_replaced"] is None
+    assert run["assets_protected"] is None
 
 
 def _faking_the_run(monkeypatch: pytest.MonkeyPatch, captured: dict[str, Any]) -> None:
@@ -432,6 +433,7 @@ def _faking_the_run(monkeypatch: pytest.MonkeyPatch, captured: dict[str, Any]) -
             annotations_written=2,
             model_ref="acme/detector@abc123",
             annotations_replaced=2,
+            assets_protected=1,
         )
 
     monkeypatch.setattr(prelabel_handler, "pre_label", fake_pre_label)
@@ -463,6 +465,7 @@ def test_the_replace_flag_defaults_off_and_reaches_the_run_when_set(
     assert run["job_id"] == flagged_row
     assert run["state"] == "succeeded"
     assert run["annotations_replaced"] == 2
+    assert run["assets_protected"] == 1
 
 
 def test_an_unknown_request_field_is_still_refused(

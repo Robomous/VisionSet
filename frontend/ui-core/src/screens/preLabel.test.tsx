@@ -185,6 +185,7 @@ function preLabelRunOf(overrides: Record<string, unknown> = {}): Record<string, 
     regions_discarded: 0,
     regions_out_of_bounds: 0,
     annotations_replaced: 0,
+    assets_protected: 0,
     ...overrides,
   };
 }
@@ -632,6 +633,32 @@ it("says how many earlier model labels a finished run replaced", async () => {
   );
 });
 
+it("says how many pre-labeled frames a finished run left alone as confirmed", async () => {
+  on("GET", /\/background-jobs\//, {
+    status: 200,
+    body: backgroundJobOf({
+      state: "succeeded",
+      result: {
+        assets_labeled: 0,
+        annotations_written: 0,
+        regions_discarded: 0,
+        regions_out_of_bounds: 0,
+        annotations_replaced: 0,
+        assets_protected: 3,
+        assets_skipped: 0,
+        stopped_early: false,
+      },
+    }),
+  });
+  renderDialog();
+  await userEvent.click(await screen.findByRole("button", { name: /pre-label/i }));
+  await userEvent.click(await screen.findByRole("button", { name: /start/i }));
+
+  expect((await screen.findByTestId("prelabel-protected")).textContent).toContain(
+    "Left 3 pre-labeled frames alone",
+  );
+});
+
 /**
  * The second invalidation, driven across a real poll transition.
  *
@@ -870,6 +897,7 @@ it("on reopen after a failed run, shows the handler's error and offers Try again
         regions_discarded: null,
         regions_out_of_bounds: null,
         annotations_replaced: null,
+        assets_protected: null,
       }),
     },
     { counts: { unannotated: 43, total: 48 } },
@@ -991,6 +1019,7 @@ it("will not let the tick change while a run is under way", async () => {
         regions_discarded: null,
         regions_out_of_bounds: null,
         annotations_replaced: null,
+        assets_protected: null,
       }),
     },
     { counts: { unannotated: 43, pre_labeled: 5, total: 48 } },

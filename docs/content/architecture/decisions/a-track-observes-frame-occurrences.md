@@ -81,7 +81,12 @@ backfill: none existed before the amendment.
 - **No new progress state.** The six per-asset states and the one-way batch and job lifecycle are
   unchanged. Track status is derived from the observed assets' progress and never stored.
 - **Settling never propagates.** Accepting, skipping or promoting one asset says nothing about
-  another asset in the same track. `pre_labeled` model output carries no track.
+  another asset in the same track. `pre_labeled` model output carries no track. A frame a
+  completed batch settled `annotated` or `accepted` can reopen `pre_labeled` in a later batch with
+  its observations intact, because seeding reads provenance alone; a pre-label run never replaces
+  labels a completed batch confirmed, so those observations survive, and observing anew there
+  waits for the frame to be confirmed again. A frame confirmed only in a batch that is still open
+  has no such protection.
 - **Writes follow the annotation.** An observation is edited through the job and batch that may
   write its annotation. A structural operation (merge, split, class change, relink) is refused
   unless every observation it touches sits on an asset the actor may write, so a correction batch

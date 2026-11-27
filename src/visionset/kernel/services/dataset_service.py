@@ -526,6 +526,30 @@ def member_asset_ids_of(uow: UnitOfWork, dataset: Dataset) -> frozenset[UUID]:
     return frozenset(member.asset_id for member in uow.dataset_members.list(dataset.id))
 
 
+def confirmed_asset_ids_of(uow: UnitOfWork, asset_ids: Collection[UUID]) -> frozenset[UUID]:
+    """Those of ``asset_ids`` a completed batch settled as promotable, promoted or not.
+
+    The trunk's membership answers "were these labels judged" only after
+    somebody promotes; completion is what made the judgment final, so this is
+    what promotion *would* admit from every completed batch (#1211). Reads only
+    the batches holding these assets, through ``batches_holding``.
+    """
+    wanted = frozenset(asset_ids)
+    holding = {batch_id for asset_id in wanted for batch_id in uow.batches_holding(asset_id)}
+    confirmed: set[UUID] = set()
+    for batch_id in holding:
+        batch = uow.batches.get(batch_id)
+        if batch is None or batch.state not in PROMOTABLE_STATES:
+            continue
+        for job in jobs_of(uow, batch):
+            confirmed.update(
+                asset_id
+                for asset_id in wanted & job.progress.keys()
+                if job.progress[asset_id] in PROMOTABLE_PROGRESS
+            )
+    return frozenset(confirmed)
+
+
 def _promotable(batch: Batch, jobs: Iterable[AnnotationJob]) -> list[UUID]:
     """The batch's assets that earned a place in the trunk, in the batch's order.
 

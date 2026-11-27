@@ -438,9 +438,14 @@ def batch_pre_label(
             if outcome.annotations_replaced
             else ""
         )
+        protected = (
+            f", passed over {outcome.assets_protected} frame(s) confirmed in a completed batch"
+            if outcome.assets_protected
+            else ""
+        )
         note(
             f"Pre-labeled {outcome.assets_labeled} asset(s), "
-            f"wrote {outcome.annotations_written} annotation(s){replaced}."
+            f"wrote {outcome.annotations_written} annotation(s){replaced}{protected}."
         )
     typer.echo(str(written))
 

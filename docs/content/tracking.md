@@ -175,7 +175,7 @@ Pre-labeling adds what it was asked for and what it did:
 | Parameter | `replace_model_labels` | `True` or `False`. |
 | Parameter | `requested_geometries` | When the launch narrowed the shapes, as a sorted, comma-separated list. Absent means every shape the model produces. |
 | Parameter | `model_id`, `model_revision` | When the run succeeded and the model that answered is named as `<id>@<40-character commit>`. A model named any other way, including by a path or an address, is left out. The provider is not recorded. |
-| Metric | `annotations_written_count`, `annotations_replaced_count`, `assets_skipped_count`, `regions_discarded_count`, `regions_out_of_bounds_count` | When the run returns. |
+| Metric | `annotations_written_count`, `annotations_replaced_count`, `assets_protected_count`, `assets_skipped_count`, `regions_discarded_count`, `regions_out_of_bounds_count` | When the run returns. |
 
 These counts are what the job did, not how good the model is: none of them is an accuracy figure.
 

@@ -126,6 +126,7 @@ class PreLabelOutcomeReport(TypedDict):
     assets_labeled: int
     annotations_written: int
     annotations_replaced: int
+    assets_protected: int
     model_ref: str | None
     assets_skipped: int
     regions_discarded: int
@@ -425,6 +426,7 @@ def _pre_label_outcome(outcome: PreLabelOutcome, plan: PreLabelPlan) -> PreLabel
         "assets_labeled": outcome.assets_labeled,
         "annotations_written": outcome.annotations_written,
         "annotations_replaced": outcome.annotations_replaced,
+        "assets_protected": outcome.assets_protected,
         "model_ref": outcome.model_ref,
         "assets_skipped": outcome.assets_skipped,
         "regions_discarded": outcome.regions_discarded,
@@ -455,9 +457,9 @@ def pre_label_batch(
                 "Also rewrite the model labels on frames still `pre_labeled` — labels a "
                 "model wrote and nobody has edited, confirmed or skipped — superseding them "
                 "with this run's answer. Frames anyone touched in this batch, and frames "
-                "already in the dataset, are never "
-                "affected. This "
-                "cannot be undone; read `get_batch`'s `progress.pre_labeled` first."
+                "a completed batch confirmed or already in the dataset, are never affected "
+                "(`assets_protected` counts them). This cannot be undone; read "
+                "`get_batch`'s `progress.pre_labeled` first."
             )
         ),
     ] = False,

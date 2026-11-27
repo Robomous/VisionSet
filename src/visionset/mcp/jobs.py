@@ -135,9 +135,9 @@ def pre_label_job(
                 "Also rewrite the model labels on frames still `pre_labeled` — labels a "
                 "model wrote and nobody has edited, confirmed or skipped — superseding them "
                 "with this run's answer. Frames anyone touched in this job, and frames "
-                "already in the dataset, are never "
-                "affected. This cannot be undone; read `get_job`'s `progress.pre_labeled` "
-                "first."
+                "a completed batch confirmed or already in the dataset, are never affected "
+                "(`assets_protected` counts them). This cannot be undone; read "
+                "`get_job`'s `progress.pre_labeled` first."
             )
         ),
     ] = False,
