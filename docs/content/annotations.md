@@ -469,8 +469,8 @@ finished, because a label outlives the work that produced it.
 
 ## A track observes annotations; an annotation knows nothing of tracks
 
-A track follows one object through one sequence source - a video, or an image sequence an
-[import](import.md) wrote - see
+A track follows one object through one sequence source - a video, or an image sequence or
+point-cloud sequence an [import](import.md) wrote - see
 [the decision](architecture/decisions/a-track-observes-frame-occurrences.md). It is
 `Track(id, source_id, label_class, external_id?)` and a set of observations, each
 `(track_id, occurrence_id, annotation_id)`: a [frame occurrence](ingest.md) of the track's source and
@@ -487,10 +487,15 @@ everything above - schema validation, provenance, progress - is untouched by tra
   /projects/{id}/assets/{id}/occurrences` (`track occurrences --asset`, `list_asset_occurrences`)
   lists an asset's occurrences in every source, by source registration then position.
 - **One source, one class.** Observing another source's occurrence, or merging tracks of two
-  sources, is `TRACK_SOURCE_MISMATCH`; a track is created only on a video or image-sequence
-  source (`SOURCE_NOT_SEQUENCE`). An observed annotation carries the track's class
-  (`TRACK_CLASS_MISMATCH`) and sits on the occurrence's asset (`ANNOTATION_NOT_AT_OCCURRENCE`).
-  A track follows 2D geometry; a 3D label is `INVALID_ANNOTATION`. `external_id` is an imported
+  sources, is `TRACK_SOURCE_MISMATCH`; a track is created only on a video, image-sequence or
+  point-cloud-sequence source (`SOURCE_NOT_SEQUENCE`). An observed annotation carries the track's
+  class (`TRACK_CLASS_MISMATCH`) and sits on the occurrence's asset (`ANNOTATION_NOT_AT_OCCURRENCE`).
+- **One geometry type.** A track follows a 2D label on an image or a `cuboid_3d` on a scan; a
+  camera-calibrated 3D label on an image, or a `polyline_3d` on a scan, is `INVALID_ANNOTATION`.
+  Every observation of one track has the same geometry type, so observing, editing or merging
+  into a mix of boxes and polygons, or of anything else, is `TRACK_GEOMETRY_MISMATCH`. A cuboid is
+  read in its scan's own frame, the one its point-cloud directory source declares, and no
+  observation carries a pose or calibration of its own. `external_id` is an imported
   identity, unique per source (`TRACK_EXTERNAL_ID_TAKEN`), and neither it nor the class may be
   blank (`INVALID_NAME`).
 - **A model's unjudged output carries no track.** Observing an annotation on a `pre_labeled` asset
