@@ -150,7 +150,7 @@ def test_a_sample_with_no_lidar_keyframe_is_an_absent_position(
 
 
 def test_a_broken_chain_is_reported_and_the_scene_ordered_by_time(tmp_path: Path) -> None:
-    root = build(tmp_path / "src", _scene("k0", "k1", "k2"))
+    root = build(tmp_path / "src", _scene("zulu", "alpha", "mike"))
     root.tables["sample"][1]["next"] = "sample-nowhere"
     src = root.write(tmp_path / "src")
 
@@ -158,9 +158,9 @@ def test_a_broken_chain_is_reported_and_the_scene_ordered_by_time(tmp_path: Path
 
     ((sequence),) = dataset.sequences
     assert [(str(f.path), f.position) for f in sequence.frames] == [
-        ("samples/LIDAR_TOP/k0.pcd.bin", 0),
-        ("samples/LIDAR_TOP/k1.pcd.bin", 1),
-        ("samples/LIDAR_TOP/k2.pcd.bin", 2),
+        ("samples/LIDAR_TOP/zulu.pcd.bin", 0),
+        ("samples/LIDAR_TOP/alpha.pcd.bin", 1),
+        ("samples/LIDAR_TOP/mike.pcd.bin", 2),
     ]
     (broken,) = [loss for loss in dataset.losses if loss.subject == "scene-0061"]
     assert "ordered by timestamp instead" in broken.reason
@@ -193,6 +193,38 @@ def test_untimed_samples_leave_the_order_and_drop_the_timing(
 
     (sequence,) = _sequences(workspace, project.id)
     assert _tracks(workspace, sequence.id)["inst-car"] == [(0, None), (1, None)]
+    untimed = NuScenesImporter().read(src).losses
+    assert any(loss.subject == "scene-0061" and "carry no time" in loss.reason for loss in untimed)
+
+
+def test_a_scene_name_no_source_may_carry_keeps_its_boxes_untracked(tmp_path: Path) -> None:
+    root = build(tmp_path / "src", _scene("k0", "k1"))
+    root.tables["scene"][0]["name"] = "scene\x07bell"
+    src = root.write(tmp_path / "src")
+
+    dataset = NuScenesImporter().read(src)
+
+    assert dataset.sequences == ()
+    assert all(label.track is None for scan in dataset.scans for label in scan.labels)
+    assert any("cannot name a source" in loss.reason for loss in dataset.losses)
+
+
+def test_of_two_keyframes_of_one_sample_the_one_on_disk_is_sequenced(
+    workspace: WorkspaceService, tmp_path: Path
+) -> None:
+    root = build(tmp_path / "src", _scene("k0", "k1"))
+    extra = dict(root.tables["sample_data"][0], token="sd-extra")
+    extra["filename"] = "samples/LIDAR_TOP/a-missing.pcd.bin"
+    root.tables["sample_data"].append(extra)
+    src = root.write(tmp_path / "src")
+
+    dataset = NuScenesImporter().read(src)
+
+    ((sequence),) = dataset.sequences
+    assert [str(frame.path) for frame in sequence.frames] == [
+        "samples/LIDAR_TOP/k0.pcd.bin",
+        "samples/LIDAR_TOP/k1.pcd.bin",
+    ]
 
 
 def test_one_instance_token_in_two_scenes_or_two_imports_is_two_tracks(

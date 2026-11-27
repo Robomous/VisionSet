@@ -121,8 +121,11 @@ class NuScenesImporter:
             scenes.add(scene)
             scene_tokens.add(_text(tables["sample"][sample], "scene_token", "sample"))
             path = inside(_text(row, "filename", "sample_data"), "sample_data.json")
-            keyframe_of.setdefault(sample, path)
             file = src / path
+            if sample not in keyframe_of or (
+                file.is_file() and not (src / keyframe_of[sample]).is_file()
+            ):
+                keyframe_of[sample] = path
             if file.is_file():
                 _require_whole_points(src, contained(src, root, file))
             transform = _transform(tables, lidar, row)
@@ -466,6 +469,15 @@ def _sequences(
                 )
             ] += 1
         times = _times(tables, order)
+        if times is None:
+            losses[
+                (
+                    ImportLossKind.ATTRIBUTE,
+                    name,
+                    "the scene's samples are not all timed in order, so its keyframes keep their "
+                    "order and carry no time",
+                )
+            ] += 1
         frames = tuple(
             ImportedFrame(
                 path=keyframe_of[sample],
@@ -475,8 +487,19 @@ def _sequences(
             for position, sample in enumerate(order)
             if sample in keyframe_of
         )
-        if frames:
+        if not frames:
+            continue
+        try:
             sequences.append(ImportedSequence(name=name, frames=frames))
+        except ValidationError:
+            losses[
+                (
+                    ImportLossKind.ATTRIBUTE,
+                    name[:40],
+                    "the scene's name cannot name a source, so its instance tokens are not "
+                    "carried as tracks",
+                )
+            ] += 1
     return sequences
 
 
