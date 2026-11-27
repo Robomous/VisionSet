@@ -64,7 +64,8 @@ from visionset.kernel.domain import (
     ScanFrame,
     ScanLayout,
 )
-from visionset.kernel.errors import ImportSourceUnreadable
+from visionset.kernel.domain.names import normalize_name
+from visionset.kernel.errors import ImportSourceUnreadable, InvalidName
 
 CHANNEL: Final = "LIDAR_TOP"
 
@@ -490,8 +491,8 @@ def _sequences(
         if not frames:
             continue
         try:
-            sequences.append(ImportedSequence(name=name, frames=frames))
-        except ValidationError:
+            normalize_name(name, what="source name")
+        except InvalidName:
             losses[
                 (
                     ImportLossKind.ATTRIBUTE,
@@ -500,6 +501,11 @@ def _sequences(
                     "carried as tracks",
                 )
             ] += 1
+            continue
+        try:
+            sequences.append(ImportedSequence(name=name, frames=frames))
+        except ValidationError as exc:
+            raise ImportSourceUnreadable(f"scene {name!r} is inconsistent: {exc}") from None
     return sequences
 
 

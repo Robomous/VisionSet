@@ -30,7 +30,9 @@ from visionset.kernel.domain import (
     SourceKind,
     TrackDetail,
 )
+from visionset.kernel.errors import ImportSourceUnreadable
 from visionset.kernel.services import (
+    BatchService,
     ImportService,
     ProjectService,
     SourceService,
@@ -302,3 +304,72 @@ def test_an_image_track_format_drops_the_scans_and_says_so(
     (dropped,) = report.dropped_modalities
     assert (dropped.modality, dropped.assets, dropped.annotations) == ("point_cloud", 2, 3)
     assert result.file_count == 0
+
+
+def test_a_chain_that_disagrees_with_the_timestamps_keeps_its_order_and_no_time(
+    tmp_path: Path,
+) -> None:
+    root = build(tmp_path / "src", _scene("k0", "k1", "k2"))
+    root.tables["sample"][1]["timestamp"], root.tables["sample"][2]["timestamp"] = (
+        2_000_000,
+        1_000_000,
+    )
+    src = root.write(tmp_path / "src")
+
+    dataset = NuScenesImporter().read(src)
+
+    ((sequence),) = dataset.sequences
+    assert [(str(f.path), f.position, f.timestamp) for f in sequence.frames] == [
+        ("samples/LIDAR_TOP/k0.pcd.bin", 0, None),
+        ("samples/LIDAR_TOP/k1.pcd.bin", 1, None),
+        ("samples/LIDAR_TOP/k2.pcd.bin", 2, None),
+    ]
+    assert any("carry no time" in loss.reason for loss in dataset.losses)
+
+
+def test_a_scene_inconsistent_otherwise_than_by_name_refuses_with_its_reason(
+    tmp_path: Path,
+) -> None:
+    root = build(tmp_path / "src", _scene("k0", "k1"))
+    for row in root.tables["sample_data"]:
+        if row["token"] == "sd-k1":
+            row["filename"] = "samples/LIDAR_TOP/k0.pcd.bin"
+    src = root.write(tmp_path / "src")
+
+    with pytest.raises(ImportSourceUnreadable, match="lists a frame twice"):
+        NuScenesImporter().read(src)
+
+
+def test_a_re_run_labelling_some_scans_writes_a_sequence_for_their_scene_only(
+    workspace: WorkspaceService, tmp_path: Path
+) -> None:
+    def scenes(walking: bool) -> list[Keyframe]:
+        made = _scene("a0", "a1", scene="scene-0061")
+        made += [
+            Keyframe(
+                name,
+                (FOLLOWED, WALKER) if walking else (FOLLOWED,),
+                points=_points(10 + index),
+                scene="scene-0103",
+            )
+            for index, name in enumerate(("b0", "b1"))
+        ]
+        return made
+
+    project = ProjectService(workspace).create("drive")
+    src = build(tmp_path / "src", scenes(False)).write(tmp_path / "src")
+    first = ImportService(workspace).commit(project.id, NuScenesImporter(), src, consent=EVERYTHING)
+    assert first.batch_id is not None
+    BatchService(workspace).delete(first.batch_id, confirm=True)
+    build(tmp_path / "src", scenes(True)).write(tmp_path / "src")
+
+    plan = ImportService(workspace).inspect(project.id, NuScenesImporter(), src)
+    again = ImportService(workspace).commit(project.id, NuScenesImporter(), src, consent=EVERYTHING)
+
+    assert (plan.sequences, plan.tracks) == (1, 1)
+    (source_id,) = again.source_ids
+    (written,) = [one for one in _sequences(workspace, project.id) if one.id == source_id]
+    assert written.name == "scene-0103"
+    assert [one.position for one in SourceService(workspace).occurrences(source_id)] == [0, 1]
+    assert _tracks(workspace, source_id) == {"inst-walker": [(0, 0.0), (1, 1.0)]}
+    assert (again.tracks_written, again.annotations_written) == (1, 2)
