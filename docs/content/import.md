@@ -90,11 +90,11 @@ computed from the content, and a commit that would drop something is refused wit
 | Kind | What is dropped |
 | --- | --- |
 | `class` | A class the project's schema does not declare and no label uses; a CVAT label that names no geometry the domain holds. |
-| `geometry` | Part of a shape the kernel has no type for, such as YOLO keypoints, VOC parts, 3D lane points or an unusable per-vertex visibility, while the shape itself is kept. |
-| `label` | A whole label: an RLE or crowd mask, a polygon of several rings, a label outside its image, a label lacking an attribute its class requires, a MOT row whose `conf` marks it ignored, a CVAT shape the domain has no geometry for (points, ellipse, cuboid, mask, skeleton, a rotated box). |
+| `geometry` | Part of a shape the kernel has no type for, such as YOLO keypoints, VOC parts, 3D lane points or an unusable per-vertex visibility, while the shape itself is kept; or a `yolo-obb` or `dota` row whose corners are only near a rectangle, kept as the nearest rectangle. |
+| `label` | A whole label: an RLE or crowd mask, a polygon of several rings, a label outside its image, a label lacking an attribute its class requires, a MOT row whose `conf` marks it ignored, a CVAT shape the domain has no geometry for (points, ellipse, cuboid, mask, skeleton, a rotated box), a `yolo-obb` or `dota` row whose four corners are not near a rectangle, or enclose no area. |
 | `image` | An image the source names but does not hold, or one outside any sequence whose bytes repeat an earlier image; its labels go with it. A sequence frame that repeats one keeps its labels on that image's asset. A nuScenes camera frame, which is not read. |
 | `scan` | A scan whose points repeat an earlier scan's, or one gone from the source; its labels go with it. A nuScenes sweep or radar frame, which is not read. |
-| `attribute` | An attribute value its class does not declare or does not accept, or one a label already on its asset holds otherwise, and extras the importer does not carry, such as a COCO attribute value that is not a string, a boolean or a number, VOC difficult or pose flags, an OpenLane camera calibration, a track id outside a sequence or one a track cannot hold, a MOT box's visibility ratio or the absence of an identity (an `id` that is not positive), a CVAT attribute definition the domain has no kind for or a number's range, `occluded`, `z_order`, `group_id`, a `subset` and the interpolation CVAT would expand, KITTI truncation, occlusion, alpha and calibration, nuScenes attributes, visibility, instance tokens, point counts, poses and a scene's fields other than its name. |
+| `attribute` | An attribute value its class does not declare or does not accept, or one a label already on its asset holds otherwise, and extras the importer does not carry, such as a COCO attribute value that is not a string, a boolean or a number, VOC difficult or pose flags, a DOTA `difficult` flag of `1` (or any value but `0` and `1`), an OpenLane camera calibration, a track id outside a sequence or one a track cannot hold, a MOT box's visibility ratio or the absence of an identity (an `id` that is not positive), a CVAT attribute definition the domain has no kind for or a number's range, `occluded`, `z_order`, `group_id`, a `subset` and the interpolation CVAT would expand, KITTI truncation, occlusion, alpha and calibration, nuScenes attributes, visibility, instance tokens, point counts, poses and a scene's fields other than its name. |
 
 The refusal carries the full report in its `detail.losses`. Inspecting the source first returns
 the same report and writes nothing; its `loss_kinds` is exactly what the commit has to consent to,
@@ -131,6 +131,8 @@ naming the kinds to accept. See [mcp-tools.md](mcp-tools.md).
 | `ultralytics` | `data.yaml` with `names` and pictures under any `images/` directory, labels at the matching `labels/` path, the layout the exporter writes; boxes (four values) and polygons (six or more, an even count); or a class tree (`train`/`val`/`test` directories of class directories) as tags | Keypoints of a pose dataset (`kpt_shape`), malformed rows, an unknown class index, a zero-area or wholly outside box, a label file with no picture, the labels of a picture whose size cannot be read |
 | `yolov5-yaml` | The same layout with `nc` and a list of `names` | As `ultralytics` |
 | `darknet` | `obj.names` (and `obj.data`) with the same `images/` and `labels/` layout | As `ultralytics`, bar keypoints |
+| `yolo-obb` | The `ultralytics` layout and `data.yaml`, every row a class index and four normalized corners; each a rotated box | Corners only near a rectangle, kept as the nearest rectangle and a `geometry` loss; a row that is not a class and exactly eight numbers, four corners that are not near a rectangle or enclose no area, an unknown class index, a box wholly outside its picture, a label file with no picture, the labels of a picture whose size cannot be read |
+| `dota` | Pictures under any `images/` directory, labels at the matching `labelTxt/` path (`<fold>/images` and `<fold>/labelTxt` as the benchmark and the exporter lay them out), every row four pixel corners, a category and an optional `difficult`; each a rotated box, the category its class | `difficult` of `1`, kept as the box and lost as the flag; corners only near a rectangle, kept as the nearest rectangle and a `geometry` loss; a row that is not eight numbers, a category and at most one flag, four corners that are not near a rectangle or enclose no area, a box wholly outside its picture, a label file with no picture |
 | `voc` | `Annotations/**/*.xml` with pictures under `JPEGImages/`; boxes | Pose, truncated, difficult and occluded values other than unspecified or `0`, other `<object>` children, parts, segmentation, an object with no name or box, a zero-area or outside box |
 | `classification` | `labels.csv` (`image`, `class`) and `classes.txt` beside `images/`; one tag per row | A row naming a class `classes.txt` does not declare, a second row of one class on one picture, a malformed row, a row with no picture or class |
 | `kitti` | A 3D object detection split: `velodyne/*.bin` scans, `label_2/*.txt` and `calib/*.txt`, at the top or in `training/` and `testing/` (or the `train/`, `val/`, `test/` the exporter writes); boxes as `cuboid_3d` in the `lidar_flu` frame | `DontCare` regions, each box's 2D image `bbox`, truncation, occlusion and alpha, the calibration itself, a score outside 0 to 1, a label with no scan, no usable calibration, a malformed line or a dimension that is not positive |
@@ -170,6 +172,43 @@ than the original schema order, and a picture copied under several class directo
 bytes) is one image with each tag; the same bytes twice under one class directory is a repeated
 tag, a `label` loss, and a picture directly under a fold, outside every class directory, is an
 `image` loss.
+
+**Rotated boxes** (`yolo-obb`, `dota`). Ordinary YOLO detection, OBB and DOTA are three formats:
+an `ultralytics` row of four values is an axis-aligned box, while `yolo-obb` reads eight values as
+the four corners of a rotated box. The `ultralytics` importer reads an OBB row as a four-point
+polygon, because nothing in the row says it is a rectangle, so an OBB dataset is imported with
+`yolo-obb`. Each row's corners go through `obb_from_corners`: any start corner, in either
+direction, is the same canonical box, and four corners that are a rectangle within
+`OBB_CORNER_TOLERANCE` (`1e-6` of the longest side) import with no loss.
+
+Real corners are seldom an exact rectangle. A file writes its coordinates to a fixed number of
+decimals, and DOTA's boxes are drawn by hand on whole pixels of the source picture: on the 133 rows
+of Ultralytics' DOTA8, the two diagonals' midpoints sit 0.7 pixels apart at the median and 4.5 at
+the 99th percentile, and corners stray up to about five degrees off square. Corners that are not an
+exact rectangle are fitted to the nearest one - centred on their mean, its axis from the sides
+weighted by their length, each side the mean of the two opposite ones - and that rectangle is kept
+when every corner lies within **a sixth of its shorter side** of its fitted corner. The measure has
+no unit, so it judges a 10-pixel ship and a 300-pixel ground track field alike. On DOTA8 the
+farthest corner lies 0.035 of the shorter side from the fit at the median and 0.131 at worst; a
+clear trapezoid lies at 0.30, a parallelogram skewed 30 degrees at 0.20 to 0.32 depending on its
+proportions, a kite at 0.35 or more and a dart at 0.85, and a bow-tie has no fit at all. A box too
+small for its shape to tell from its rounding is also kept when every corner lies within **one
+unit of the row's last decimal** of the fit on each axis; the precision is read per row, from the
+most decimals any of its eight coordinates spells, so `34` and `34.0` are different claims. A kept
+fit is a `geometry` loss, `its four corners are only near a rectangle; the nearest rectangle is
+kept`, counted once per row. Farther than that - a trapezoid, a strongly skewed parallelogram, a
+kite, a bow-tie - the row is a `label` loss, never kept as a polygon.
+`yolo-obb` corners are scaled by the picture's EXIF-oriented size and not rounded; a class
+no row uses is declared as an `obb` class, and the descriptor rules are the YOLO family's.
+`dota` skips `imagesource:` and `gsd:` header lines; its classes are the categories of the boxes it
+keeps, in order of first appearance, so a class nobody used and the schema's order are not
+recovered. A category is taken as spelled: the exporter writes whitespace in a class name as a
+hyphen, because a row cannot quote a name, so a class `baseball diamond` exported to DOTA imports
+back as `baseball-diamond`. The import has no place for an annotation attribute, so DOTA's `difficult` is not
+carried: a `1` is an `attribute` loss and the box is kept, as VOC's own `difficult` is. A picture
+with no label file is imported unlabelled, an empty label file is a picture with nothing in it,
+and the split is not imported. An export imports back exact, with no loss: every corner within
+`1e-6` of the box's longest side (see [releases](releases.md#the-rotated-box-formats)).
 
 **VOC.** A box is `xmin`, `ymin`, `xmax`, `ymax`, 1-based and inclusive, so `x = xmin - 1` and
 `width = xmax - xmin + 1`. Only boxes are read. Classes are the names objects use, in order of

@@ -225,18 +225,20 @@ curvelanes      yes
 cvat-images     yes
 cvat-video      yes
 darknet         yes
+dota            yes
 kitti           yes
 mot             yes
 openlane-2d     yes
 tusimple        yes
 ultralytics     yes
 voc             yes
+yolo-obb        yes
 yolov5-yaml     yes
 ```
 
 The five lane formats write polylines, `classification` writes image-level tags, `kitti` writes
 scans and their cuboids, `mot` and `cvat-video` write tracks, `cvat-images` writes CVAT's per-picture
-shapes, and the rest write boxes and polygons (`yolo` is still accepted as an alias of `ultralytics` for one release); the whole set is described in [releases.md](releases.md#exporting). Run the
+shapes, `yolo-obb` and `dota` write rotated boxes, and the rest write boxes and polygons (`yolo` is still accepted as an alias of `ultralytics` for one release); the whole set is described in [releases.md](releases.md#exporting). Run the
 command rather than trusting this listing — it reads installed entry-point metadata, so a
 third-party plugin appears in it too.
 

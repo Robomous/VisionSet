@@ -287,6 +287,14 @@ def test_the_installed_exporters_declare_what_they_can_carry() -> None:
                 "targets": ["yolov4"],
             },
             {
+                "name": "dota",
+                "lossy": True,
+                "geometries": ["obb"],
+                "degraded_geometries": [],
+                "modalities": ["image"],
+                "targets": ["dota"],
+            },
+            {
                 "name": "dummy",
                 "lossy": False,
                 # What the format can carry. `dummy` declares everything,
@@ -362,6 +370,14 @@ def test_the_installed_exporters_declare_what_they_can_carry() -> None:
                 "targets": ["voc"],
             },
             {
+                "name": "yolo-obb",
+                "lossy": True,
+                "geometries": ["obb"],
+                "degraded_geometries": [],
+                "modalities": ["image"],
+                "targets": ["yolo-obb"],
+            },
+            {
                 # Detection only, so a polygon is reduced to its box.
                 "name": "yolov5-yaml",
                 "lossy": True,
@@ -371,7 +387,7 @@ def test_the_installed_exporters_declare_what_they_can_carry() -> None:
                 "targets": ["yolov7"],
             },
         ],
-        "total": 16,
+        "total": 18,
     }
 
 

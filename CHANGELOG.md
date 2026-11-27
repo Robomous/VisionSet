@@ -13,6 +13,22 @@ nothing was being distributed. This is the first version that is.
 
 ### Added
 
+- **Rotated-box formats: `yolo-obb` and `dota`, import and export.** `yolo-obb` is the Ultralytics OBB layout - the
+  `ultralytics` detection layout and `data.yaml` with rows of a class index and four normalized corners - and `dota`
+  is the DOTA benchmark's `<fold>/images` and `<fold>/labelTxt`, rows of four pixel corners, a category and
+  `difficult`. Both write rotated boxes only: every other geometry is reported dropped, and a rectangular polygon is
+  not converted. Corners are written unclamped and precise enough that a round trip returns every corner within
+  `1e-6` of the box's longest side. On import, any start corner in either direction is the same canonical box. Four
+  corners near a rectangle - every corner within a sixth of the fitted rectangle's shorter side of it, or within one
+  unit of the row's last decimal for a box too small to judge, which takes in DOTA's hand-drawn whole-pixel
+  quadrilaterals (at most 0.131 of the shorter side on Ultralytics' DOTA8) - import as the nearest rectangle and a
+  `geometry` loss; a trapezoid, a skewed parallelogram, a kite, a bow-tie, or corners enclosing no area are a
+  `label` loss. `difficult` is written from a boolean
+  `difficult` attribute and, having nowhere to land on import, a `1` is an `attribute` loss. A DOTA row cannot quote
+  a category, so each whitespace run in a class name is written as one hyphen, DOTA's own spelling
+  (`baseball diamond` as `baseball-diamond`), and a re-import names the class with the hyphen; two classes that would
+  share a category refuse the export naming both. `yolo-obb` keeps names unchanged in `data.yaml`. The `ultralytics`
+  formats and targets are unchanged (#1161).
 - **Export, ingest and weight-download runs carry their own facts, and releases their lineage.** When tracking is
   on, an export run records its format, target, lossy consent, whether a recipe ran and the recipe's content hash,
   the files and bytes it wrote and the source and augmented image counts; a succeeded export also records the
