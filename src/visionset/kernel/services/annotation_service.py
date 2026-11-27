@@ -97,6 +97,7 @@ from visionset.kernel.domain import (
     progress_after_annotating,
     require_calibration,
     require_scan_frame,
+    track_geometry_kind,
 )
 from visionset.kernel.domain.geometry import (
     MaskGeometry,
@@ -844,7 +845,12 @@ def _require_track_class(uow: UnitOfWork, current: Annotation, replacement: Anno
             f"{track.label_class!r}; change the track's class to change it"
         )
     require_trackable(uow, replacement)
-    require_track_geometry(uow, observation.track_id, replacement.geometry.type, besides=current.id)
+    if track_geometry_kind(replacement.geometry.type) is not track_geometry_kind(
+        current.geometry.type
+    ):
+        require_track_geometry(
+            uow, observation.track_id, replacement.geometry.type, besides=current.id
+        )
 
 
 def require_trackable(uow: UnitOfWork, annotation: Annotation) -> None:
@@ -877,10 +883,12 @@ def require_trackable(uow: UnitOfWork, annotation: Annotation) -> None:
 def require_track_geometry(
     uow: UnitOfWork, track_id: UUID, geometry: GeometryType, *, besides: UUID | None = None
 ) -> None:
-    """Refuse a geometry type the track's other observations do not have.
+    """Refuse a geometry kind the track's other observations do not have.
 
-    Every observation of one track has one geometry type, so the first one
-    other than ``besides`` answers for all of them.
+    Every observation of one track has one geometry kind, its type with a
+    rotated box counted as a box, so the first one other than ``besides``
+    answers for all of them. A track that mixed kinds before the rule keeps
+    them; only a write that adds an observation or changes one's kind is judged.
 
     Raises:
         TrackGeometryMismatch: the track observes another geometry type.
@@ -894,7 +902,7 @@ def require_track_geometry(
                 f"track {track_id} observes annotation {observation.annotation_id}, "
                 f"which does not exist"
             )
-        if observed.geometry.type is not geometry:
+        if track_geometry_kind(observed.geometry.type) is not track_geometry_kind(geometry):
             raise TrackGeometryMismatch(
                 f"track {track_id} follows {observed.geometry.type.value} labels, and this "
                 f"one is a {geometry.value}; a track never mixes geometry types"

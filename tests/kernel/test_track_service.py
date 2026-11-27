@@ -1269,3 +1269,23 @@ def test_start_refuses_an_occurrence_of_another_project(world: World, tmp_path: 
         world.tracks.start(job.id, foreign.at(0).id, box.id)
     assert world.tracks.list(clip.source_id) == []
     assert world.tracks.list(foreign.source_id) == []
+
+
+def test_a_track_that_mixed_types_before_the_rule_still_takes_edits(world: World) -> None:
+    clip = world.clip()
+    (job,) = world.working(clip.batch_id)
+    box = _sign(world, job, clip.at(0).asset_id)
+    track = world.tracks.start(job.id, clip.at(0).id, box.id).track
+    polygon = _sign(world, job, clip.at(1).asset_id, polygon=True)
+    with world.workspace.unit_of_work() as uow:
+        uow.track_observations.add(
+            TrackObservation(
+                track_id=track.id, occurrence_id=clip.at(1).id, annotation_id=polygon.id
+            )
+        )
+    moved = BboxGeometry(x=2.0, y=2.0, width=5.0, height=5.0)
+
+    (stored,) = world.annotations.update(job.id, [box.model_copy(update={"geometry": moved})])
+
+    assert stored.geometry == moved
+    assert _positions(world.tracks.get(track.id)) == [0, 1]

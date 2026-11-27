@@ -492,8 +492,10 @@ everything above - schema validation, provenance, progress - is untouched by tra
   class (`TRACK_CLASS_MISMATCH`) and sits on the occurrence's asset (`ANNOTATION_NOT_AT_OCCURRENCE`).
 - **One geometry type.** A track follows a 2D label on an image or a `cuboid_3d` on a scan; a
   camera-calibrated 3D label on an image, or a `polyline_3d` on a scan, is `INVALID_ANNOTATION`.
-  Every observation of one track has the same geometry type, so observing, editing or merging
-  into a mix of boxes and polygons, or of anything else, is `TRACK_GEOMETRY_MISMATCH`. A cuboid is
+  Every observation of one track has the same geometry type, a rotated box counting as a box, so
+  observing, editing or merging into a mix of boxes and polygons, or of anything else, is
+  `TRACK_GEOMETRY_MISMATCH`; a track that mixed types before the rule is judged only on a write
+  that adds an observation or changes one's type. A cuboid is
   read in its scan's own frame, the one its point-cloud directory source declares, and no
   observation carries a pose or calibration of its own. `external_id` is an imported
   identity, unique per source (`TRACK_EXTERNAL_ID_TAKEN`), and neither it nor the class may be

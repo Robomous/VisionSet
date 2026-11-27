@@ -470,6 +470,7 @@ from visionset.kernel.domain.track import (
     TrackDetail,
     TrackObservation,
     TrackStatus,
+    track_geometry_kind,
 )
 from visionset.kernel.domain.transitions import require_move, require_state
 from visionset.kernel.domain.video_import import (
@@ -686,6 +687,7 @@ __all__ = [
     "ObservedFrame",
     "Track",
     "TrackDetail",
+    "track_geometry_kind",
     "ObservedLabel",
     "TrackObservation",
     "TrackStatus",

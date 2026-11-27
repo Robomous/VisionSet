@@ -68,7 +68,8 @@ nothing was being distributed. This is the first version that is.
   bytes and hash. `mot` and `cvat-video` report the scans dropped by modality (#1189).
 - **A track keeps one geometry type.** Observing, editing or merging into a mix of geometry types, such as boxes
   and polygons, is 409 `TRACK_GEOMETRY_MISMATCH`, and an import keeps such a label untracked with an `attribute`
-  loss. A camera-calibrated 3D label on an image and a `polyline_3d` on a scan stay `INVALID_ANNOTATION` (#1189).
+  loss. A rotated box counts as a box, so a track may still mix the two, and a track that mixed other types before
+  is judged only on a write that adds an observation or changes one's type. A camera-calibrated 3D label on an image and a `polyline_3d` on a scan stay `INVALID_ANNOTATION` (#1189).
 
 - **Apple Create ML object-detection JSON import and export as `createml`.** Only the object-detection annotation
   schema: an array of `{"image", "annotations": [{"label", "coordinates": {"x", "y", "width", "height"}}]}` with

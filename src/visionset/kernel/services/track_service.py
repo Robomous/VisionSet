@@ -43,6 +43,7 @@ from visionset.kernel.domain import (
     TrackDetail,
     TrackObservation,
     TrackStatus,
+    track_geometry_kind,
 )
 from visionset.kernel.errors import (
     AnnotationAlreadyObserved,
@@ -693,7 +694,7 @@ def _require_same_geometry(uow: UnitOfWork, track: Track, absorbed: Track) -> No
     for one in (track, absorbed):
         first = next(iter(uow.track_observations.list(one.id)), None)
         annotation = None if first is None else uow.annotations.get(first.annotation_id)
-        types.append(None if annotation is None else annotation.geometry.type)
+        types.append(None if annotation is None else track_geometry_kind(annotation.geometry.type))
     if None not in types and types[0] is not types[1]:
         raise TrackGeometryMismatch(
             f"track {track.id} follows {types[0]} labels and track {absorbed.id} "

@@ -50,7 +50,7 @@ function assets(from: number, n: number, over: Record<string, unknown> = {}): Re
   return Array.from({ length: n }, (_, i) => asset(`a${from + i}`, over));
 }
 
-function source(id: string, name: string, kind: "image_directory" | "video" | "image_sequence", registered: string): Record<string, unknown> {
+function source(id: string, name: string, kind: "image_directory" | "video" | "image_sequence" | "point_cloud_sequence", registered: string): Record<string, unknown> {
   return { id, project_id: PROJECT, kind, name, registered_at: registered, video: null, frame: null };
 }
 
@@ -256,6 +256,16 @@ describe("the Images section", () => {
     const labels = [...menu.querySelectorAll('[data-slot="dropdown-menu-label"]')].map((one) => one.textContent);
     expect(labels).toEqual(["Videos", "Sequences", "Folders"]);
     expect(within(menu).getByRole("menuitemradio", { name: /segment-1004/ }).textContent).toContain("Sequence · 1920 × 1280");
+  });
+
+  it("never asks for the images of a point-cloud sequence, whose scans name their directory", async () => {
+    twoSources();
+    sources = [...sources, source(SEGMENT, "scene-0061", "point_cloud_sequence", "2026-09-30T02:00:00Z")];
+    renderImages();
+
+    await waitFor(() => expect(screen.getByTestId(`images-source-${FOLDER}`).textContent).toContain("Folder · 5 images"));
+    expect(asked.map((one) => one.source)).not.toContain(SEGMENT);
+    expect(screen.queryByTestId(`images-source-${SEGMENT}`)).toBeNull();
   });
 
   it("narrows to a source from its heading's name, the same as choosing it in the menu", async () => {

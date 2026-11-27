@@ -46,8 +46,8 @@ later label of the same id and another class, or a second label of one id in one
 untracked and reported as an `attribute` loss. The plan counts the `sequences` a commit would
 write and the `tracks` over the labels it would write, so a re-run that writes nothing counts none;
 the run returns the sources in `source_ids` and counts `tracks_written`. A track observes 2D labels
-on images, and takes a single geometry type: a later label of the same id and another geometry type
-is kept untracked and reported the same way.
+on images, and takes a single geometry type, a rotated box counting as a box: a later label of the
+same id and another geometry type is kept untracked and reported the same way.
 
 A dataset of scans may order its scans the same way, as a nuScenes scene does: each sequence
 holding a scan the run creates or labels becomes a new `point_cloud_sequence` source, and each track

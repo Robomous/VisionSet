@@ -73,9 +73,11 @@ or `null` when the dataset records no timing (never `0` in its place);
   asset that appears at two occurrences needs one annotation per occurrence it is tracked at.
 - **What a track observes.** On an image occurrence, a 2D label; on a scan occurrence, a
   `cuboid_3d`. A camera-calibrated 3D label on an image and a `polyline_3d` in a scan are refused.
-  Every observation of one track has the same geometry type, so a track never mixes boxes and
-  polygons, or boxes and cuboids (`TRACK_GEOMETRY_MISMATCH`); an import keeps a label that would
-  mix them untracked and reports it.
+  Every observation of one track has the same geometry type, a rotated box counting as a box
+  (#1209), so a track never mixes boxes and polygons, or boxes and cuboids
+  (`TRACK_GEOMETRY_MISMATCH`); an import keeps a label that would mix them untracked and reports
+  it. A track that mixed types before the rule keeps them: only adding an observation, or changing
+  one's type, is judged.
 - **Class consistency.** An observation's annotation class equals the track's class. Changing a
   class is a track operation that rewrites every observation atomically or refuses.
 - **Gaps and reappearance.** A track ends where its observations end and reappears wherever a

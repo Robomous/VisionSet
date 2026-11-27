@@ -826,8 +826,9 @@ class TrackClassMismatch(VisionSetError):
 class TrackGeometryMismatch(VisionSetError):
     """An annotation's geometry type, or a merge partner's, is not the track's.
 
-    Every observation of one track has the same geometry type, so a track never
-    mixes boxes and polygons, or boxes and cuboids. The remedy is to observe
+    Every observation of one track has the same geometry type, a rotated box
+    counting as a box, so a track never mixes boxes and polygons, or boxes and
+    cuboids. The remedy is to observe
     the object with a label of the track's geometry, or start another track.
     """
 

@@ -33,7 +33,11 @@ export function useImageGroups(projectId: string, pageSize: number): ImageGroups
   const sourcesQuery = useSources(projectId);
   const sources = useMemo(() => newestFirst(sourcesQuery.data?.items ?? []), [sourcesQuery.data]);
   // With no source registered, the whole listing is the one run.
-  const keys = useMemo(() => (sources.length === 0 ? [null] : sources.map((s) => s.id)), [sources]);
+  // A point-cloud sequence orders scans its directory source holds, so no asset names it.
+  const keys = useMemo(() => {
+    const holding = sources.filter((s) => s.kind !== "point_cloud_sequence");
+    return holding.length === 0 ? [null] : holding.map((s) => s.id);
+  }, [sources]);
   const [pages, setPages] = useState<Readonly<Record<string, number>>>({});
   const runs = useAssetPages(
     projectId,

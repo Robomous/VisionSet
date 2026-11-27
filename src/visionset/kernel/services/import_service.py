@@ -85,6 +85,7 @@ from visionset.kernel.domain import (
     geometry_needs_scan_frame,
     require_calibration,
     sha256_hex,
+    track_geometry_kind,
 )
 from visionset.kernel.domain.geometry import geometry_intersects_asset
 from visionset.kernel.domain.names import derived_name
@@ -1029,13 +1030,14 @@ def _consistent_tracks(
             for label in image.labels:
                 if label.track is not None:
                     owner_class, owner_geometry = owners.setdefault(
-                        label.track, (label.class_name, label.geometry.type.value)
+                        label.track,
+                        (label.class_name, track_geometry_kind(label.geometry.type).value),
                     )
                     reason = (
                         _OTHER_CLASS
                         if owner_class != label.class_name
                         else _OTHER_GEOMETRY
-                        if owner_geometry != label.geometry.type.value
+                        if owner_geometry != track_geometry_kind(label.geometry.type).value
                         else _REPEATED
                         if label.track in here
                         else None
