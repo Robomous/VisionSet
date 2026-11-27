@@ -133,7 +133,12 @@ from visionset.kernel.errors import UnserializableManifest
 #: never recorded, which is not the same as ``0``. The key is omitted when no
 #: released asset occurs in an image sequence, so such a release keeps the
 #: version, the bytes and the hash it had before.
-MANIFEST_VERSION: int = 9
+#:
+#: **10** since #1162, which added ``mask`` — a run-length encoded binary pixel
+#: mask — to the geometry union. A release with no mask keeps the version, the
+#: bytes and the hash it had before, and only a release holding one is one a
+#: version-9 build refuses.
+MANIFEST_VERSION: int = 10
 
 CALIBRATED_MANIFEST_VERSION: int = 4
 """The first manifest version that can carry a calibration, and so a 3D label."""
@@ -152,6 +157,9 @@ OBB_MANIFEST_VERSION: int = 8
 
 SEQUENCED_MANIFEST_VERSION: int = 9
 """The first manifest version that can carry sources' occurrences and unknown timing."""
+
+MASK_MANIFEST_VERSION: int = 10
+"""The first manifest version that can carry a raster mask."""
 
 
 class ManifestAnnotation(BaseModel):
@@ -543,7 +551,7 @@ class Manifest(BaseModel):
                 f"a version-{self.manifest_version} manifest carries no tracks; "
                 f"a tracked release needs version {TRACKED_MANIFEST_VERSION}"
             )
-        if self.manifest_version < OBB_MANIFEST_VERSION and _holds_obb(self.assets):
+        if self.manifest_version < OBB_MANIFEST_VERSION and _holds(self.assets, GeometryType.OBB):
             raise ValueError(
                 f"a version-{self.manifest_version} manifest carries no rotated boxes; "
                 f"an obb label needs version {OBB_MANIFEST_VERSION}"
@@ -554,6 +562,11 @@ class Manifest(BaseModel):
             raise ValueError(
                 f"a version-{self.manifest_version} manifest carries no sources and no unknown "
                 f"timing; they need version {SEQUENCED_MANIFEST_VERSION}"
+            )
+        if self.manifest_version < MASK_MANIFEST_VERSION and _holds(self.assets, GeometryType.MASK):
+            raise ValueError(
+                f"a version-{self.manifest_version} manifest carries no masks; "
+                f"a mask label needs version {MASK_MANIFEST_VERSION}"
             )
         return self
 
@@ -577,9 +590,11 @@ def manifest_version_for(
     Publishing writes this rather than :data:`MANIFEST_VERSION`, so content a
     version-3 build can read is still written as version 3 and keeps its hash.
     """
+    if _holds(assets, GeometryType.MASK):
+        return MASK_MANIFEST_VERSION
     if sources or _unknown_timing(tracks):
         return SEQUENCED_MANIFEST_VERSION
-    if _holds_obb(assets):
+    if _holds(assets, GeometryType.OBB):
         return OBB_MANIFEST_VERSION
     if tracks:
         return TRACKED_MANIFEST_VERSION
@@ -592,11 +607,9 @@ def manifest_version_for(
     return 3
 
 
-def _holds_obb(assets: Sequence[ManifestAsset]) -> bool:
+def _holds(assets: Sequence[ManifestAsset], geometry: GeometryType) -> bool:
     return any(
-        annotation.geometry.type == GeometryType.OBB
-        for asset in assets
-        for annotation in asset.annotations
+        annotation.geometry.type == geometry for asset in assets for annotation in asset.annotations
     )
 
 

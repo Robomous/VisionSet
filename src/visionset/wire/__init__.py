@@ -107,6 +107,7 @@ from visionset.kernel.domain import (
     IngestJob,
     IntegrityCheck,
     LabelClass,
+    MaskGeometry,
     ObbGeometry,
     ObservedFrame,
     PointCloudMetadata,
@@ -735,6 +736,8 @@ def geometry(value: Geometry) -> shapes.Geometry:
                 "size": list(value.size),
                 "yaw": value.yaw,
             }
+        case MaskGeometry():
+            return {"type": "mask", "size": list(value.size), "counts": value.counts}
         case ClassificationGeometry():
             return {"type": "classification_tag"}
         case _:

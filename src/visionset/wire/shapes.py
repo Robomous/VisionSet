@@ -410,6 +410,13 @@ class Cuboid3DGeometry(TypedDict):
 
 
 @closed
+class MaskGeometry(TypedDict):
+    type: Literal["mask"]
+    size: list[int]
+    counts: str
+
+
+@closed
 class ClassificationGeometry(TypedDict):
     type: Literal["classification_tag"]
 
@@ -421,6 +428,7 @@ Geometry = (
     | PolylineGeometry
     | Polyline3DGeometry
     | Cuboid3DGeometry
+    | MaskGeometry
     | ClassificationGeometry
 )
 

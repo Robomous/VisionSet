@@ -30,7 +30,7 @@ def test_the_listing_is_the_kernel_set_sorted_by_name(client: TestClient) -> Non
 def test_the_roadmap_members_are_not_offered(client: TestClient) -> None:
     names = {row["name"] for row in client.get("/geometries").json()["items"]}
 
-    assert GeometryType.MASK.value not in names
+    assert GeometryType.MASK.value in names
     assert GeometryType.KEYPOINTS.value not in names
 
 

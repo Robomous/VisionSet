@@ -1645,8 +1645,11 @@ export interface paths {
          *
          *     On a point-cloud scan a 3D label is read against the frame its source
          *     declares and needs no calibration; a source declaring no frame is 409
-         *     `CALIBRATION_MISSING`. A scan has no pixels, so a `bbox`, `obb`, `polygon`
-         *     or `polyline` on one is 422 `INVALID_ANNOTATION`.
+         *     `CALIBRATION_MISSING`. A scan has no pixels, so a `bbox`, `obb`, `polygon`,
+         *     `polyline` or `mask` on one is 422 `INVALID_ANNOTATION`.
+         *
+         *     A `mask` whose `size` is not the asset's `[height, width]` is 422
+         *     `ANNOTATION_GEOMETRY_OUT_OF_BOUNDS`.
          */
         post: operations["add_annotations"];
         /**
@@ -1692,7 +1695,7 @@ export interface paths {
          *     stops a replacement too — including 409 `CALIBRATION_MISSING` and 422
          *     `CALIBRATION_RESOLUTION_MISMATCH` for a 3D label, and on a scan 409
          *     `CALIBRATION_MISSING` for a source declaring no frame and 422
-         *     `INVALID_ANNOTATION` for a `bbox`, `obb`, `polygon` or `polyline`.
+         *     `INVALID_ANNOTATION` for a `bbox`, `obb`, `polygon`, `polyline` or `mask`.
          */
         patch: operations["update_annotations"];
         trace?: never;
@@ -3989,7 +3992,7 @@ export interface components {
             /** Confidence */
             confidence?: number | null;
             /** Geometry */
-            geometry: components["schemas"]["BboxBody"] | components["schemas"]["ObbBody"] | components["schemas"]["PolygonBody"] | components["schemas"]["PolylineBody"] | components["schemas"]["Polyline3DBody"] | components["schemas"]["Cuboid3DBody"] | components["schemas"]["ClassificationBody"];
+            geometry: components["schemas"]["BboxBody"] | components["schemas"]["ObbBody"] | components["schemas"]["PolygonBody"] | components["schemas"]["PolylineBody"] | components["schemas"]["Polyline3DBody"] | components["schemas"]["Cuboid3DBody"] | components["schemas"]["MaskBody"] | components["schemas"]["ClassificationBody"];
             /** Label Class */
             label_class: string;
             /** Model Ref */
@@ -4026,7 +4029,7 @@ export interface components {
             /** Confidence */
             confidence: number | null;
             /** Geometry */
-            geometry: components["schemas"]["BboxBody"] | components["schemas"]["ObbBody"] | components["schemas"]["PolygonBody"] | components["schemas"]["PolylineBody"] | components["schemas"]["Polyline3DBody"] | components["schemas"]["Cuboid3DBody"] | components["schemas"]["ClassificationBody"];
+            geometry: components["schemas"]["BboxBody"] | components["schemas"]["ObbBody"] | components["schemas"]["PolygonBody"] | components["schemas"]["PolylineBody"] | components["schemas"]["Polyline3DBody"] | components["schemas"]["Cuboid3DBody"] | components["schemas"]["MaskBody"] | components["schemas"]["ClassificationBody"];
             /**
              * Id
              * Format: uuid
@@ -4071,7 +4074,7 @@ export interface components {
             /** Confidence */
             confidence?: number | null;
             /** Geometry */
-            geometry: components["schemas"]["BboxBody"] | components["schemas"]["ObbBody"] | components["schemas"]["PolygonBody"] | components["schemas"]["PolylineBody"] | components["schemas"]["Polyline3DBody"] | components["schemas"]["Cuboid3DBody"] | components["schemas"]["ClassificationBody"];
+            geometry: components["schemas"]["BboxBody"] | components["schemas"]["ObbBody"] | components["schemas"]["PolygonBody"] | components["schemas"]["PolylineBody"] | components["schemas"]["Polyline3DBody"] | components["schemas"]["Cuboid3DBody"] | components["schemas"]["MaskBody"] | components["schemas"]["ClassificationBody"];
             /**
              * Id
              * Format: uuid
@@ -5258,7 +5261,7 @@ export interface components {
             /** Confidence */
             confidence: number;
             /** Geometry */
-            geometry: components["schemas"]["BboxGeometry"] | components["schemas"]["ObbGeometry"] | components["schemas"]["PolygonGeometry"] | components["schemas"]["PolylineGeometry"] | components["schemas"]["Polyline3DGeometry"] | components["schemas"]["Cuboid3DGeometry"] | components["schemas"]["ClassificationGeometry"];
+            geometry: components["schemas"]["BboxGeometry"] | components["schemas"]["ObbGeometry"] | components["schemas"]["PolygonGeometry"] | components["schemas"]["PolylineGeometry"] | components["schemas"]["Polyline3DGeometry"] | components["schemas"]["Cuboid3DGeometry"] | components["schemas"]["MaskGeometry"] | components["schemas"]["ClassificationGeometry"];
             /** Id */
             id: string;
             /** Label */
@@ -5845,6 +5848,71 @@ export interface components {
             geometries: components["schemas"]["GeometryType"][];
             /** Name */
             name: string;
+        };
+        /**
+         * MaskBody
+         * @description A binary pixel mask over the whole asset, as COCO compressed RLE.
+         *
+         *     `size` is `[height, width]` in pixels and must equal the asset's pixel
+         *     dimensions (422 `ANNOTATION_GEOMETRY_OUT_OF_BOUNDS` otherwise); each side is at most
+         *     32768 and the area at most 100000000 pixels. `counts` is the COCO compressed
+         *     RLE string — runs over the pixels in column-major order, first run
+         *     background, `1` foreground — at most 4194304 characters, and its runs must
+         *     sum to exactly `height * width`. A malformed or oversized mask is 422
+         *     `VALIDATION_ERROR`. A stored mask is canonical, so a response may spell
+         *     `counts` differently from the request and still hold the same pixels. An
+         *     all-background mask is valid. Uncompressed run lists are not accepted here.
+         */
+        MaskBody: {
+            /** Counts */
+            counts: string;
+            /** Size */
+            size: [
+                number,
+                number
+            ];
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "mask";
+        };
+        /**
+         * MaskGeometry
+         * @description A binary pixel mask over the whole asset, run-length encoded inline.
+         *
+         *     ``size`` is ``(height, width)`` in pixels — COCO's order — and must equal
+         *     the asset's pixel dimensions, so a mask has no origin or scale of its own:
+         *     pixel ``(x, y)`` of the mask is pixel ``(x, y)`` of the asset. Each side is
+         *     between 1 and :data:`~visionset.kernel.domain.rle.MAX_MASK_SIDE` and the
+         *     area at most :data:`~visionset.kernel.domain.rle.MAX_MASK_PIXELS`.
+         *
+         *     ``counts`` is COCO's compressed RLE string over the pixels in column-major
+         *     order, first run background, ``1`` foreground; see
+         *     :mod:`~visionset.kernel.domain.rle`. It is validated against ``size`` on
+         *     construction — the runs must sum to exactly ``height * width`` — and
+         *     re-encoded canonically, so equal masks always carry equal ``counts`` and a
+         *     read may spell a mask differently from a non-canonical write. An all
+         *     background mask is valid, and holes and disconnected regions are simply
+         *     pixels: nothing about a mask's topology is lost.
+         *
+         *     One mask is one annotation of one class. A semantic class-id map becomes
+         *     one mask per class present; see
+         *     :func:`~visionset.kernel.domain.raster_mask.split_class_map`.
+         */
+        MaskGeometry: {
+            /** Counts */
+            counts: string;
+            /** Size */
+            size: [
+                number,
+                number
+            ];
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "mask";
         };
         /**
          * ModalityCompatibilityOut
@@ -6545,7 +6613,7 @@ export interface components {
             /** Confidence */
             confidence: number | null;
             /** Geometry */
-            geometry: components["schemas"]["BboxBody"] | components["schemas"]["ObbBody"] | components["schemas"]["PolygonBody"] | components["schemas"]["PolylineBody"] | components["schemas"]["Polyline3DBody"] | components["schemas"]["Cuboid3DBody"] | components["schemas"]["ClassificationBody"];
+            geometry: components["schemas"]["BboxBody"] | components["schemas"]["ObbBody"] | components["schemas"]["PolygonBody"] | components["schemas"]["PolylineBody"] | components["schemas"]["Polyline3DBody"] | components["schemas"]["Cuboid3DBody"] | components["schemas"]["MaskBody"] | components["schemas"]["ClassificationBody"];
             /** Id */
             id: string;
             /** Label Class */
@@ -7522,7 +7590,7 @@ export interface components {
                 number
             ][];
             /** Geometry */
-            geometry: components["schemas"]["BboxGeometry"] | components["schemas"]["ObbGeometry"] | components["schemas"]["PolygonGeometry"] | components["schemas"]["PolylineGeometry"] | components["schemas"]["Polyline3DGeometry"] | components["schemas"]["Cuboid3DGeometry"] | components["schemas"]["ClassificationGeometry"];
+            geometry: components["schemas"]["BboxGeometry"] | components["schemas"]["ObbGeometry"] | components["schemas"]["PolygonGeometry"] | components["schemas"]["PolylineGeometry"] | components["schemas"]["Polyline3DGeometry"] | components["schemas"]["Cuboid3DGeometry"] | components["schemas"]["MaskGeometry"] | components["schemas"]["ClassificationGeometry"];
         };
         /**
          * SuggestionOut

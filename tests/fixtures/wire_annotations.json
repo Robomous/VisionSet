@@ -184,6 +184,27 @@
     },
     {
       "asset_id": "1ad26c67-2b52-553f-ae2d-30346d8e20cc",
+      "attributes": {
+        "condition": "faded"
+      },
+      "confidence": 0.87,
+      "geometry": {
+        "counts": "Z[2X1`2000000000000000000ROTN0l10TN0l10TN0l10TN0l10TN0l10TN0l10TN0l10TN0l10TN0l10TN0l10TN0l10TN0l10TN0l10TN0l10TN0l10TN0l10TN0l10TN0l10TN0l10TN0l1n0000000000000000000lg40TXK000000000000000000000000000000000000000000000000000000000Z^3",
+        "size": [
+          120,
+          160
+        ],
+        "type": "mask"
+      },
+      "id": "d1d156dc-d59e-5976-a90d-1cf1e941ae83",
+      "job_id": null,
+      "label_class": "sign",
+      "model_ref": "yolo-v8n@1",
+      "provenance": "model",
+      "schema_version": 3
+    },
+    {
+      "asset_id": "1ad26c67-2b52-553f-ae2d-30346d8e20cc",
       "attributes": {},
       "confidence": null,
       "geometry": {
@@ -313,6 +334,7 @@
     "bbox",
     "classification_tag",
     "cuboid_3d",
+    "mask",
     "obb",
     "polygon",
     "polyline",
@@ -379,6 +401,14 @@
           "obb"
         ],
         "name": "ship"
+      },
+      {
+        "attributes": [],
+        "color": "#8c6bd1",
+        "geometries": [
+          "mask"
+        ],
+        "name": "road"
       },
       {
         "attributes": [

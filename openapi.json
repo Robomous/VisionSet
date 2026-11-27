@@ -116,6 +116,7 @@
                 "bbox": "#/components/schemas/BboxBody",
                 "classification_tag": "#/components/schemas/ClassificationBody",
                 "cuboid_3d": "#/components/schemas/Cuboid3DBody",
+                "mask": "#/components/schemas/MaskBody",
                 "obb": "#/components/schemas/ObbBody",
                 "polygon": "#/components/schemas/PolygonBody",
                 "polyline": "#/components/schemas/PolylineBody",
@@ -141,6 +142,9 @@
               },
               {
                 "$ref": "#/components/schemas/Cuboid3DBody"
+              },
+              {
+                "$ref": "#/components/schemas/MaskBody"
               },
               {
                 "$ref": "#/components/schemas/ClassificationBody"
@@ -234,6 +238,7 @@
                 "bbox": "#/components/schemas/BboxBody",
                 "classification_tag": "#/components/schemas/ClassificationBody",
                 "cuboid_3d": "#/components/schemas/Cuboid3DBody",
+                "mask": "#/components/schemas/MaskBody",
                 "obb": "#/components/schemas/ObbBody",
                 "polygon": "#/components/schemas/PolygonBody",
                 "polyline": "#/components/schemas/PolylineBody",
@@ -259,6 +264,9 @@
               },
               {
                 "$ref": "#/components/schemas/Cuboid3DBody"
+              },
+              {
+                "$ref": "#/components/schemas/MaskBody"
               },
               {
                 "$ref": "#/components/schemas/ClassificationBody"
@@ -388,6 +396,7 @@
                 "bbox": "#/components/schemas/BboxBody",
                 "classification_tag": "#/components/schemas/ClassificationBody",
                 "cuboid_3d": "#/components/schemas/Cuboid3DBody",
+                "mask": "#/components/schemas/MaskBody",
                 "obb": "#/components/schemas/ObbBody",
                 "polygon": "#/components/schemas/PolygonBody",
                 "polyline": "#/components/schemas/PolylineBody",
@@ -413,6 +422,9 @@
               },
               {
                 "$ref": "#/components/schemas/Cuboid3DBody"
+              },
+              {
+                "$ref": "#/components/schemas/MaskBody"
               },
               {
                 "$ref": "#/components/schemas/ClassificationBody"
@@ -3227,6 +3239,7 @@
                 "bbox": "#/components/schemas/BboxGeometry",
                 "classification_tag": "#/components/schemas/ClassificationGeometry",
                 "cuboid_3d": "#/components/schemas/Cuboid3DGeometry",
+                "mask": "#/components/schemas/MaskGeometry",
                 "obb": "#/components/schemas/ObbGeometry",
                 "polygon": "#/components/schemas/PolygonGeometry",
                 "polyline": "#/components/schemas/PolylineGeometry",
@@ -3252,6 +3265,9 @@
               },
               {
                 "$ref": "#/components/schemas/Cuboid3DGeometry"
+              },
+              {
+                "$ref": "#/components/schemas/MaskGeometry"
               },
               {
                 "$ref": "#/components/schemas/ClassificationGeometry"
@@ -4421,6 +4437,84 @@
         "title": "LabelClassBody",
         "type": "object"
       },
+      "MaskBody": {
+        "additionalProperties": false,
+        "description": "A binary pixel mask over the whole asset, as COCO compressed RLE.\n\n`size` is `[height, width]` in pixels and must equal the asset's pixel\ndimensions (422 `ANNOTATION_GEOMETRY_OUT_OF_BOUNDS` otherwise); each side is at most\n32768 and the area at most 100000000 pixels. `counts` is the COCO compressed\nRLE string \u2014 runs over the pixels in column-major order, first run\nbackground, `1` foreground \u2014 at most 4194304 characters, and its runs must\nsum to exactly `height * width`. A malformed or oversized mask is 422\n`VALIDATION_ERROR`. A stored mask is canonical, so a response may spell\n`counts` differently from the request and still hold the same pixels. An\nall-background mask is valid. Uncompressed run lists are not accepted here.",
+        "properties": {
+          "counts": {
+            "title": "Counts",
+            "type": "string"
+          },
+          "size": {
+            "maxItems": 2,
+            "minItems": 2,
+            "prefixItems": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "integer"
+              }
+            ],
+            "title": "Size",
+            "type": "array"
+          },
+          "type": {
+            "const": "mask",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "type",
+          "size",
+          "counts"
+        ],
+        "title": "MaskBody",
+        "type": "object"
+      },
+      "MaskGeometry": {
+        "additionalProperties": false,
+        "description": "A binary pixel mask over the whole asset, run-length encoded inline.\n\n``size`` is ``(height, width)`` in pixels \u2014 COCO's order \u2014 and must equal\nthe asset's pixel dimensions, so a mask has no origin or scale of its own:\npixel ``(x, y)`` of the mask is pixel ``(x, y)`` of the asset. Each side is\nbetween 1 and :data:`~visionset.kernel.domain.rle.MAX_MASK_SIDE` and the\narea at most :data:`~visionset.kernel.domain.rle.MAX_MASK_PIXELS`.\n\n``counts`` is COCO's compressed RLE string over the pixels in column-major\norder, first run background, ``1`` foreground; see\n:mod:`~visionset.kernel.domain.rle`. It is validated against ``size`` on\nconstruction \u2014 the runs must sum to exactly ``height * width`` \u2014 and\nre-encoded canonically, so equal masks always carry equal ``counts`` and a\nread may spell a mask differently from a non-canonical write. An all\nbackground mask is valid, and holes and disconnected regions are simply\npixels: nothing about a mask's topology is lost.\n\nOne mask is one annotation of one class. A semantic class-id map becomes\none mask per class present; see\n:func:`~visionset.kernel.domain.raster_mask.split_class_map`.",
+        "properties": {
+          "counts": {
+            "maxLength": 4194304,
+            "minLength": 1,
+            "title": "Counts",
+            "type": "string"
+          },
+          "size": {
+            "maxItems": 2,
+            "minItems": 2,
+            "prefixItems": [
+              {
+                "maximum": 32768.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "maximum": 32768.0,
+                "minimum": 1.0,
+                "type": "integer"
+              }
+            ],
+            "title": "Size",
+            "type": "array"
+          },
+          "type": {
+            "const": "mask",
+            "default": "mask",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "size",
+          "counts"
+        ],
+        "title": "MaskGeometry",
+        "type": "object"
+      },
       "ModalityCompatibilityOut": {
         "description": "The assets of one modality a format cannot write, counted whole.",
         "properties": {
@@ -5551,6 +5645,7 @@
                 "bbox": "#/components/schemas/BboxBody",
                 "classification_tag": "#/components/schemas/ClassificationBody",
                 "cuboid_3d": "#/components/schemas/Cuboid3DBody",
+                "mask": "#/components/schemas/MaskBody",
                 "obb": "#/components/schemas/ObbBody",
                 "polygon": "#/components/schemas/PolygonBody",
                 "polyline": "#/components/schemas/PolylineBody",
@@ -5576,6 +5671,9 @@
               },
               {
                 "$ref": "#/components/schemas/Cuboid3DBody"
+              },
+              {
+                "$ref": "#/components/schemas/MaskBody"
               },
               {
                 "$ref": "#/components/schemas/ClassificationBody"
@@ -7470,6 +7568,7 @@
                 "bbox": "#/components/schemas/BboxGeometry",
                 "classification_tag": "#/components/schemas/ClassificationGeometry",
                 "cuboid_3d": "#/components/schemas/Cuboid3DGeometry",
+                "mask": "#/components/schemas/MaskGeometry",
                 "obb": "#/components/schemas/ObbGeometry",
                 "polygon": "#/components/schemas/PolygonGeometry",
                 "polyline": "#/components/schemas/PolylineGeometry",
@@ -7495,6 +7594,9 @@
               },
               {
                 "$ref": "#/components/schemas/Cuboid3DGeometry"
+              },
+              {
+                "$ref": "#/components/schemas/MaskGeometry"
               },
               {
                 "$ref": "#/components/schemas/ClassificationGeometry"
@@ -12856,7 +12958,7 @@
         ]
       },
       "patch": {
-        "description": "Replace stored annotations whole, judged against the same pinned version.\n\nAddressed by `id` and by nothing else \u2014 annotations are never reached by\nindex or position. There is no `asset_id` on the body because the stored one\nwins: moving a label from one asset to another is a delete and an add, not an\nedit, and doing it silently would take an asset's last annotation away\nwithout anything saying so. Who made a label is kept the same way: a\n`provenance` other than the stored one is 422 `INVALID_ANNOTATION`, and\n`model_ref` and `confidence` are taken from the stored annotation. An edit\nchanges what a label says, never who made it.\n\nAll-or-nothing, and `detail.index` names the culprit, exactly as on the POST.\nAn asset whose labeling is over is 409 `ASSET_NOT_WRITABLE`, as on the POST,\nand so are the two gates around it: a batch that is not open for annotation\nis 409 `BATCH_NOT_IN_ANNOTATION` and a job that was completed is 409\n`JOB_FINISHED`. An annotation a track observes keeps the track's class: an\nedit to any other class is 409 `TRACK_CLASS_MISMATCH`, so change the track's\nclass instead. An edit is a write, and every gate that stops a new label\nstops a replacement too \u2014 including 409 `CALIBRATION_MISSING` and 422\n`CALIBRATION_RESOLUTION_MISMATCH` for a 3D label, and on a scan 409\n`CALIBRATION_MISSING` for a source declaring no frame and 422\n`INVALID_ANNOTATION` for a `bbox`, `obb`, `polygon` or `polyline`.",
+        "description": "Replace stored annotations whole, judged against the same pinned version.\n\nAddressed by `id` and by nothing else \u2014 annotations are never reached by\nindex or position. There is no `asset_id` on the body because the stored one\nwins: moving a label from one asset to another is a delete and an add, not an\nedit, and doing it silently would take an asset's last annotation away\nwithout anything saying so. Who made a label is kept the same way: a\n`provenance` other than the stored one is 422 `INVALID_ANNOTATION`, and\n`model_ref` and `confidence` are taken from the stored annotation. An edit\nchanges what a label says, never who made it.\n\nAll-or-nothing, and `detail.index` names the culprit, exactly as on the POST.\nAn asset whose labeling is over is 409 `ASSET_NOT_WRITABLE`, as on the POST,\nand so are the two gates around it: a batch that is not open for annotation\nis 409 `BATCH_NOT_IN_ANNOTATION` and a job that was completed is 409\n`JOB_FINISHED`. An annotation a track observes keeps the track's class: an\nedit to any other class is 409 `TRACK_CLASS_MISMATCH`, so change the track's\nclass instead. An edit is a write, and every gate that stops a new label\nstops a replacement too \u2014 including 409 `CALIBRATION_MISSING` and 422\n`CALIBRATION_RESOLUTION_MISMATCH` for a 3D label, and on a scan 409\n`CALIBRATION_MISSING` for a source declaring no frame and 422\n`INVALID_ANNOTATION` for a `bbox`, `obb`, `polygon`, `polyline` or `mask`.",
         "operationId": "update_annotations",
         "parameters": [
           {
@@ -12967,7 +13069,7 @@
         ]
       },
       "post": {
-        "description": "Store annotations, judged against the version this job's batch pinned.\n\nAll-or-nothing: every annotation is validated before any of them is written,\nso a payload with one bad box stores nothing at all. A half-labeled asset is\nnot a state a client can reach.\n\nA refusal that is about one item carries `detail.index` \u2014 the position in the\narray you sent \u2014 because nothing was written and the message alone cannot say\nwhich one it was. `schema_version` is not yours to set: the pinned version is\nstamped onto whatever you send, and comes back on the response.\n\nAn unknown job is 404 `JOB_NOT_FOUND`. The batch must be `in_annotation`, or\nthis is 409 `BATCH_NOT_IN_ANNOTATION`, and the job itself must still be open:\none that was completed is 409 `JOB_FINISHED`, and a completed job has no way\nback, so the remedy is a new job over those assets rather than a retry. An\nasset the job does not carry is 422 `ASSET_NOT_IN_JOB`.\n\nAn annotation the pinned version does not describe is 422\n`INVALID_ANNOTATION`, which is the general answer; the specific ones carry\ntheir own codes \u2014 `LABEL_CLASS_NOT_IN_SCHEMA`, `DISALLOWED_GEOMETRY`,\n`MISSING_REQUIRED_ATTRIBUTE` and their kin \u2014 so a client that wants to say\nwhat is wrong reads the code rather than the status.\n\nThe asset must also still be open for labeling \u2014 `unannotated` or\n`annotated`. One that was skipped, submitted for review or accepted is 409\n`ASSET_NOT_WRITABLE`, and the message names the state it is in. The remedy is\na progress move where the table allows one (`skipped` back to `unannotated`);\n`accepted` has no exit, so correcting it means a new batch. Read\n`allowed_actions` on the batch's asset listing rather than guessing: it\ndeclares `annotate` exactly when this will be accepted.\n\nA 3D label (`polyline_3d`, `cuboid_3d`) on an image is read against its\nasset's calibration \u2014 the asset's own, else its source's. With neither this\nis 409 `CALIBRATION_MISSING`, and with one measured at another size than the\nasset it is 422 `CALIBRATION_RESOLUTION_MISMATCH`; set a fitting calibration\nand resend.\n\nOn a point-cloud scan a 3D label is read against the frame its source\ndeclares and needs no calibration; a source declaring no frame is 409\n`CALIBRATION_MISSING`. A scan has no pixels, so a `bbox`, `obb`, `polygon`\nor `polyline` on one is 422 `INVALID_ANNOTATION`.",
+        "description": "Store annotations, judged against the version this job's batch pinned.\n\nAll-or-nothing: every annotation is validated before any of them is written,\nso a payload with one bad box stores nothing at all. A half-labeled asset is\nnot a state a client can reach.\n\nA refusal that is about one item carries `detail.index` \u2014 the position in the\narray you sent \u2014 because nothing was written and the message alone cannot say\nwhich one it was. `schema_version` is not yours to set: the pinned version is\nstamped onto whatever you send, and comes back on the response.\n\nAn unknown job is 404 `JOB_NOT_FOUND`. The batch must be `in_annotation`, or\nthis is 409 `BATCH_NOT_IN_ANNOTATION`, and the job itself must still be open:\none that was completed is 409 `JOB_FINISHED`, and a completed job has no way\nback, so the remedy is a new job over those assets rather than a retry. An\nasset the job does not carry is 422 `ASSET_NOT_IN_JOB`.\n\nAn annotation the pinned version does not describe is 422\n`INVALID_ANNOTATION`, which is the general answer; the specific ones carry\ntheir own codes \u2014 `LABEL_CLASS_NOT_IN_SCHEMA`, `DISALLOWED_GEOMETRY`,\n`MISSING_REQUIRED_ATTRIBUTE` and their kin \u2014 so a client that wants to say\nwhat is wrong reads the code rather than the status.\n\nThe asset must also still be open for labeling \u2014 `unannotated` or\n`annotated`. One that was skipped, submitted for review or accepted is 409\n`ASSET_NOT_WRITABLE`, and the message names the state it is in. The remedy is\na progress move where the table allows one (`skipped` back to `unannotated`);\n`accepted` has no exit, so correcting it means a new batch. Read\n`allowed_actions` on the batch's asset listing rather than guessing: it\ndeclares `annotate` exactly when this will be accepted.\n\nA 3D label (`polyline_3d`, `cuboid_3d`) on an image is read against its\nasset's calibration \u2014 the asset's own, else its source's. With neither this\nis 409 `CALIBRATION_MISSING`, and with one measured at another size than the\nasset it is 422 `CALIBRATION_RESOLUTION_MISMATCH`; set a fitting calibration\nand resend.\n\nOn a point-cloud scan a 3D label is read against the frame its source\ndeclares and needs no calibration; a source declaring no frame is 409\n`CALIBRATION_MISSING`. A scan has no pixels, so a `bbox`, `obb`, `polygon`,\n`polyline` or `mask` on one is 422 `INVALID_ANNOTATION`.\n\nA `mask` whose `size` is not the asset's `[height, width]` is 422\n`ANNOTATION_GEOMETRY_OUT_OF_BOUNDS`.",
         "operationId": "add_annotations",
         "parameters": [
           {

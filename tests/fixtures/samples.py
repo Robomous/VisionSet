@@ -85,6 +85,7 @@ from visionset.kernel.domain import (
     VertexVisibility,
     VideoMetadata,
     VideoProvenance,
+    rasterize_rings,
 )
 
 _HASH = "0" * 64
@@ -324,10 +325,22 @@ CUBOID_3D = Cuboid3DGeometry(center=(-2.5, 0.75, 2.0), size=(4.5, 1.9, 1.6), yaw
 # Turned off the axes, so a projection that dropped `angle` draws a different box.
 OBB = ObbGeometry(cx=40.0, cy=30.0, width=24.0, height=10.0, angle=0.5)
 
+# The sample asset's 120 by 160 frame: a ring with a hole beside a separate
+# square, so a projection that dropped `counts` or swapped `size` loses pixels.
+MASK = rasterize_rings(
+    [
+        [(20.0, 10.0), (60.0, 10.0), (60.0, 50.0), (20.0, 50.0)],
+        [(30.0, 20.0), (50.0, 20.0), (50.0, 40.0), (30.0, 40.0)],
+        [(100.0, 70.0), (130.0, 70.0), (130.0, 110.0), (100.0, 110.0)],
+    ],
+    height=120,
+    width=160,
+)
+
 # Every geometry variant gets its own sample rather than one standing for the
-# union: they are seven components on the wire, and a projection that dropped
+# union: they are eight components on the wire, and a projection that dropped
 # `points` would still round-trip through the bbox model.
-GEOMETRIES = (BBOX, POLYGON, POLYLINE, POLYLINE_3D, CUBOID_3D, CLASSIFICATION, OBB)
+GEOMETRIES = (BBOX, POLYGON, POLYLINE, POLYLINE_3D, CUBOID_3D, CLASSIFICATION, OBB, MASK)
 
 ANNOTATION = Annotation(
     asset_id=ASSET.id,

@@ -412,12 +412,13 @@ def test_a_ring_dipping_out_and_back_in_splits_into_its_pieces() -> None:
 # --- what a cropping resize carries -------------------------------------------
 
 
-def test_the_cropping_strategies_declare_every_pixel_geometry_but_the_polyline_and_obb() -> None:
-    expected = PIXEL_GEOMETRIES - {GeometryType.POLYLINE, GeometryType.OBB}
+def test_the_cropping_strategies_declare_every_pixel_geometry_but_polyline_obb_and_mask() -> None:
+    resizable = PIXEL_GEOMETRIES - {GeometryType.MASK}
+    expected = resizable - {GeometryType.POLYLINE, GeometryType.OBB}
     assert RESIZE_GEOMETRIES[ResizeStrategy.FILL] == expected
     assert RESIZE_GEOMETRIES[ResizeStrategy.CENTER_CROP] == expected
-    assert RESIZE_GEOMETRIES[ResizeStrategy.STRETCH] == PIXEL_GEOMETRIES - {GeometryType.OBB}
-    assert RESIZE_GEOMETRIES[ResizeStrategy.LETTERBOX] == PIXEL_GEOMETRIES
+    assert RESIZE_GEOMETRIES[ResizeStrategy.STRETCH] == resizable - {GeometryType.OBB}
+    assert RESIZE_GEOMETRIES[ResizeStrategy.LETTERBOX] == resizable
 
 
 @pytest.mark.parametrize("strategy", list(ResizeStrategy))
