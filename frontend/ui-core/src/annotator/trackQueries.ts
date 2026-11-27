@@ -20,6 +20,7 @@ import { useApiClient } from "../data/VisionSetDataProvider";
 import type { VisionSetDataClient } from "../data/port";
 import { unwrap } from "../data/errors";
 import {
+  checkGetSource,
   checkGetTrackStatus,
   checkListAssetOccurrences,
   checkListTracks,
@@ -29,7 +30,7 @@ import {
 } from "../generated/checks";
 import type { components } from "../generated/api";
 import { outstandingWork } from "../screens/batchState";
-import { batchKeys } from "../screens/queries";
+import { batchKeys, ingestKeys } from "../screens/queries";
 
 export type Track = components["schemas"]["TrackOut"];
 export type TrackObservation = components["schemas"]["TrackObservationOut"];
@@ -85,20 +86,24 @@ export function usePrefetchAssetOccurrences(projectId: string): (assetIds: reado
   );
 }
 
+/** One source's tracks read: `tracks` is undefined until it answers, and `error` its last failure. */
+export interface SourceTracksRead {
+  readonly tracks: readonly Track[] | undefined;
+  readonly error: Error | null;
+}
+
 /** Each source's tracks, as far as the reads have answered. */
 export interface SourcesTracks {
-  /** In the order the sources were asked for; `undefined` while that read has not answered. */
-  readonly bySource: readonly (readonly Track[] | undefined)[];
-  readonly error: Error | null;
-  readonly refetchFailed: () => void;
+  /** In the order the sources were asked for. */
+  readonly bySource: readonly SourceTracksRead[];
+  readonly refetch: (index: number) => void;
 }
 
 function combineTracks(results: readonly UseQueryResult<readonly Track[], Error>[]): SourcesTracks {
   return {
-    bySource: results.map((one) => one.data),
-    error: results.find((one) => one.isError)?.error ?? null,
-    refetchFailed: () => {
-      for (const one of results) if (one.isError) void one.refetch();
+    bySource: results.map((one) => ({ tracks: one.data, error: one.error })),
+    refetch: (index) => {
+      void results[index]?.refetch();
     },
   };
 }
@@ -116,6 +121,42 @@ export function useSourcesTracks(sourceIds: readonly string[]): SourcesTracks {
         ).items,
     })),
     combine: combineTracks,
+  });
+}
+
+/** The names of the sources a frame sits in, read one source at a time. */
+export interface SourceNames {
+  /** In the order asked for; undefined until that read answers. */
+  readonly names: readonly (string | undefined)[];
+  readonly error: Error | null;
+  readonly refetchFailed: () => void;
+}
+
+function combineNames(results: readonly UseQueryResult<{ readonly name: string }, Error>[]): SourceNames {
+  return {
+    names: results.map((one) => one.data?.name),
+    error: results.find((one) => one.isError)?.error ?? null,
+    refetchFailed: () => {
+      for (const one of results) if (one.isError) void one.refetch();
+    },
+  };
+}
+
+/**
+ * The sources' names, asked only when there is more than one to tell apart: one
+ * small read per source the frame sits in, never the project's whole list.
+ */
+export function useSourceNames(sourceIds: readonly string[]): SourceNames {
+  const client = useApiClient();
+  const named = sourceIds.length > 1;
+  return useQueries({
+    queries: sourceIds.map((sourceId) => ({
+      queryKey: ingestKeys.source(sourceId),
+      enabled: named,
+      queryFn: async () =>
+        unwrap(await client.GET("/sources/{source_id}", { params: { path: { source_id: sourceId } } }), checkGetSource),
+    })),
+    combine: combineNames,
   });
 }
 

@@ -339,9 +339,13 @@ region reads the frame's occurrences in every source (`GET
 upload in no sequence have none, and a scan is never asked. Identical bytes imported into two
 sequences are one asset in both, and each source keeps its own tracks, so the region reads and
 lists the tracks of every source the frame sits in; with more than one, each source's tracks sit
-under its name, and a track's name, a badge and a write's outcome name the source too (`car 7 in
-drive-b`). A read that fails says so in the region's place, with *Try again*; a later reread that
-fails says so under the tracks it still shows. Header — the word `Tracks`, the count across every
+under its name (each read from `GET /sources/{id}`, only when there is more than one), and a
+track's name, a badge and a write's outcome name the source too (`car 7 in drive-b`). A name not
+read yet heads its tracks `Reading the name…`, one that cannot be read `Name not read` with the
+failure said under the region, and an outcome then names no source rather than a stand-in. A read
+that fails says so in the region's place, with *Try again*, when nothing else can be shown; one
+source whose tracks cannot be read says so under its own heading, beside the sources that
+answered; a later reread that fails says so under the tracks it still shows. Header — the word `Tracks`, the count across every
 source, and a `+` that starts a track from the selected object; then one row per track of the
 source in creation order, inside a scroller capped at about four rows: swatch, the track's name (its class and its
 imported id, else `#n` in creation order — a track has no name of its own), `here` when it observes

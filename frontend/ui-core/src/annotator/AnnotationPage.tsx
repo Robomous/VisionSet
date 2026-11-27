@@ -186,7 +186,7 @@ import { Badge, Button, DropdownMenu, DropdownMenuContent, DropdownMenuItem, Dro
 import { EmptyState, ErrorState, LoadingState } from "../patterns/AsyncStates";
 import { AnnotatorPanel, type TrackMark } from "./AnnotatorPanel";
 import { TrackRegion, sequenceTrackLabel, type TrackCandidate, type TrackFocus, type TrackOutcome, type TrackSequence } from "./TrackRegion";
-import { observationOf, sequencesOf, useAssetOccurrences, usePrefetchAssetOccurrences, useSourcesTracks } from "./trackQueries";
+import { observationOf, sequencesOf, useAssetOccurrences, usePrefetchAssetOccurrences, useSourceNames, useSourcesTracks } from "./trackQueries";
 import { GeometryIcon } from "./GeometryIcon";
 import { keepCanvasFocus } from "./keepCanvasFocus";
 import { Withheld } from "./Withheld";
@@ -322,7 +322,6 @@ import {
   useOfferedGeometries,
   useSchemaComparison,
   useSchemaDraft,
-  useSources,
 } from "../screens/queries";
 import { toast } from "sonner";
 
@@ -1950,27 +1949,49 @@ function Workspace({
   }, [sequences.length, previousAsset, nextAsset, prefetchOccurrences]);
   const sourceIds = useMemo(() => sequences.map((one) => one.sourceId), [sequences]);
   const trackReads = useSourcesTracks(sourceIds);
-  const sourceNames = useSources(projectId, sourceIds.length > 1);
+  const sourceNames = useSourceNames(sourceIds);
+  const { refetch: refetchTracksOf } = trackReads;
+  /**
+   * The sequences to show, once every source's tracks read has answered or
+   * failed. A source that failed is shown failed beside the ones that answered.
+   */
   const trackSequences: readonly TrackSequence[] | undefined = useMemo(() => {
-    if (trackReads.bySource.some((one) => one === undefined)) return undefined;
+    if (trackReads.bySource.some((one) => one.tracks === undefined && one.error === null)) return undefined;
     const named = sequences.length > 1;
-    return sequences.map((sequence, index) => ({
-      ...sequence,
-      tracks: trackReads.bySource[index] ?? [],
-      name: named
-        ? (sourceNames.data?.items.find((one) => one.id === sequence.sourceId)?.name ?? `Sequence ${index + 1}`)
-        : null,
-    }));
-  }, [sequences, sourceNames.data, trackReads.bySource]);
+    return sequences.map((sequence, index) => {
+      const read = trackReads.bySource[index];
+      const name = named ? (sourceNames.names[index] ?? null) : null;
+      return {
+        ...sequence,
+        name,
+        heading: named ? (name ?? (sourceNames.error === null ? "Reading the name…" : "Name not read")) : null,
+        tracks: read?.tracks ?? null,
+        failure: read?.error == null ? null : { error: read.error, retry: () => refetchTracksOf(index) },
+      };
+    });
+  }, [sequences, sourceNames.names, sourceNames.error, trackReads.bySource, refetchTracksOf]);
   /** Every track read so far, of whichever sources have answered. */
-  const readTracks = useMemo(() => trackReads.bySource.flatMap((one) => one ?? []), [trackReads.bySource]);
-  const trackReadError = occurrences.error ?? trackReads.error;
+  const readTracks = useMemo(() => trackReads.bySource.flatMap((one) => one.tracks ?? []), [trackReads.bySource]);
   const { refetch: refetchOccurrences } = occurrences;
-  const { refetchFailed: refetchTracks } = trackReads;
+  const { refetchFailed: refetchNames } = sourceNames;
+  /** Nothing to show yet: the occurrences cannot be read, or no source's tracks could. */
+  const trackReadFailed =
+    occurrences.data === undefined
+      ? occurrences.error
+      : trackSequences !== undefined && trackSequences.length > 0 && trackSequences.every((one) => one.tracks === null)
+        ? (trackReads.bySource[0]?.error ?? null)
+        : null;
   const retryTrackReads = useCallback(() => {
     void refetchOccurrences();
-    refetchTracks();
-  }, [refetchOccurrences, refetchTracks]);
+    trackReads.bySource.forEach((one, index) => {
+      if (one.error !== null) refetchTracksOf(index);
+    });
+  }, [refetchOccurrences, refetchTracksOf, trackReads.bySource]);
+  const regionFailure = occurrences.error ?? sourceNames.error;
+  const retryRegionReads = useCallback(() => {
+    void refetchOccurrences();
+    refetchNames();
+  }, [refetchOccurrences, refetchNames]);
   const serverIdOf = useCallback(
     (localId: string): string | null => {
       const { server, minted } = frameSession.getSnapshot();
@@ -3327,12 +3348,12 @@ function Workspace({
           }}
           trackMarks={trackMarks}
           classLocks={classLocks}
-          {...(trackSequences === undefined || trackSequences.length === 0
-            ? trackReadError !== null
+          {...(trackSequences === undefined || trackSequences.length === 0 || trackReadFailed !== null
+            ? trackReadFailed !== null
               ? {
                   tracks: (
                     <p className="px-2 text-xs text-destructive" role="alert" data-testid="track-read-failed">
-                      {refusalProse(trackReadError)}{" "}
+                      {refusalProse(trackReadFailed)}{" "}
                       <button type="button" className="underline underline-offset-2" onClick={retryTrackReads}>
                         Try again
                       </button>
@@ -3361,7 +3382,7 @@ function Workspace({
                     colorOf={(labelClass) => classColor(classNamed(store.document, labelClass), labelClass)}
                     outcome={trackOutcome}
                     onOutcome={onTrackOutcome}
-                    readFailure={trackReadError === null ? null : { error: trackReadError, retry: retryTrackReads }}
+                    readFailure={regionFailure === null ? null : { error: regionFailure, retry: retryRegionReads }}
                   />
                 ),
               })}

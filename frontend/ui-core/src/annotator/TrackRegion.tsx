@@ -47,13 +47,24 @@ export interface TrackCandidate {
   readonly labelClass: string;
 }
 
+/** A read that failed, and how to ask again. */
+export interface ReadFailure {
+  readonly error: unknown;
+  readonly retry: () => void;
+}
+
 /** One sequence source the frame sits in: its positions there, and its tracks. */
 export interface TrackSequence {
   readonly sourceId: string;
-  /** What to call the source; null when the frame sits in only one, which then goes unnamed. */
+  /** The heading over this source's tracks; null when the frame sits in only one, which goes unnamed. */
+  readonly heading: string | null;
+  /** The source's name for a track's name and an outcome; null when unnamed or not read. */
   readonly name: string | null;
   readonly here: readonly FrameOccurrence[];
-  readonly tracks: readonly Track[];
+  /** Null while this source's tracks have never been read. */
+  readonly tracks: readonly Track[] | null;
+  /** This source's last tracks read failed. */
+  readonly failure: ReadFailure | null;
 }
 
 export interface TrackRegionProps {
@@ -83,8 +94,8 @@ export interface TrackRegionProps {
   readonly colorOf: (labelClass: string) => string;
   readonly outcome: TrackOutcome | null;
   readonly onOutcome: (outcome: TrackOutcome | null) => void;
-  /** A refetch of the tracks or occurrences failed while earlier answers are still shown. */
-  readonly readFailure: { readonly error: unknown; readonly retry: () => void } | null;
+  /** A reread of the frame's occurrences or of its sources' names failed. */
+  readonly readFailure: ReadFailure | null;
 }
 
 /** What the last track write came to, in words. Held above the frame, so a write that lands after a step is still said. */
@@ -112,7 +123,7 @@ export function TrackRegion(props: TrackRegionProps): JSX.Element {
   const { outcome, onOutcome: setOutcome } = props;
   const busy = observe.isPending || unobserve.isPending || start.isPending;
 
-  const tracks = sequences.flatMap((one) => one.tracks);
+  const tracks = sequences.flatMap((one) => one.tracks ?? []);
   const here = sequences.flatMap((one) => one.here);
   const label = (track: Track): string => sequenceTrackLabel(track, sequences);
   const sourceName = (sourceId: string): string | null => sequences.find((one) => one.sourceId === sourceId)?.name ?? null;
@@ -170,21 +181,33 @@ export function TrackRegion(props: TrackRegionProps): JSX.Element {
         />
       </div>
 
-      {sequences.map((sequence) =>
-        sequence.name === null ? (
-          <TrackList key={sequence.sourceId} {...props} tracks={sequence.tracks} />
-        ) : (
+      {sequences.map((sequence) => {
+        const body = (
+          <>
+            {sequence.tracks !== null && <TrackList {...props} tracks={sequence.tracks} />}
+            {sequence.failure !== null && (
+              <p className="px-2 text-xs text-destructive" role="alert" data-testid={`track-source-failed-${sequence.sourceId}`}>
+                {refusalProse(sequence.failure.error)}{" "}
+                <button type="button" className="underline underline-offset-2" onClick={sequence.failure.retry}>
+                  Try again
+                </button>
+              </p>
+            )}
+          </>
+        );
+        if (sequence.heading === null) return <div key={sequence.sourceId} className="contents">{body}</div>;
+        return (
           <section key={sequence.sourceId} className="flex flex-col gap-1" data-testid={`track-source-${sequence.sourceId}`}>
             <div className="flex items-center gap-2 px-2 text-xs text-muted-foreground">
               <span className="min-w-0 truncate font-medium" data-testid="track-source-name">
-                {sequence.name}
+                {sequence.heading}
               </span>
-              <span className="ml-auto shrink-0 tabular-nums">{sequence.tracks.length}</span>
+              {sequence.tracks !== null && <span className="ml-auto shrink-0 tabular-nums">{sequence.tracks.length}</span>}
             </div>
-            <TrackList {...props} tracks={sequence.tracks} />
+            {body}
           </section>
-        ),
-      )}
+        );
+      })}
 
       {focused !== undefined && focusedSequence !== undefined && (
         <FocusedTrack

@@ -27,6 +27,8 @@ const A1 = "44444441-4444-4444-8444-444444444444";
 const A2 = "44444442-4444-4444-8444-444444444444";
 /** On the track, but carried by another job: the rest of the sequence a correction batch did not take. */
 const ELSEWHERE = "44444449-4444-4444-8444-444444444444";
+/** A third frame some tests add to the job, two steps from the first. */
+const A3 = "44444443-4444-4444-8444-444444444444";
 
 const SCHEMA = {
   project_id: PROJECT,
@@ -109,6 +111,12 @@ interface World {
   failOccurrences: number;
   /** Every read of this source's tracks answers 500. */
   failTracks: boolean;
+  /** Every read of a source's own record, which names it, answers 500. */
+  failSourceNames: boolean;
+  /** Every read of the second sequence's tracks answers 500. */
+  failSecondTracks: boolean;
+  /** The job's frames, in its order. */
+  jobAssets: string[];
   /** Observations of this frame's labels by tracks this page has not read. */
   foreign: { annotation_id: string; track_id: string; label_class: string }[];
   /** When set, the first frame's declaration is this, whatever the tracks now say: a stale read. */
@@ -140,6 +148,9 @@ function freshWorld(): World {
     observeGate: null,
     failOccurrences: 0,
     failTracks: false,
+    failSourceNames: false,
+    failSecondTracks: false,
+    jobAssets: [A1, A2],
     foreign: [],
     staleObserved: null,
   };
@@ -185,7 +196,7 @@ function answer(method: string, path: string, body: unknown): Response {
   if (path.endsWith("/schema/versions/1")) return json(SCHEMA);
   if (path === `/batches/${BATCH}/assets`) {
     const progressOf = (index: number) => (index === 0 ? (world.preLabeled ? "pre_labeled" : "unannotated") : "annotated");
-    const items = [A1, A2].map((id, index) => ({
+    const items = world.jobAssets.map((id, index) => ({
       id,
       project_id: PROJECT,
       modality: "image",
@@ -231,18 +242,20 @@ function answer(method: string, path: string, body: unknown): Response {
     const items = world.sourceId === null ? [] : world.occurrences.filter((one) => one.asset_id === assetOccurrences[1]);
     return json({ items, total: items.length });
   }
-  if (path === `/projects/${PROJECT}/sources`) {
-    const items = Object.entries(SOURCE_NAMES).map(([id, name]) => ({
-      id,
+  const sourceRead = /^\/sources\/([^/]+)$/.exec(path);
+  if (sourceRead !== null && world.failSourceNames) return json({ code: "INTERNAL", message: "down" }, 500);
+  if (sourceRead !== null && SOURCE_NAMES[sourceRead[1]!] !== undefined) {
+    return json({
+      id: sourceRead[1],
       project_id: PROJECT,
       kind: "image_sequence",
-      name,
+      name: SOURCE_NAMES[sourceRead[1]!],
       registered_at: "2026-11-01T00:00:00Z",
       video: null,
       frame: null,
-    }));
-    return json({ items, total: items.length });
+    });
   }
+  if (path === `/sources/${SECOND}/tracks` && method === "GET" && world.failSecondTracks) return json({ code: "INTERNAL", message: "down" }, 500);
   if (path === `/sources/${SOURCE}/tracks` && method === "GET" && world.failTracks) return json({ code: "INTERNAL", message: "down" }, 500);
   const sourceTracks = /^\/sources\/([^/]+)\/tracks$/.exec(path);
   if (sourceTracks !== null && method === "GET") {
@@ -447,7 +460,41 @@ describe("a frame in two sequences", () => {
     const tracks = await region();
     expect(within(tracks).queryByTestId(`track-source-${SOURCE}`)).toBeNull();
     expect(within(tracks).queryByTestId("track-source-name")).toBeNull();
-    expect(sent.some((one) => one.path === `/projects/${PROJECT}/sources`)).toBe(false);
+    expect(sent.some((one) => one.path === `/sources/${SOURCE}`)).toBe(false);
+  });
+
+  it("shows the sources that answered beside the one whose tracks could not be read", async () => {
+    inTwoSequences();
+    world.failSecondTracks = true;
+    await open();
+    const tracks = await region();
+    const failed = await within(tracks).findByTestId(`track-source-failed-${SECOND}`, {}, { timeout: 5000 });
+    expect(failed.getAttribute("role")).toBe("alert");
+    expect(within(failed).getByRole("button", { name: "Try again" })).not.toBeNull();
+    const first = within(tracks).getByTestId(`track-source-${SOURCE}`);
+    expect(within(first).getByTestId("track-row-track-1")).not.toBeNull();
+    expect(within(tracks).queryByTestId("track-read-failed")).toBeNull();
+
+    world.failSecondTracks = false;
+    await userEvent.click(within(failed).getByRole("button", { name: "Try again" }));
+    const second = await within(tracks).findByTestId(`track-row-track-b1`);
+    expect(within(tracks).getByTestId(`track-source-${SECOND}`).contains(second)).toBe(true);
+    expect(within(tracks).queryByTestId(`track-source-failed-${SECOND}`)).toBeNull();
+  });
+
+  it("says a failed read of the sources' names, and leaves them out of what a write says", async () => {
+    inTwoSequences();
+    world.failSourceNames = true;
+    await open();
+    const tracks = await region();
+    const stale = await within(tracks).findByTestId("track-read-stale", {}, { timeout: 5000 });
+    expect(stale.getAttribute("role")).toBe("alert");
+    expect(within(tracks).getAllByTestId("track-source-name").map((one) => one.textContent)).toEqual(["Name not read", "Name not read"]);
+
+    await userEvent.click(await screen.findByTestId("object-select-2"));
+    const focused = await focusTrack("track-b1");
+    await userEvent.click(within(focused).getByTestId("track-observe"));
+    await waitFor(() => expect(screen.getByTestId("track-done").textContent).toBe("Added at frame 0"));
   });
 
   it("adds the object at the focused track's own source, never the other's", async () => {
@@ -645,6 +692,21 @@ describe("stepping along a track", () => {
     await open();
     await focusTrack("track-1");
     expect(screen.getByTestId("track-next").getAttribute("data-reason")).toBe("Every later frame of this track is outside this job (1)");
+  });
+});
+
+describe("reading ahead", () => {
+  it("reads ahead the frame a step along the focused track would open, beyond the neighbours", async () => {
+    world.jobAssets = [A1, A2, A3];
+    world.occurrences.push({ id: "occ-6", source_id: SOURCE, position: 6, timestamp: 0.6, asset_id: A3 });
+    world.tracks[1]!.observations = [observationAt("occ-6", "ann-9")];
+    await open();
+    await region();
+    const ahead = `/projects/${PROJECT}/assets/${A3}/occurrences`;
+    await waitFor(() => expect(sent.some((one) => one.path === `/projects/${PROJECT}/assets/${A2}/occurrences`)).toBe(true));
+    expect(sent.some((one) => one.path === ahead)).toBe(false);
+    await focusTrack("track-2");
+    await waitFor(() => expect(sent.some((one) => one.path === ahead)).toBe(true));
   });
 });
 
