@@ -200,6 +200,21 @@ describe("a 3D cuboid, carried outside the image scene", () => {
   });
 });
 
+describe("a rotated box, drawn in pixels", () => {
+  const OBB = { type: "obb", cx: 40, cy: 30, width: 24, height: 10, angle: 0.5 };
+
+  it("parses as a drawn geometry and goes back out byte for byte", () => {
+    expect(parseGeometry(OBB)).toStrictEqual(OBB);
+  });
+
+  it("refuses a missing angle, an undeclared key and a nonfinite value", () => {
+    const noAngle = { type: OBB.type, cx: OBB.cx, cy: OBB.cy, width: OBB.width, height: OBB.height };
+    expect(() => parseGeometry(noAngle)).toThrow(/missing angle/);
+    expect(() => parseGeometry({ ...OBB, x: 0 })).toThrow(/does not declare/);
+    expect(() => parseGeometry({ ...OBB, angle: "0.5" })).toThrow(/geometry\.angle/);
+  });
+});
+
 describe("strictness, so the editor cannot silently erase a field", () => {
   it("refuses an annotation carrying a key the contract does not declare", () => {
     expect(() => parseAnnotation({ ...sample(), reviewed: true })).toThrow(

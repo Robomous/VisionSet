@@ -497,6 +497,19 @@ function HotTarget({ hot, zoom }: { readonly hot: Target; readonly zoom: number 
       />
     );
   }
+  if (hot.kind === "rotate") {
+    return (
+      <circle
+        data-testid="hot-rotate"
+        cx={hot.point[0]}
+        cy={hot.point[1]}
+        r={screenPx(HANDLE_PX * 0.75, zoom)}
+        fill="#ffffff"
+        stroke="#111111"
+        strokeWidth={screenPx(1.5, zoom)}
+      />
+    );
+  }
   if (hot.kind === "vertex") {
     return (
       <circle

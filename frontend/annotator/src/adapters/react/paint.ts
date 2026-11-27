@@ -53,6 +53,7 @@ import {
   type Annotation,
   type BboxGeometry,
   type LabelClass,
+  type ObbGeometry,
   type Point,
   type PolygonGeometry,
   type PolylineGeometry,
@@ -63,7 +64,7 @@ export interface PaintedAnnotation {
   readonly id: string;
   readonly labelClass: string;
   /** Never a `classification_tag` — a tag has no coordinates. */
-  readonly geometry: BboxGeometry | PolygonGeometry | PolylineGeometry;
+  readonly geometry: BboxGeometry | ObbGeometry | PolygonGeometry | PolylineGeometry;
   readonly selected: boolean;
   /** Under the pointer, or held by the drag in flight. */
   readonly hot: boolean;
@@ -154,7 +155,7 @@ export function paintHighlightedVertex(
 ): PaintedVertex | null {
   if (vertex === null) return null;
   const shape = paintAnnotation(document, EMPTY_SELECTION, vertex.id, null);
-  if (shape === null || shape.geometry.type === "bbox") return null;
+  if (shape === null || shape.geometry.type === "bbox" || shape.geometry.type === "obb") return null;
   const point = shape.geometry.points[vertex.index];
   if (point === undefined) return null;
   return { index: vertex.index, point, color: shape.color };
@@ -216,6 +217,7 @@ export function editedId(state: InteractionState): string | null {
   switch (state.type) {
     case "moving":
     case "resizing":
+    case "rotating":
     case "moving-vertex":
       return state.id;
     default:
@@ -231,7 +233,9 @@ export function editedId(state: InteractionState): string | null {
  * the machine's own `pointer-up` still needs.
  */
 export function rubberBand(state: InteractionState): BboxGeometry | null {
-  return state.type === "drawing-bbox" ? normalizeBbox(state.start, state.current) : null;
+  return state.type === "drawing-bbox" || state.type === "drawing-obb"
+    ? normalizeBbox(state.start, state.current)
+    : null;
 }
 
 /**

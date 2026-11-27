@@ -52,6 +52,14 @@ const BOX: readonly Point[] = [
   [6.75, 15.25],
 ];
 
+/** The box turned a little: a rotated box is a box first. */
+const ROTATED_BOX: readonly Point[] = [
+  [5.5, 8.75],
+  [19.75, 3.75],
+  [22.5, 11.25],
+  [8.25, 16.25],
+];
+
 /** Wider than the box: cut corners give back area the eye misses. */
 const POLYGON: readonly Point[] = [
   [5.75, 13.75],
@@ -83,6 +91,7 @@ const LINE_3D: readonly Point[] = [
 /** What a geometry is drawn from: its outline's corners, and how each is held. */
 const NODES: Partial<Record<GeometryType, { readonly at: readonly Point[]; readonly kind: "grip" | "vertex" }>> = {
   bbox: { at: BOX, kind: "grip" },
+  obb: { at: ROTATED_BOX, kind: "grip" },
   polygon: { at: POLYGON, kind: "vertex" },
   polyline: { at: LINE, kind: "vertex" },
   polyline_3d: { at: LINE_3D, kind: "vertex" },
@@ -109,6 +118,8 @@ export function ShapeGlyph({ geometry, color, className }: ShapeGlyphProps): JSX
   let outline: JSX.Element;
   if (geometry === "bbox") {
     outline = <rect data-part="outline" x={6.75} y={4.75} width={14.5} height={10.5} fill={color} fillOpacity={CLASS_FILL_OPACITY} {...stroke} strokeLinejoin="miter" />;
+  } else if (geometry === "obb") {
+    outline = <polygon data-part="outline" points={points(ROTATED_BOX)} fill={color} fillOpacity={CLASS_FILL_OPACITY} {...stroke} strokeLinejoin="miter" />;
   } else if (geometry === "polygon") {
     outline = <polygon data-part="outline" points={points(POLYGON)} fill={color} fillOpacity={CLASS_FILL_OPACITY} {...stroke} />;
   } else if (geometry === "polyline") {

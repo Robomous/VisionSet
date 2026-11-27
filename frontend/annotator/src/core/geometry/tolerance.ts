@@ -146,14 +146,21 @@ export const MIN_DRAW_SIZE_PX = 3;
 export const PASTE_OFFSET_PX = 20;
 
 /**
+ * How far beyond a rotated box's `n` side its rotation grip sits, in screen
+ * pixels: far enough that it cannot be mistaken for the `n` resize grip at the
+ * handle tolerance, whatever the box's size.
+ */
+export const ROTATE_HANDLE_OFFSET_PX = 24;
+
+/**
  * Every screen-pixel constant above, in the asset's own pixels.
  *
  * The adapter builds one per zoom change and threads it through; `resolveTarget`
  * and the state machine take this record and never a zoom, which is what keeps the
  * audit above answering with this file alone.
  *
- * Seven of the eight are tolerances in the strict sense and the name is theirs.
- * `pasteOffset` is a displacement rather than a radius, and it rides here anyway
+ * Seven of the nine are tolerances in the strict sense and the name is theirs.
+ * `pasteOffset` and `rotateOffset` are displacements rather than radii, and they ride here anyway
  * because the *frame conversion* is the thing being shared: a second builder for
  * one field would be a second place the zoom is named, which is the one thing
  * this module exists to prevent.
@@ -168,6 +175,8 @@ export interface Tolerances {
   readonly minDraw: number;
   /** Not a tolerance — see above. Asset pixels, like every field here. */
   readonly pasteOffset: number;
+  /** Not a tolerance either. Where a rotated box's rotation grip sits. */
+  readonly rotateOffset: number;
 }
 
 /**
@@ -206,5 +215,6 @@ export function assetTolerances(zoom: number): Tolerances {
     click: toleranceInAssetPixels(CLICK_SLOP_PX, zoom),
     minDraw: toleranceInAssetPixels(MIN_DRAW_SIZE_PX, zoom),
     pasteOffset: toleranceInAssetPixels(PASTE_OFFSET_PX, zoom),
+    rotateOffset: toleranceInAssetPixels(ROTATE_HANDLE_OFFSET_PX, zoom),
   };
 }

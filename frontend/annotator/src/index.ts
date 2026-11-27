@@ -267,6 +267,22 @@ export {
   type BboxHandle,
 } from "./core/geometry/bbox";
 export {
+  canonicalObb,
+  isValidObb,
+  moveObb,
+  obbAxes,
+  obbContains,
+  obbCorners,
+  obbExtent,
+  obbFromBox,
+  obbHandleDirection,
+  obbHandlePositions,
+  obbRotateBase,
+  obbRotateHandle,
+  resizeObb,
+  rotateObb,
+} from "./core/geometry/obb";
+export {
   MIN_POLYGON_POINTS,
   insertPolygonVertex,
   movePolygonVertex,
@@ -296,6 +312,7 @@ export {
   HANDLE_TOLERANCE_PX,
   MIN_DRAW_SIZE_PX,
   PASTE_OFFSET_PX,
+  ROTATE_HANDLE_OFFSET_PX,
   SHAPE_TOLERANCE_PX,
   VERTEX_TOLERANCE_PX,
   assetTolerances,
@@ -314,6 +331,7 @@ export {
   type InteractionState,
   type InteractionStateType,
   type MovableGeometry,
+  type ResizableGeometry,
 } from "./core/interaction/state";
 export {
   NO_MODIFIERS,
@@ -336,6 +354,7 @@ export {
 // The bbox tool — what the pointer would do here, for a renderer to show
 export {
   HANDLE_CURSORS,
+  handleCursor,
   affordanceAt,
   type Affordance,
   type Cursor,

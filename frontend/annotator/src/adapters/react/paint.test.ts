@@ -5,7 +5,7 @@
 
 import { describe, expect, it } from "vitest";
 
-import { BOX_ID, PATH_ID, POLY_ID, box, polygon, sceneDocument } from "../../core/interaction/_scene";
+import { BOX_ID, OBB_ID, PATH_ID, POLY_ID, box, polygon, sceneDocument } from "../../core/interaction/_scene";
 import { everyStateType, worldIn } from "../../core/interaction/_scene";
 import { ASSET, SCHEMA, annotation } from "../../core/state/_sample";
 import { createDocument } from "../../core/state/document";
@@ -131,22 +131,22 @@ describe("a class draws in the schema's colour, or in one derived from its name"
 describe("the committed draw list", () => {
   it("keeps the document's own draw order, which is what a click resolves against", () => {
     const painted = paintDocument(sceneDocument(), EMPTY_SELECTION, null, null);
-    expect(painted.map((shape) => shape.id)).toEqual([BOX_ID, POLY_ID, PATH_ID]);
+    expect(painted.map((shape) => shape.id)).toEqual([BOX_ID, POLY_ID, PATH_ID, OBB_ID]);
   });
 
   it("marks the selected shapes and nothing else", () => {
     const painted = paintDocument(sceneDocument(), selectionOf([POLY_ID]), null, null);
-    expect(painted.map((shape) => shape.selected)).toEqual([false, true, false]);
+    expect(painted.map((shape) => shape.selected)).toEqual([false, true, false, false]);
   });
 
   it("marks exactly the hot one", () => {
     const painted = paintDocument(sceneDocument(), EMPTY_SELECTION, null, BOX_ID);
-    expect(painted.map((shape) => shape.hot)).toEqual([true, false, false]);
+    expect(painted.map((shape) => shape.hot)).toEqual([true, false, false, false]);
   });
 
   it("omits what a drag is holding, so the shape is not drawn twice", () => {
     const painted = paintDocument(sceneDocument(), EMPTY_SELECTION, BOX_ID, null);
-    expect(painted.map((shape) => shape.id)).toEqual([POLY_ID, PATH_ID]);
+    expect(painted.map((shape) => shape.id)).toEqual([POLY_ID, PATH_ID, OBB_ID]);
   });
 
   it("omits classification tags, which have no coordinates to draw", () => {
@@ -192,12 +192,13 @@ describe("what the preview is speaking for", () => {
     expect(editedId(worldIn("moving").state)).toBe(BOX_ID);
     expect(editedId(worldIn("resizing").state)).toBe(BOX_ID);
     expect(editedId(worldIn("moving-vertex").state)).toBe(POLY_ID);
+    expect(editedId(worldIn("rotating").state)).toBe(OBB_ID);
   });
 
   it("names nothing in every state that is not a drag", () => {
     // Swept off the union rather than listed, so a state added without an answer
     // here shows up as a failure rather than as a shape drawn twice.
-    const dragging: ReadonlySet<string> = new Set(["moving", "resizing", "moving-vertex"]);
+    const dragging: ReadonlySet<string> = new Set(["moving", "resizing", "rotating", "moving-vertex"]);
     for (const type of everyStateType()) {
       if (dragging.has(type)) continue;
       expect(editedId(worldIn(type).state)).toBeNull();
@@ -241,7 +242,7 @@ describe("the rubber band", () => {
 
   it("is null in every other state", () => {
     for (const type of everyStateType()) {
-      if (type === "drawing-bbox") continue;
+      if (type === "drawing-bbox" || type === "drawing-obb") continue;
       expect(rubberBand(worldIn(type).state)).toBeNull();
     }
   });

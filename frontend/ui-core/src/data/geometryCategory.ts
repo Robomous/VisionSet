@@ -88,6 +88,7 @@ export const GEOMETRY_CATEGORIES = [
  */
 export const GEOMETRY_CATEGORY = {
   bbox: "Basic Computer Vision",
+  obb: "Basic Computer Vision",
   polygon: "Basic Computer Vision",
   mask: "Basic Computer Vision",
   keypoints: "Basic Computer Vision",
@@ -104,13 +105,14 @@ export const GEOMETRY_CATEGORY = {
  */
 export const GEOMETRY_ORDER = {
   bbox: 0,
-  polygon: 1,
-  mask: 2,
-  keypoints: 3,
-  polyline: 4,
-  classification_tag: 5,
-  cuboid_3d: 6,
-  polyline_3d: 7,
+  obb: 1,
+  polygon: 2,
+  mask: 3,
+  keypoints: 4,
+  polyline: 5,
+  classification_tag: 6,
+  cuboid_3d: 7,
+  polyline_3d: 8,
 } as const satisfies Record<GeometryType, number>;
 
 /** `geometries` in picker order, as a new array. */
@@ -176,6 +178,7 @@ export function groupGeometries(
  */
 export const GEOMETRY_LABELS = {
   bbox: "box",
+  obb: "rotated box",
   polygon: "polygon",
   polyline: "polyline",
   classification_tag: "tag",
@@ -223,6 +226,7 @@ export function formatGeometries(geometries: readonly GeometryType[]): string {
  */
 export const GEOMETRY_PLURALS = {
   bbox: "boxes",
+  obb: "rotated boxes",
   polygon: "polygons",
   polyline: "polylines",
   mask: "masks",

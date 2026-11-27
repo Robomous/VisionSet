@@ -1425,6 +1425,7 @@ describe("the schema editor", () => {
     const chips = within(group).getAllByRole("button");
     expect(chips.map((chip) => chip.getAttribute("data-testid"))).toEqual([
       "class-geometry-0-bbox",
+      "class-geometry-0-obb",
       "class-geometry-0-polygon",
       "class-geometry-0-polyline",
       "class-geometry-0-classification_tag",
@@ -1434,11 +1435,11 @@ describe("the schema editor", () => {
     // The display words, not the wire values: `classification_tag` is an
     // identifier and `tag` is what it is called. Icon only, so the word is
     // each button's name, and it is said again beside the group.
-    expect(chips.map((chip) => chip.getAttribute("aria-label"))).toEqual(["Box", "Polygon", "Polyline", "Tag", "3D box", "3D polyline"]);
-    expect(chips.map((chip) => chip.textContent)).toEqual(["", "", "", "", "", ""]);
+    expect(chips.map((chip) => chip.getAttribute("aria-label"))).toEqual(["Box", "Rotated box", "Polygon", "Polyline", "Tag", "3D box", "3D polyline"]);
+    expect(chips.map((chip) => chip.textContent)).toEqual(["", "", "", "", "", "", ""]);
     expect(within(group.parentElement!).getByText("Box").getAttribute("aria-hidden")).toBe("true");
     // What the class accepts is readable at a glance, with nothing opened.
-    expect(chips.map((chip) => chip.getAttribute("aria-pressed"))).toEqual(["true", "false", "false", "false", "false", "false"]);
+    expect(chips.map((chip) => chip.getAttribute("aria-pressed"))).toEqual(["true", "false", "false", "false", "false", "false", "false"]);
     expect(screen.queryByTestId(/^geometry-category-/)).toBeNull();
   });
 

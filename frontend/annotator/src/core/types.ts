@@ -23,8 +23,8 @@
  *   at the boundary, never the engine's.
  *
  * Two vocabularies, one union — the kernel's own split, kept: `GeometryType`
- * names eight geometries, because that is what a `LabelClass` declares and what
- * the API publishes; `Geometry` has four variants, because that is what this
+ * names nine geometries, because that is what a `LabelClass` declares and what
+ * the API publishes; `Geometry` has five variants, because that is what this
  * engine draws. Naming `mask` or `keypoints` is legal in a schema and refused at
  * the annotation, by the kernel (`UNSUPPORTED_GEOMETRY`) and by `parseGeometry`
  * here. See `docs/content/schemas.md`.
@@ -56,12 +56,13 @@ export const GEOMETRY_TYPES = [
   "cuboid_3d",
   "keypoints",
   "mask",
+  "obb",
   "polygon",
   "polyline",
   "polyline_3d",
 ] as const;
 
-/** The vocabulary a `LabelClass` declares. Eight names; six have a model. */
+/** The vocabulary a `LabelClass` declares. Nine names; seven have a model. */
 export type GeometryType = (typeof GEOMETRY_TYPES)[number];
 
 /**
@@ -75,6 +76,7 @@ export const IMPLEMENTED_GEOMETRY_TYPES = [
   "bbox",
   "classification_tag",
   "cuboid_3d",
+  "obb",
   "polygon",
   "polyline",
   "polyline_3d",
@@ -84,6 +86,7 @@ export const IMPLEMENTED_GEOMETRY_TYPES = [
 export const DRAWN_GEOMETRY_TYPES = [
   "bbox",
   "classification_tag",
+  "obb",
   "polygon",
   "polyline",
 ] as const satisfies readonly (typeof IMPLEMENTED_GEOMETRY_TYPES)[number][];
@@ -121,6 +124,21 @@ export interface BboxGeometry {
   readonly y: number;
   readonly width: number;
   readonly height: number;
+}
+
+/**
+ * A rotated rectangle in asset pixels: centre, side lengths and an angle in
+ * radians. The width side runs along `(cos angle, sin angle)` and the height side
+ * along `(-sin angle, cos angle)`, so a positive angle turns clockwise on screen.
+ * The kernel stores every one in the canonical form `canonicalObb` computes.
+ */
+export interface ObbGeometry {
+  readonly type: "obb";
+  readonly cx: number;
+  readonly cy: number;
+  readonly width: number;
+  readonly height: number;
+  readonly angle: number;
 }
 
 /** A closed polygon of at least three points. The closing edge is implicit. */
@@ -227,6 +245,7 @@ export interface Calibration {
 /** Every shape an annotation can carry, discriminated on `type`. */
 export type Geometry =
   | BboxGeometry
+  | ObbGeometry
   | PolygonGeometry
   | PolylineGeometry
   | ClassificationGeometry;
@@ -351,7 +370,7 @@ export interface Attribute {
  * `color` is the kernel's own field — a renderer choosing its own palette when
  * it is null is a rendering decision, not a document one.
  *
- * The members are `GeometryType`, all eight, not just the carryable four. A
+ * The members are `GeometryType`, all nine, not just the carryable five. A
  * schema may legally declare `mask`; an annotation may not carry one. Keeping the
  * wide type here is what lets a class list load intact and the refusal happen
  * where a user can be told about it.

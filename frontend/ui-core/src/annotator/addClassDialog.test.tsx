@@ -197,7 +197,7 @@ describe("what it submits", () => {
         (option) => option.textContent ?? "",
       );
 
-    expect(membersOf(basic)).toEqual(["box", "polygon", "tag"]);
+    expect(membersOf(basic)).toEqual(["box", "rotated box", "polygon", "tag"]);
     expect(membersOf(robotics)).toEqual(["polyline", "3D box", "3D polyline"]);
   });
 

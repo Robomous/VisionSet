@@ -40,7 +40,7 @@
  * `AnnotationDocument` would cost that for one line at the call site.
  */
 
-import type { Annotation, BboxGeometry, Geometry, Point } from "../types";
+import type { Annotation, BboxGeometry, Geometry, ObbGeometry, Point } from "../types";
 import {
   BBOX_HANDLES,
   bboxContains,
@@ -48,6 +48,7 @@ import {
   bboxHandlePositions,
   type BboxHandle,
 } from "./bbox";
+import { obbContains, obbCorners, obbHandlePositions } from "./obb";
 import { MIN_POLYGON_POINTS, polygonContains } from "./polygon";
 import { closestPointOnSegment, distance } from "./primitives";
 
@@ -211,11 +212,11 @@ function nearestEdgeIn(
  * whichever the iteration happened to reach.
  */
 export function nearestHandle(
-  bbox: BboxGeometry,
+  box: BboxGeometry | ObbGeometry,
   point: Point,
   tolerance: number,
 ): HandleHit | null {
-  const positions = bboxHandlePositions(bbox);
+  const positions = box.type === "obb" ? obbHandlePositions(box) : bboxHandlePositions(box);
   let best: HandleHit | null = null;
   for (const handle of BBOX_HANDLES) {
     const at = positions[handle];
@@ -249,6 +250,10 @@ export function geometryContains(
   if (geometry.type === "bbox") {
     if (bboxContains(geometry, point)) return true;
     return nearestEdge(bboxCorners(geometry), point, tolerance) !== null;
+  }
+  if (geometry.type === "obb") {
+    if (obbContains(geometry, point)) return true;
+    return nearestEdge(obbCorners(geometry), point, tolerance) !== null;
   }
   // An open path has **no inside** — that is the whole of what makes it open, and
   // it is why a lane is reached by its outline where a polygon is reached by its

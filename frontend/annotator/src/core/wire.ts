@@ -166,6 +166,7 @@ const INTRINSICS_KEYS = ["fx", "fy", "cx", "cy", "skew", "width", "height"] as c
 const DISTORTION_KEYS = ["model", "k1", "k2", "p1", "p2", "k3"] as const;
 
 const BBOX_KEYS = ["type", "x", "y", "width", "height"] as const;
+const OBB_KEYS = ["type", "cx", "cy", "width", "height", "angle"] as const;
 const POLYGON_KEYS = ["type", "points"] as const;
 // A polyline carries the same two keys; the discriminator is the difference.
 const POLYLINE_KEYS = ["type", "points"] as const;
@@ -379,6 +380,16 @@ export function parseStoredGeometry(value: unknown): StoredGeometry {
         y: requireNumber(value["y"], "geometry.y"),
         width: requireNumber(value["width"], "geometry.width"),
         height: requireNumber(value["height"], "geometry.height"),
+      };
+    case "obb":
+      requireExactKeys(value, OBB_KEYS, "obb geometry");
+      return {
+        type: "obb",
+        cx: requireNumber(value["cx"], "geometry.cx"),
+        cy: requireNumber(value["cy"], "geometry.cy"),
+        width: requireNumber(value["width"], "geometry.width"),
+        height: requireNumber(value["height"], "geometry.height"),
+        angle: requireNumber(value["angle"], "geometry.angle"),
       };
     case "polygon":
     case "polyline": {

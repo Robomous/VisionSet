@@ -132,6 +132,22 @@ describe("StaticAnnotationOverlay", () => {
     expect(runs).toHaveLength(1);
     expect(runs[0].hasAttribute("data-occluded")).toBe(false);
   });
+
+  it("draws a rotated box as its four turned corners", () => {
+    const crate = annotation("crate", "crate", { type: "obb", cx: 100, cy: 50, width: 40, height: 20, angle: Math.PI / 2 });
+    render(<StaticAnnotationOverlay width={800} height={600} src="blob:picture" alt="crate" annotations={[crate]} />);
+    const shape = screen.getByTestId("preview-shape-crate");
+    expect(shape.getAttribute("data-geometry")).toBe("obb");
+    const corners = (shape.querySelector("polygon")?.getAttribute("points") ?? "")
+      .split(" ")
+      .map((pair) => pair.split(",").map((value) => Math.round(Number(value))));
+    expect(corners).toEqual([
+      [110, 30],
+      [110, 70],
+      [90, 70],
+      [90, 30],
+    ]);
+  });
 });
 
 describe("Vertices", () => {

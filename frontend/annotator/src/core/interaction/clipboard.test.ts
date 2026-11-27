@@ -34,6 +34,7 @@ const SCHEMA: AnnotationSchema = {
     { name: "lane", geometries: ["polygon"], color: null, attributes: [] },
     { name: "centerline", geometries: ["polyline"], color: null, attributes: [] },
     { name: "weather", geometries: ["classification_tag"], color: null, attributes: [] },
+    { name: "crate", geometries: ["obb"], color: null, attributes: [] },
   ],
 };
 
@@ -149,6 +150,18 @@ describe("pasting offsets, and the offset is in asset pixels", () => {
       counter(),
     );
     expect(pasted[0].geometry).toEqual({ type: "bbox", x: 22, y: 32, width: 30, height: 40 });
+  });
+
+  it("moves a rotated box's centre and keeps its size and angle", () => {
+    const crate: Geometry = { type: "obb", cx: 50, cy: 60, width: 30, height: 10, angle: 0.4 };
+    const document = documentOf([annotationOf("c", "crate", crate)]);
+    const entries = copiedEntries([...document.annotations.values()]);
+    expect(entries[0].geometry).toEqual(crate);
+    expect(entries[0].geometry).not.toBe(crate);
+    const pasted = pastedAnnotations(document, entries, 12, counter());
+    expect(pasted[0].geometry).toEqual({ ...crate, cx: 62, cy: 72 });
+    const again = pastedAnnotations(documentOf([annotationOf("c", "crate", crate), pasted[0]]), entries, 12, counter());
+    expect(again[0].geometry).toEqual({ ...crate, cx: 74, cy: 84 });
   });
 
   it("moves a polygon rigidly, so every pairwise distance survives", () => {

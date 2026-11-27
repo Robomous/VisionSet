@@ -75,6 +75,7 @@
 
 import type { IdFactory } from "../ids";
 import { moveBbox } from "../geometry/bbox";
+import { moveObb } from "../geometry/obb";
 import {
   polygonBbox,
   sameVisibility,
@@ -165,6 +166,7 @@ export function copiedEntries(
 function copiedGeometry(geometry: Geometry): Geometry {
   switch (geometry.type) {
     case "bbox":
+    case "obb":
       return { ...geometry };
     case "polygon":
       return { type: "polygon", points: geometry.points.map(([x, y]) => [x, y] as const) };
@@ -281,6 +283,8 @@ function displaced(geometry: Geometry, delta: number, bounds: Bounds): Geometry 
   switch (geometry.type) {
     case "bbox":
       return moveBbox(geometry, [geometry.x + delta, geometry.y + delta], bounds);
+    case "obb":
+      return moveObb(geometry, [geometry.cx + delta, geometry.cy + delta], bounds);
     case "polygon": {
       const extent = polygonBbox(geometry);
       return translatePolygon(geometry, [extent.x + delta, extent.y + delta], bounds);
@@ -307,6 +311,11 @@ function sameGeometry(a: Geometry, b: Geometry): boolean {
   if (a.type !== b.type) return false;
   if (a.type === "bbox" && b.type === "bbox") {
     return a.x === b.x && a.y === b.y && a.width === b.width && a.height === b.height;
+  }
+  if (a.type === "obb" && b.type === "obb") {
+    return (
+      a.cx === b.cx && a.cy === b.cy && a.width === b.width && a.height === b.height && a.angle === b.angle
+    );
   }
   if ((a.type === "polygon" || a.type === "polyline") && "points" in b) {
     const samePoints =

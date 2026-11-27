@@ -17,6 +17,7 @@ import { describe, expect, it } from "vitest";
 
 import { BBOX_HANDLES, bboxHandlePositions } from "../geometry/bbox";
 import type { BboxHandle } from "../geometry/bbox";
+import { obbHandlePositions } from "../geometry/obb";
 import { assetTolerances } from "../geometry/tolerance";
 import { annotationById, removeAnnotations } from "../state/document";
 import { EMPTY_SELECTION, selectOnly } from "../state/selection";
@@ -27,6 +28,8 @@ import {
   BOX_ID,
   BOX_NW,
   EMPTY_POINT,
+  OBB_ID,
+  OBB_ROTATE,
   POLY_BODY,
   World,
   POLY_ID,
@@ -54,6 +57,8 @@ const KNOWN_CURSORS: Record<Cursor, true> = {
   "nesw-resize": true,
   "ns-resize": true,
   "ew-resize": true,
+  grab: true,
+  grabbing: true,
 };
 
 function toolOf(type: "drawing-bbox" | "drawing-polygon"): Tool {
@@ -113,6 +118,32 @@ const GRIP_POSITIONS = bboxHandlePositions({
   y: 100,
   width: 80,
   height: 60,
+});
+
+describe("a rotated box", () => {
+  it("offers its rotation grip to a hover and holds it through the turn", () => {
+    const hover = at(IDLE, OBB_ROTATE, "select", scene(selectOnly(OBB_ID)));
+    expect(hover.cursor).toBe("grab");
+    expect(hover.hot.kind).toBe("rotate");
+    const world = worldIn("rotating");
+    const held = affordanceAt(world.state, sceneOfWorld(world), "select", OBB_ROTATE);
+    expect(held).toMatchObject({ cursor: "grabbing", hot: { kind: "rotate", id: OBB_ID } });
+  });
+
+  it("turns each grip's resize cursor with the box", () => {
+    // The scene's box is turned π/6: its `e` grip pushes 30° below screen east,
+    // nearer south-east than east, its `se` grip 75°, nearest south, and its `ne`
+    // grip -15°, nearest east.
+    const picked = scene(selectOnly(OBB_ID));
+    const document = picked.document;
+    const crate = annotationById(document, OBB_ID);
+    if (crate === undefined || crate.geometry.type !== "obb") throw new Error("unreachable");
+    const grips = obbHandlePositions(crate.geometry);
+    expect(at(IDLE, grips.e, "select", picked).cursor).toBe("nwse-resize");
+    expect(at(IDLE, grips.se, "select", picked).cursor).toBe("ns-resize");
+    expect(at(IDLE, grips.ne, "select", picked).cursor).toBe("ew-resize");
+    expect(at(IDLE, grips.n, "select", picked).cursor).toBe("nesw-resize");
+  });
 });
 
 describe("hovering, with nothing in flight", () => {
@@ -334,6 +365,7 @@ describe("a drag answers from what it is holding, not from where the pointer is"
     expect(held.handle).toBe("nw");
     expect(answer.hot.point).toEqual([40, 40]);
     // And not where the gesture began, which is what a `startGeometry` read gives.
+    if (held.startGeometry.type !== "bbox") throw new Error("unreachable");
     expect(bboxHandlePositions(held.startGeometry).nw).toEqual([100, 100]);
   });
 
@@ -410,6 +442,7 @@ describe("the cursor table", () => {
     // polygon long enough to close.
     const closeable = drawing(...PENDING);
     const dragging = worldIn("moving");
+    const rotating = worldIn("rotating");
     const produced = new Set<Cursor>([
       ...BBOX_HANDLES.map((handle) => at(IDLE, GRIP_POSITIONS[handle]).cursor),
       affordanceAt(dragging.state, sceneOfWorld(dragging), "select", EMPTY_POINT).cursor,
@@ -417,6 +450,8 @@ describe("the cursor table", () => {
       at(IDLE, EMPTY_POINT, "bbox").cursor,
       at(IDLE, EMPTY_POINT).cursor,
       affordanceAt(closeable.state, sceneOfWorld(closeable), "polygon", PENDING[0]).cursor,
+      at(IDLE, OBB_ROTATE, "select", scene(selectOnly(OBB_ID))).cursor,
+      affordanceAt(rotating.state, sceneOfWorld(rotating), "select", OBB_ROTATE).cursor,
     ]);
     expect(produced).toEqual(new Set(Object.keys(KNOWN_CURSORS)));
   });

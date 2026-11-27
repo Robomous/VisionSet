@@ -28,6 +28,7 @@ export const SCHEMA: AnnotationSchema = {
     // that a class is the only way to pick one. Declared last so the two before it
     // keep their positions — a class palette's hotkeys are its rows in order.
     { name: "path", geometries: ["polyline"], color: null, attributes: [] },
+    { name: "crate", geometries: ["obb"], color: null, attributes: [] },
   ],
   description: null,
   created_at: null,

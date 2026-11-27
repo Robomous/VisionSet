@@ -425,6 +425,7 @@ function GeometryGroup({
 /** What each shape asks of the person drawing it, said under its name. */
 const GEOMETRY_HINT: Record<GeometryType, string> = {
   bbox: "Two corners",
+  obb: "A box that turns",
   polygon: "Closed outline",
   mask: "Painted pixels",
   keypoints: "Named points",

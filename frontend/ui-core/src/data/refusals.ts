@@ -207,7 +207,7 @@ export const REFUSAL_PROSE: Record<string, string> = {
   AUGMENTATION_REQUIRES_SPLIT:
     "This recipe augments, and the release was published without a split — publish one with folds, or export with a recipe that only resizes.",
   PREPROCESSING_STEP_UNSUPPORTED_GEOMETRY:
-    "A step in this recipe cannot move a shape this release holds — quarter turns cannot follow a polyline. Take the step out, or export without the recipe.",
+    "A step in this recipe cannot move a shape this release holds — quarter turns cannot follow a polyline, and only letterbox keeps a rotated box. Take the step out, or export without the recipe.",
 
   // Inference connections.
   INFERENCE_CONNECTION_NOT_FOUND: "That model connection is no longer on record.",

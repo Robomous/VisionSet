@@ -60,6 +60,7 @@
 import { bboxHandlePositions } from "../geometry/bbox";
 import type { BboxHandle } from "../geometry/bbox";
 import { polygonCloseAttempt, topmostAnnotationAt } from "../geometry/hitTest";
+import { obbHandleDirection, obbHandlePositions, obbRotateHandle } from "../geometry/obb";
 import { clampPoint } from "../geometry/primitives";
 import { annotationById, annotationsInDrawOrder } from "../state/document";
 import type { Point } from "../types";
@@ -88,7 +89,9 @@ export type Cursor =
   | "nwse-resize"
   | "nesw-resize"
   | "ns-resize"
-  | "ew-resize";
+  | "ew-resize"
+  | "grab"
+  | "grabbing";
 
 /**
  * The cursor each grip shows, which is the one piece of v1's bbox rendering worth
@@ -130,8 +133,35 @@ function unreachable(value: never): never {
 /** The grip a resize drag is holding, positioned as the scene currently draws it. */
 function heldHandle(scene: Scene, id: string, handle: BboxHandle): Target {
   const annotation = annotationById(scene.document, id);
-  if (annotation === undefined || annotation.geometry.type !== "bbox") return NO_TARGET;
-  return { kind: "handle", id, handle, point: bboxHandlePositions(annotation.geometry)[handle] };
+  if (annotation === undefined) return NO_TARGET;
+  const geometry = annotation.geometry;
+  if (geometry.type === "bbox") {
+    return { kind: "handle", id, handle, point: bboxHandlePositions(geometry)[handle] };
+  }
+  if (geometry.type === "obb") {
+    return { kind: "handle", id, handle, point: obbHandlePositions(geometry)[handle] };
+  }
+  return NO_TARGET;
+}
+
+/** The rotation grip a rotate drag is holding. */
+function heldRotate(scene: Scene, id: string): Target {
+  const annotation = annotationById(scene.document, id);
+  if (annotation === undefined || annotation.geometry.type !== "obb") return NO_TARGET;
+  return { kind: "rotate", id, point: obbRotateHandle(annotation.geometry, scene.tolerances.rotateOffset) };
+}
+
+const RESIZE_CURSORS: readonly Cursor[] = ["ew-resize", "nwse-resize", "ns-resize", "nesw-resize"];
+
+/**
+ * The resize cursor for a grip, turned with its box: a rotated box's `e` grip
+ * pushes along the box's width axis, which is not screen east.
+ */
+export function handleCursor(scene: Scene, id: string, handle: BboxHandle): Cursor {
+  const annotation = annotationById(scene.document, id);
+  if (annotation === undefined || annotation.geometry.type !== "obb") return HANDLE_CURSORS[handle];
+  const eighths = Math.round(obbHandleDirection(annotation.geometry, handle) / (Math.PI / 4));
+  return RESIZE_CURSORS[((eighths % 4) + 4) % 4];
 }
 
 /** The vertex a vertex drag is holding. */
@@ -190,7 +220,9 @@ function hovering(scene: Scene, tool: Tool, point: Point): Affordance {
   const target = resolveTarget(scene, point);
   switch (target.kind) {
     case "handle":
-      return { cursor: HANDLE_CURSORS[target.handle], hot: target };
+      return { cursor: handleCursor(scene, target.id, target.handle), hot: target };
+    case "rotate":
+      return { cursor: "grab", hot: target };
     case "vertex":
     case "body":
     case "edge":
@@ -232,6 +264,7 @@ export function affordanceAt(
       // into — would give it something of its own to show.
       return { cursor: "default", hot: NO_TARGET };
     case "drawing-bbox":
+    case "drawing-obb":
       return { cursor: "crosshair", hot: NO_TARGET };
     case "drawing-polygon":
       return drawingPolygon(state, scene, point);
@@ -246,7 +279,12 @@ export function affordanceAt(
     case "moving-vertex":
       return { cursor: "move", hot: heldVertex(scene, state.id, state.vertexIndex) };
     case "resizing":
-      return { cursor: HANDLE_CURSORS[state.handle], hot: heldHandle(scene, state.id, state.handle) };
+      return {
+        cursor: handleCursor(scene, state.id, state.handle),
+        hot: heldHandle(scene, state.id, state.handle),
+      };
+    case "rotating":
+      return { cursor: "grabbing", hot: heldRotate(scene, state.id) };
     default:
       return unreachable(state);
   }

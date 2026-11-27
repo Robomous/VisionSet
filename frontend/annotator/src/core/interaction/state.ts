@@ -101,7 +101,7 @@
  */
 
 import type { BboxHandle } from "../geometry/bbox";
-import type { BboxGeometry, Point, PolygonGeometry, PolylineGeometry } from "../types";
+import type { BboxGeometry, ObbGeometry, Point, PolygonGeometry, PolylineGeometry } from "../types";
 
 /**
  * Every shape a drag can be moving. A tag has no coordinates to move.
@@ -110,12 +110,15 @@ import type { BboxGeometry, Point, PolygonGeometry, PolylineGeometry } from "../
  * drag and not draw would have been the only way to change one, with no way to
  * make the one you changed.
  */
-export type MovableGeometry = BboxGeometry | PolygonGeometry | PolylineGeometry;
+export type MovableGeometry = BboxGeometry | ObbGeometry | PolygonGeometry | PolylineGeometry;
+
+/** A shape whose eight grips resize it: a box, axis-aligned or rotated. */
+export type ResizableGeometry = BboxGeometry | ObbGeometry;
 
 /** A shape whose vertices can be dragged one at a time. */
 export type VertexEditableGeometry = PolygonGeometry | PolylineGeometry;
 
-/** What the pointer is in the middle of. Eight variants; `idle` is one of them. */
+/** What the pointer is in the middle of. Ten variants; `idle` is one of them. */
 export type InteractionState =
   /** Nothing in flight. The state a cancel of any kind reaches. */
   | { readonly type: "idle" }
@@ -135,6 +138,17 @@ export type InteractionState =
    */
   | {
       readonly type: "drawing-bbox";
+      readonly labelClass: string;
+      readonly start: Point;
+      readonly current: Point;
+    }
+  /**
+   * A rotated box being dragged out: `drawing-bbox`'s rubber band, finished as an
+   * `obb` at angle 0. Its own variant so that no reader of `drawing-bbox` has to
+   * ask which shape the band becomes.
+   */
+  | {
+      readonly type: "drawing-obb";
       readonly labelClass: string;
       readonly start: Point;
       readonly current: Point;
@@ -192,7 +206,14 @@ export type InteractionState =
       readonly type: "resizing";
       readonly id: string;
       readonly handle: BboxHandle;
-      readonly startGeometry: BboxGeometry;
+      readonly startGeometry: ResizableGeometry;
+    }
+  /** A rotated box being turned about its centre by its rotation grip. */
+  | {
+      readonly type: "rotating";
+      readonly id: string;
+      readonly startGeometry: ObbGeometry;
+      readonly startPoint: Point;
     }
   /** One polygon vertex being dragged. The only edit that changes a shape. */
   | {

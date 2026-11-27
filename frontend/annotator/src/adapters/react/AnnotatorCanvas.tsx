@@ -222,8 +222,10 @@ import { TransientLayer } from "./TransientLayer";
 const DRAG_STATES: ReadonlySet<InteractionStateType> = new Set([
   "pressing-empty",
   "drawing-bbox",
+  "drawing-obb",
   "moving",
   "resizing",
+  "rotating",
   "moving-vertex",
 ]);
 

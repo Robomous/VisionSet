@@ -3362,6 +3362,7 @@ function Workspace({
 const TOOL_WORD: Readonly<Record<Tool, string>> = {
   select: "Select",
   bbox: "Box",
+  obb: "Rotated box",
   polygon: "Polygon",
   polyline: "Polyline",
 };
@@ -3388,6 +3389,7 @@ function canvasHint({
   if (hand) return <>Drag to move the picture · <Kbd>H</Kbd> puts the hand down</>;
   if (suggesting) return <>Click an object to suggest its outline · <Kbd>S</Kbd> turns Suggest off</>;
   if (tool === "bbox") return "Drag to draw a box";
+  if (tool === "obb") return <>Drag to draw a box · <Kbd>V</Kbd>, then turn it by its handle</>;
   if (tool === "polygon") return <>Click to place points · <Kbd>↵</Kbd> closes the shape</>;
   if (tool === "polyline") return <>Click to place points · <Kbd>↵</Kbd> finishes the line</>;
   return selected ? (

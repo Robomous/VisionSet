@@ -8,14 +8,15 @@
  * the `Selection`, because grips exist only on selected annotations, so it has to
  * live above `state/`. `interaction/` is that place.
  *
- * ## The five ranks
+ * ## The six ranks
  *
- * 1. **handle** — a resize grip on a *selected* box.
- * 2. **vertex** — a vertex of a *selected* polygon or polyline.
- * 3. **body** — the topmost annotation whose shape contains the point.
- * 4. **edge** — an edge of a *selected* polygon or polyline. A path has no
+ * 1. **rotate** — the rotation grip of a *selected* rotated box.
+ * 2. **handle** — a resize grip on a *selected* box, axis-aligned or rotated.
+ * 3. **vertex** — a vertex of a *selected* polygon or polyline.
+ * 4. **body** — the topmost annotation whose shape contains the point.
+ * 5. **edge** — an edge of a *selected* polygon or polyline. A path has no
  *    closing edge, so its highest index is one lower than a polygon's.
- * 5. **empty**.
+ * 6. **empty**.
  *
  * Three of those are decisions rather than transcription, and each is the kind
  * that is invisible until somebody hits it.
@@ -59,6 +60,8 @@ import {
   nearestVertex,
   topmostAnnotationAt,
 } from "../geometry/hitTest";
+import { obbRotateHandle } from "../geometry/obb";
+import { distance } from "../geometry/primitives";
 import type { Tolerances } from "../geometry/tolerance";
 import { annotationsInDrawOrder } from "../state/document";
 import type { AnnotationDocument } from "../state/document";
@@ -77,9 +80,11 @@ export interface Scene {
   readonly tolerances: Tolerances;
 }
 
-/** What the pointer is over, in the five ranks above. */
+/** What the pointer is over, in the six ranks above. */
 export type Target =
-  /** A resize grip of a selected box. */
+  /** The rotation grip of a selected rotated box. */
+  | { readonly kind: "rotate"; readonly id: string; readonly point: Point }
+  /** A resize grip of a selected box, axis-aligned or rotated. */
   | {
       readonly kind: "handle";
       readonly id: string;
@@ -136,12 +141,20 @@ function selectedTopFirst(scene: Scene): readonly Annotation[] {
   return picked;
 }
 
-/** What the pointer is over, resolved through the five ranks. */
+/** What the pointer is over, resolved through the six ranks. */
 export function resolveTarget(scene: Scene, point: Point): Target {
   const selected = selectedTopFirst(scene);
 
   for (const annotation of selected) {
-    if (annotation.geometry.type !== "bbox") continue;
+    if (annotation.geometry.type !== "obb") continue;
+    const grip = obbRotateHandle(annotation.geometry, scene.tolerances.rotateOffset);
+    if (distance(point, grip) <= scene.tolerances.handle) {
+      return { kind: "rotate", id: annotation.id, point: grip };
+    }
+  }
+
+  for (const annotation of selected) {
+    if (annotation.geometry.type !== "bbox" && annotation.geometry.type !== "obb") continue;
     const hit = nearestHandle(annotation.geometry, point, scene.tolerances.handle);
     if (hit !== null) {
       return { kind: "handle", id: annotation.id, handle: hit.handle, point: hit.point };

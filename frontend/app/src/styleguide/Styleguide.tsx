@@ -329,6 +329,7 @@ export function Styleguide(): JSX.Element {
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="bbox">bbox</SelectItem>
+                    <SelectItem value="obb">obb</SelectItem>
                     <SelectItem value="polygon">polygon</SelectItem>
                     <SelectItem value="classification_tag">classification_tag</SelectItem>
                   </SelectContent>
