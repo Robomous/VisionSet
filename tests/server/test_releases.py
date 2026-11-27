@@ -45,6 +45,7 @@ from tests.server._flow import (
 from tests.server._jobs import InlineDispatcher
 
 from visionset.formats._targets import self_target
+from visionset.formats.classification_dir import ClassificationDirExporter
 from visionset.kernel.services.release_service import EXPORT_REPORT_FILENAME
 
 RECIPE = {"train": 0.6, "val": 0.2, "test": 0.2, "seed": 42}
@@ -711,6 +712,19 @@ def test_the_pre_flight_says_a_release_is_carried_whole(client: TestClient, rele
     lane, sign = body["classes"]
     assert (lane["status"], lane["annotations"]) == ("dropped", 0)
     assert (sign["status"], sign["reason"]) == ("supported", None)
+
+
+def test_the_pre_flight_counts_the_assets_a_single_tag_format_leaves_out(
+    client: TestClient, release: str
+) -> None:
+    with_exporters(client.app, ClassificationDirExporter())
+
+    body = client.get(
+        f"/releases/{release}/export-compatibility", params={"format": "classification-dir"}
+    ).json()
+
+    assert body["untagged_assets"] == 3
+    assert body["compatible"] is False
 
 
 def test_the_pre_flight_names_what_would_be_dropped(client: TestClient, release: str) -> None:

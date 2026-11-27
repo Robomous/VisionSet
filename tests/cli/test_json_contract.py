@@ -471,6 +471,13 @@ def test_a_settled_pre_label_run_has_wire_parity_when_nested_in_a_batch() -> Non
     json.dumps(projected)
 
 
+def test_the_compatibility_report_agrees_value_for_value_with_the_rest_model() -> None:
+    rest = models.ExportCompatibilityOut.of(EXPORT_COMPATIBILITY).model_dump(mode="json")
+
+    assert rest == wire.export_compatibility(EXPORT_COMPATIBILITY)
+    assert rest["untagged_assets"] == EXPORT_COMPATIBILITY.untagged_assets != 0
+
+
 # --- the timestamp format the parity gate depends on -------------------------
 
 

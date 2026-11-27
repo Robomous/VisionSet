@@ -551,7 +551,6 @@ __all__ = [
     "SEQUENCED_MANIFEST_VERSION",
     "MASK_MANIFEST_VERSION",
     "ModalityCompatibility",
-    "single_tag",
     "manifest_version_for",
     "MARK_TRANSITIONS",
     "MEDIA_TYPES",
@@ -889,6 +888,7 @@ __all__ = [
     "scaled_dimension",
     "sha256_hex",
     "sha256_hex_of_stream",
+    "single_tag",
     "tracks_within",
     "manifest_within",
 ]

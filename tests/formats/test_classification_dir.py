@@ -192,6 +192,17 @@ def test_a_release_of_single_tags_on_every_asset_reports_nothing_left_out(
     assert report.compatible
 
 
+def test_an_untagged_asset_alone_makes_the_report_incompatible(tmp_path: Path) -> None:
+    fixture = _fixture(tmp_path, {0: [_tag("night")], 1: [_tag("weather")]}, images=3)
+    report = fixture.releases.check_export(fixture.publish(), ClassificationDirExporter())
+    fixture.close()
+
+    assert report.untagged_assets == 1
+    assert report.excluded_annotations == 0
+    assert report.degraded_annotations == 0
+    assert not report.compatible
+
+
 def test_the_export_writes_nothing_without_consent(tmp_path: Path) -> None:
     fixture = _fixture(tmp_path)
     release_id = fixture.publish()
