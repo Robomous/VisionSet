@@ -1,0 +1,489 @@
+{
+  "version": 1,
+  "formats": {
+    "bdd100k-lane": {
+      "task": "lane detection",
+      "dialects": [
+        "BDD100K lane labels: one JSON per picture, each lane an open poly2d with its own category"
+      ],
+      "export": {
+        "lossy": true,
+        "geometries": ["polyline"],
+        "degraded_geometries": [],
+        "modalities": ["image"],
+        "evidence": [
+          {"kind": "fixture", "test": "tests/formats/test_lanes.py::test_bdd100k_writes_an_open_poly2d_with_every_vertex", "gate": "python"},
+          {"kind": "fixture", "test": "tests/formats/test_lanes.py::test_bdd100k_maps_style_and_colour_to_its_own_category", "gate": "python"}
+        ],
+        "notes": "No importer and no independent reader: fixture assertions only."
+      },
+      "import": null
+    },
+    "classification": {
+      "task": "image classification",
+      "dialects": [
+        "labels.csv, one row per (image, tag), beside the pictures under their folds"
+      ],
+      "export": {
+        "lossy": true,
+        "geometries": ["classification_tag"],
+        "degraded_geometries": [],
+        "modalities": ["image"],
+        "evidence": [
+          {"kind": "fixture", "test": "tests/formats/test_classification.py::test_an_image_with_two_tags_produces_two_rows", "gate": "python"},
+          {"kind": "fixture", "test": "tests/formats/test_classification.py::test_the_header_is_the_three_columns_a_reader_indexes", "gate": "python"},
+          {"kind": "round_trip", "test": "tests/formats/test_classification_import.py::test_a_classification_export_imports_back_without_loss", "gate": "python"}
+        ]
+      },
+      "import": {
+        "geometries": ["classification_tag"],
+        "modalities": ["image"],
+        "evidence": [
+          {"kind": "fixture", "test": "tests/formats/test_classification_import.py::test_each_row_is_one_tag_and_the_vocabulary_declares_every_class", "gate": "python"},
+          {"kind": "round_trip", "test": "tests/formats/test_classification_import.py::test_a_classification_export_imports_back_without_loss", "gate": "python"}
+        ]
+      }
+    },
+    "coco": {
+      "task": "object detection, instance segmentation",
+      "dialects": [
+        "COCO instances JSON, one instances_<fold>.json per fold",
+        "segmentation as polygons or as compressed RLE masks"
+      ],
+      "export": {
+        "lossy": false,
+        "geometries": ["bbox", "mask", "polygon"],
+        "degraded_geometries": [],
+        "modalities": ["image"],
+        "evidence": [
+          {"kind": "fixture", "test": "tests/formats/test_coco.py::test_a_box_and_a_polygon_land_in_the_same_document", "gate": "python"},
+          {"kind": "fixture", "test": "tests/formats/test_coco_masks.py::test_a_mask_is_written_as_compressed_rle_with_its_own_box_and_area", "gate": "python"},
+          {"kind": "round_trip", "test": "tests/formats/test_coco_import.py::test_a_coco_export_of_boxes_and_polygons_imports_back_without_loss", "gate": "python"},
+          {"kind": "round_trip", "test": "tests/formats/test_coco_masks.py::test_masks_round_trip_pixel_for_pixel_with_no_loss", "gate": "python"},
+          {"kind": "independent_reader", "test": "tests/formats/test_coco_smoke.py::test_pycocotools_loads_every_fold_and_resolves_every_category", "gate": "format-smoke", "reader": "pycocotools", "external": true, "requires": "coco"},
+          {"kind": "independent_reader", "test": "tests/formats/test_coco_smoke.py::test_pycocotools_decodes_an_exported_mask_pixel_for_pixel", "gate": "format-smoke", "reader": "pycocotools", "external": true, "requires": "coco"}
+        ],
+        "notes": "Classification tags are dropped under consent; everything COCO has no field for rides in a visionset object per annotation."
+      },
+      "import": {
+        "geometries": ["bbox", "mask", "polygon"],
+        "modalities": ["image"],
+        "evidence": [
+          {"kind": "fixture", "test": "tests/formats/test_coco_import.py::test_boxes_and_single_ring_polygons_are_read_without_loss", "gate": "python"},
+          {"kind": "fixture", "test": "tests/formats/test_coco_masks.py::test_an_rle_mask_reads_pixel_for_pixel", "gate": "python"},
+          {"kind": "round_trip", "test": "tests/formats/test_coco_import.py::test_a_coco_export_of_boxes_and_polygons_imports_back_without_loss", "gate": "python"},
+          {"kind": "round_trip", "test": "tests/formats/test_coco_import.py::test_attribute_values_round_trip_through_a_coco_export", "gate": "python"},
+          {"kind": "independent_reader", "test": "tests/formats/test_coco_smoke.py::test_pycocotools_encodes_the_same_counts_and_both_spellings_import_alike", "gate": "format-smoke", "reader": "pycocotools", "external": true, "requires": "coco"}
+        ],
+        "notes": "A multi-part polygon is read as the union of its parts (a mask unless one drawable ring remains); iscrowd is reported as an attribute loss."
+      }
+    },
+    "culane": {
+      "task": "lane detection",
+      "dialects": [
+        "CULane: one .lines.txt of integer x y pairs per picture, and a lane mask beside it"
+      ],
+      "export": {
+        "lossy": true,
+        "geometries": ["polyline"],
+        "degraded_geometries": [],
+        "modalities": ["image"],
+        "evidence": [
+          {"kind": "fixture", "test": "tests/formats/test_lanes.py::test_culane_writes_one_line_of_integer_pairs_per_lane", "gate": "python"},
+          {"kind": "fixture", "test": "tests/formats/test_lanes.py::test_culane_writes_a_mask_beside_the_annotations", "gate": "python"}
+        ],
+        "notes": "No importer and no independent reader: fixture assertions only."
+      },
+      "import": null
+    },
+    "curvelanes": {
+      "task": "lane detection",
+      "dialects": [
+        "CurveLanes: one JSON per picture, each lane a list of x/y points"
+      ],
+      "export": {
+        "lossy": true,
+        "geometries": ["polyline"],
+        "degraded_geometries": [],
+        "modalities": ["image"],
+        "evidence": [
+          {"kind": "fixture", "test": "tests/formats/test_lanes.py::test_curvelanes_writes_lines_of_x_y_objects", "gate": "python"},
+          {"kind": "fixture", "test": "tests/formats/test_lanes.py::test_curvelanes_keeps_every_vertex_it_was_given", "gate": "python"}
+        ],
+        "notes": "No importer and no independent reader: fixture assertions only."
+      },
+      "import": null
+    },
+    "cvat-images": {
+      "task": "detection, segmentation, polylines, tagging",
+      "dialects": [
+        "CVAT for images 1.1 XML, shapes per picture"
+      ],
+      "export": {
+        "lossy": true,
+        "geometries": ["bbox", "classification_tag", "obb", "polygon", "polyline"],
+        "degraded_geometries": [],
+        "modalities": ["image"],
+        "evidence": [
+          {"kind": "independent_reader", "test": "tests/formats/test_cvat.py::test_an_image_task_round_trips_through_a_release", "gate": "python", "reader": "test-local ElementTree reading of CVAT for images 1.1", "external": false},
+          {"kind": "round_trip", "test": "tests/formats/test_cvat.py::test_rotated_boxes_round_trip_through_cvat_images", "gate": "python"},
+          {"kind": "round_trip", "test": "tests/formats/test_cvat.py::test_attribute_values_round_trip_through_an_image_release", "gate": "python"}
+        ],
+        "notes": "No check against CVAT itself; the independent reader is written from the published 1.1 layout."
+      },
+      "import": {
+        "geometries": ["bbox", "classification_tag", "obb", "polygon", "polyline"],
+        "modalities": ["image"],
+        "evidence": [
+          {"kind": "fixture", "test": "tests/formats/test_cvat.py::test_an_image_task_reads_every_shape_the_domain_holds", "gate": "python"},
+          {"kind": "round_trip", "test": "tests/formats/test_cvat.py::test_rotated_boxes_round_trip_through_cvat_images", "gate": "python"},
+          {"kind": "round_trip", "test": "tests/formats/test_cvat.py::test_attribute_values_round_trip_through_an_image_release", "gate": "python"}
+        ]
+      }
+    },
+    "cvat-video": {
+      "task": "tracking: detection, segmentation and polylines over a sequence",
+      "dialects": [
+        "CVAT for video 1.1 XML, tracks of per-frame shapes over one task's frames"
+      ],
+      "export": {
+        "lossy": true,
+        "geometries": ["bbox", "obb", "polygon", "polyline"],
+        "degraded_geometries": [],
+        "modalities": ["image"],
+        "evidence": [
+          {"kind": "independent_reader", "test": "tests/formats/test_cvat.py::test_a_video_task_round_trips_through_a_release", "gate": "python", "reader": "test-local ElementTree reading of CVAT for video 1.1", "external": false},
+          {"kind": "round_trip", "test": "tests/formats/test_cvat.py::test_rotated_boxes_round_trip_through_cvat_video", "gate": "python"},
+          {"kind": "round_trip", "test": "tests/formats/test_cvat.py::test_attribute_values_round_trip_through_a_video_release", "gate": "python"}
+        ],
+        "notes": "Writes a label only as an observation of a released track. No check against CVAT itself."
+      },
+      "import": {
+        "geometries": ["bbox", "classification_tag", "obb", "polygon", "polyline"],
+        "modalities": ["image"],
+        "evidence": [
+          {"kind": "fixture", "test": "tests/formats/test_cvat.py::test_a_video_task_is_a_sequence_and_its_tracks_keep_their_ids", "gate": "python"},
+          {"kind": "round_trip", "test": "tests/formats/test_cvat.py::test_rotated_boxes_round_trip_through_cvat_video", "gate": "python"},
+          {"kind": "round_trip", "test": "tests/formats/test_cvat.py::test_attribute_values_round_trip_through_a_video_release", "gate": "python"}
+        ],
+        "notes": "Per-frame tags are read; the exporter does not write them back."
+      }
+    },
+    "darknet": {
+      "task": "object detection",
+      "dialects": [
+        "Darknet obj.data, obj.names and train.txt/valid.txt image lists over YOLO class cx cy w h rows"
+      ],
+      "export": {
+        "lossy": true,
+        "geometries": ["bbox"],
+        "degraded_geometries": ["obb", "polygon"],
+        "modalities": ["image"],
+        "evidence": [
+          {"kind": "fixture", "test": "tests/formats/test_darknet.py::test_the_descriptor_is_the_darknet_grammar", "gate": "python"},
+          {"kind": "fixture", "test": "tests/formats/test_darknet.py::test_the_lists_name_every_image_of_their_fold_and_each_has_a_label", "gate": "python"},
+          {"kind": "round_trip", "test": "tests/formats/test_yolo_import.py::test_a_detect_export_imports_back_without_loss", "gate": "python"}
+        ],
+        "notes": "No check against a Darknet build: fixture and round trip only."
+      },
+      "import": {
+        "geometries": ["bbox", "polygon"],
+        "modalities": ["image"],
+        "evidence": [
+          {"kind": "fixture", "test": "tests/formats/test_yolo_import.py::test_darknet_reads_its_names_file_and_the_label_layout", "gate": "python"},
+          {"kind": "round_trip", "test": "tests/formats/test_yolo_import.py::test_a_detect_export_imports_back_without_loss", "gate": "python"}
+        ],
+        "notes": "Shares the YOLO row reader, so a polygon row is read as a polygon; only box rows are exercised for this dialect."
+      }
+    },
+    "dota": {
+      "task": "oriented object detection",
+      "dialects": [
+        "DOTA labelTxt: x1 y1 x2 y2 x3 y3 x4 y4 category difficult per rotated box, in pixels"
+      ],
+      "export": {
+        "lossy": true,
+        "geometries": ["obb"],
+        "degraded_geometries": [],
+        "modalities": ["image"],
+        "evidence": [
+          {"kind": "fixture", "test": "tests/formats/test_dota.py::test_a_rotated_box_is_its_pixel_corners_its_category_and_difficult_zero", "gate": "python"},
+          {"kind": "round_trip", "test": "tests/formats/test_dota.py::test_rotated_boxes_survive_export_and_import_within_the_documented_tolerance", "gate": "python"},
+          {"kind": "round_trip", "test": "tests/formats/test_dota.py::test_the_difficult_attribute_round_trips_as_its_flag_with_no_loss", "gate": "python"}
+        ],
+        "notes": "No check against the DOTA devkit: fixture and round trip only."
+      },
+      "import": {
+        "geometries": ["obb"],
+        "modalities": ["image"],
+        "evidence": [
+          {"kind": "fixture", "test": "tests/formats/test_dota.py::test_a_row_is_a_canonical_box_of_the_class_its_category_names", "gate": "python"},
+          {"kind": "round_trip", "test": "tests/formats/test_dota.py::test_rotated_boxes_survive_export_and_import_within_the_documented_tolerance", "gate": "python"}
+        ]
+      }
+    },
+    "kitti": {
+      "task": "3D object detection on lidar scans",
+      "dialects": [
+        "KITTI object: velodyne .bin scans, label_2 fifteen-column rows and calib files, per split"
+      ],
+      "export": {
+        "lossy": true,
+        "geometries": ["cuboid_3d"],
+        "degraded_geometries": [],
+        "modalities": ["point_cloud"],
+        "evidence": [
+          {"kind": "fixture", "test": "tests/formats/test_kitti_export.py::test_a_label_line_has_kittis_fifteen_columns_and_a_score_when_there_is_one", "gate": "python"},
+          {"kind": "fixture", "test": "tests/formats/test_kitti_export.py::test_the_calibration_file_is_kittis_seven_lines_with_the_canonical_transform", "gate": "python"},
+          {"kind": "round_trip", "test": "tests/formats/test_kitti_export.py::test_a_release_round_trips_through_export_and_import", "gate": "python"},
+          {"kind": "round_trip", "test": "tests/formats/test_kitti_export.py::test_non_round_boxes_come_back_within_the_stated_bound", "gate": "python"},
+          {"kind": "round_trip", "test": "tests/formats/test_kitti_samples.py::test_the_split_survives_a_kitti_export_and_reimport", "gate": "opt-in"}
+        ],
+        "notes": "Real KITTI frames are exercised only when VISIONSET_POINTCLOUD_SAMPLES is set locally; CI uses synthetic splits."
+      },
+      "import": {
+        "geometries": ["cuboid_3d"],
+        "modalities": ["point_cloud"],
+        "evidence": [
+          {"kind": "fixture", "test": "tests/formats/test_kitti_import.py::test_a_box_is_centred_sized_and_turned_into_the_lidar_frame", "gate": "python"},
+          {"kind": "independent_reader", "test": "tests/formats/test_kitti_frames.py::test_the_lidar_cuboid_has_the_corners_the_devkit_draws", "gate": "python", "reader": "test-local projection written from the KITTI devkit conventions", "external": false},
+          {"kind": "round_trip", "test": "tests/formats/test_kitti_export.py::test_a_release_round_trips_through_export_and_import", "gate": "python"},
+          {"kind": "fixture", "test": "tests/formats/test_kitti_samples.py::test_every_box_encloses_its_object_in_the_lidar_scan", "gate": "opt-in"}
+        ],
+        "notes": "A calibration tilted past the tolerance is a label loss rather than a flattened box."
+      }
+    },
+    "mot": {
+      "task": "multi-object tracking",
+      "dialects": [
+        "MOTChallenge (MOT16/17/20): seqinfo.ini, img1 frames and gt/gt.txt per sequence"
+      ],
+      "export": {
+        "lossy": true,
+        "geometries": ["bbox"],
+        "degraded_geometries": [],
+        "modalities": ["image"],
+        "evidence": [
+          {"kind": "fixture", "test": "tests/formats/test_mot.py::test_a_confidence_is_written_as_conf", "gate": "python"},
+          {"kind": "independent_reader", "test": "tests/formats/test_mot.py::test_an_export_is_a_mot_layout_an_independent_reader_takes", "gate": "python", "reader": "test-local configparser and csv reading of the MOTChallenge layout", "external": false},
+          {"kind": "round_trip", "test": "tests/formats/test_mot.py::test_import_release_export_reimport_keeps_every_track_where_it_was", "gate": "python"},
+          {"kind": "round_trip", "test": "tests/formats/test_mot.py::test_a_static_sequence_keeps_every_track_through_a_round_trip", "gate": "python"}
+        ],
+        "notes": "Writes a box only as an observation of a released track. No check against the MOTChallenge devkit."
+      },
+      "import": {
+        "geometries": ["bbox"],
+        "modalities": ["image"],
+        "evidence": [
+          {"kind": "fixture", "test": "tests/formats/test_mot.py::test_a_sequence_is_its_frames_in_order_and_its_ids_are_tracks", "gate": "python"},
+          {"kind": "round_trip", "test": "tests/formats/test_mot.py::test_import_release_export_reimport_keeps_every_track_where_it_was", "gate": "python"}
+        ]
+      }
+    },
+    "nuscenes": {
+      "task": "3D object detection on lidar scans",
+      "dialects": [
+        "nuScenes version folder of tables beside samples/LIDAR_TOP keyframes"
+      ],
+      "export": null,
+      "import": {
+        "geometries": ["cuboid_3d"],
+        "modalities": ["point_cloud"],
+        "evidence": [
+          {"kind": "fixture", "test": "tests/formats/test_nuscenes_import.py::test_keyframes_read_as_scans_in_the_lidar_rfu_frame", "gate": "python"},
+          {"kind": "fixture", "test": "tests/formats/test_nuscenes_import.py::test_a_sensor_frame_box_survives_the_trip_through_global", "gate": "python"},
+          {"kind": "fixture", "test": "tests/formats/test_nuscenes_samples.py::test_the_full_box_through_the_pose_chain_holds_nuscenes_own_point_count", "gate": "opt-in"}
+        ],
+        "notes": "CI reads a synthetic root. A real nuScenes root, checked against nuScenes' own num_lidar_pts, is exercised only when VISIONSET_POINTCLOUD_SAMPLES is set locally."
+      }
+    },
+    "openlane-2d": {
+      "task": "lane detection, with per-vertex visibility and lane tracks",
+      "dialects": [
+        "OpenLane 2D: one JSON per frame with lane_lines carrying uv, category, visibility and track id"
+      ],
+      "export": {
+        "lossy": true,
+        "geometries": ["polyline"],
+        "degraded_geometries": [],
+        "modalities": ["image"],
+        "evidence": [
+          {"kind": "fixture", "test": "tests/formats/test_lanes.py::test_openlane_writes_the_document_s_five_keys", "gate": "python"},
+          {"kind": "fixture", "test": "tests/formats/test_lanes.py::test_an_openlane_lane_line_carries_its_five_fields", "gate": "python"},
+          {"kind": "round_trip", "test": "tests/formats/test_openlane_import.py::test_an_openlane_export_with_occluded_vertices_imports_back_without_loss", "gate": "python"}
+        ],
+        "notes": "No check against the OpenLane toolkit: fixture and round trip only."
+      },
+      "import": {
+        "geometries": ["polyline"],
+        "modalities": ["image"],
+        "evidence": [
+          {"kind": "fixture", "test": "tests/formats/test_openlane_import.py::test_zero_is_occluded_and_one_is_visible", "gate": "python"},
+          {"kind": "fixture", "test": "tests/formats/test_openlane_tracks.py::test_track_ids_land_as_tracks_over_a_new_image_sequence", "gate": "python"},
+          {"kind": "round_trip", "test": "tests/formats/test_openlane_import.py::test_an_openlane_export_with_occluded_vertices_imports_back_without_loss", "gate": "python"}
+        ]
+      }
+    },
+    "segmentation-png": {
+      "task": "semantic segmentation",
+      "dialects": [
+        "class-index PNG per picture (8-bit, or 16-bit past 255 ids) with a segmentation.json descriptor",
+        "import also reads palette masks and the VOC layout with a mask suffix, as the descriptor states"
+      ],
+      "export": {
+        "lossy": true,
+        "geometries": ["mask"],
+        "degraded_geometries": ["polygon"],
+        "modalities": ["image"],
+        "evidence": [
+          {"kind": "fixture", "test": "tests/formats/test_segmentation_png.py::test_the_export_writes_a_descriptor_and_an_eight_bit_mask_per_picture", "gate": "python"},
+          {"kind": "round_trip", "test": "tests/formats/test_segmentation_png.py::test_the_export_reimports_pixel_for_pixel_with_no_loss", "gate": "python"},
+          {"kind": "independent_reader", "test": "tests/formats/test_segmentation_png.py::test_an_independent_png_reader_sees_the_ids_the_composition_wrote", "gate": "python", "reader": "test-local PNG decoder over zlib and the PNG filters, no Pillow", "external": false}
+        ],
+        "notes": "A class map holds one class per pixel: overlapping masks of different classes keep the lower id."
+      },
+      "import": {
+        "geometries": ["mask"],
+        "modalities": ["image"],
+        "evidence": [
+          {"kind": "fixture", "test": "tests/formats/test_segmentation_png.py::test_each_class_present_is_one_mask_and_ignore_is_a_label_loss", "gate": "python"},
+          {"kind": "fixture", "test": "tests/formats/test_segmentation_png.py::test_splits_and_the_voc_layout_with_a_mask_suffix", "gate": "python"},
+          {"kind": "round_trip", "test": "tests/formats/test_segmentation_png.py::test_the_export_reimports_pixel_for_pixel_with_no_loss", "gate": "python"}
+        ],
+        "notes": "Requires the descriptor; a source without one is refused."
+      }
+    },
+    "tusimple": {
+      "task": "lane detection",
+      "dialects": [
+        "TuSimple: one JSON record per picture, lanes sampled at shared h_samples rows"
+      ],
+      "export": {
+        "lossy": true,
+        "geometries": [],
+        "degraded_geometries": ["polyline"],
+        "modalities": ["image"],
+        "evidence": [
+          {"kind": "fixture", "test": "tests/formats/test_lanes.py::test_tusimple_writes_one_record_per_image", "gate": "python"},
+          {"kind": "fixture", "test": "tests/formats/test_lanes.py::test_every_tusimple_lane_row_is_as_long_as_h_samples", "gate": "python"}
+        ],
+        "notes": "Every lane is resampled to h_samples, so a polyline is always degraded. No importer and no independent reader: fixture assertions only."
+      },
+      "import": null
+    },
+    "ultralytics": {
+      "task": "object detection, instance segmentation, image classification",
+      "dialects": [
+        "detect: data.yaml with path and indexed names, class cx cy w h rows",
+        "segment: the same layout with normalized polygon rows",
+        "classify: a class-directory tree per fold"
+      ],
+      "export": {
+        "lossy": true,
+        "geometries": ["bbox", "classification_tag", "polygon"],
+        "degraded_geometries": [],
+        "modalities": ["image"],
+        "evidence": [
+          {"kind": "fixture", "test": "tests/formats/test_ultralytics.py::test_a_known_release_produces_exactly_these_files", "gate": "python"},
+          {"kind": "round_trip", "test": "tests/formats/test_yolo_import.py::test_a_detect_export_imports_back_without_loss", "gate": "python"},
+          {"kind": "round_trip", "test": "tests/formats/test_yolo_import.py::test_a_segment_export_imports_its_polygons_back_and_its_boxes_as_four_corners", "gate": "python"},
+          {"kind": "round_trip", "test": "tests/formats/test_yolo_import.py::test_a_tags_only_export_imports_back_from_the_class_tree", "gate": "python"},
+          {"kind": "independent_reader", "test": "tests/formats/test_ultralytics_roundtrip.py::test_ultralytics_loads_the_export_and_reads_back_the_manifest", "gate": "format-smoke", "reader": "ultralytics", "external": true, "requires": "yolo"},
+          {"kind": "independent_reader", "test": "tests/formats/test_ultralytics_roundtrip.py::test_ultralytics_reads_the_class_tree_a_tags_only_release_becomes", "gate": "format-smoke", "reader": "ultralytics", "external": true, "requires": "yolo"}
+        ],
+        "notes": "One task per export: a tag beside boxes is dropped, and a box in a segment export is written as its four corners. The yolo alias resolves here."
+      },
+      "import": {
+        "geometries": ["bbox", "classification_tag", "polygon"],
+        "modalities": ["image"],
+        "evidence": [
+          {"kind": "fixture", "test": "tests/formats/test_yolo_import.py::test_a_box_row_is_scaled_out_of_the_picture_s_size", "gate": "python"},
+          {"kind": "fixture", "test": "tests/formats/test_yolo_import.py::test_a_polygon_row_is_read_as_a_polygon", "gate": "python"},
+          {"kind": "fixture", "test": "tests/formats/test_yolo_import.py::test_a_class_tree_reads_each_directory_as_a_tag_and_merges_copies", "gate": "python"},
+          {"kind": "round_trip", "test": "tests/formats/test_yolo_import.py::test_a_detect_export_imports_back_without_loss", "gate": "python"},
+          {"kind": "round_trip", "test": "tests/formats/test_yolo_import.py::test_a_tags_only_export_imports_back_from_the_class_tree", "gate": "python"}
+        ],
+        "notes": "A pose row keeps its box and reports the keypoints lost."
+      }
+    },
+    "voc": {
+      "task": "object detection",
+      "dialects": [
+        "Pascal VOC: one XML per picture, 1-based inclusive boxes, an ImageSets listing per fold"
+      ],
+      "export": {
+        "lossy": true,
+        "geometries": ["bbox"],
+        "degraded_geometries": ["obb", "polygon"],
+        "modalities": ["image"],
+        "evidence": [
+          {"kind": "fixture", "test": "tests/formats/test_voc.py::test_a_box_is_written_one_based_and_inclusive", "gate": "python"},
+          {"kind": "fixture", "test": "tests/formats/test_voc.py::test_every_object_carries_the_children_the_devkit_parser_requires", "gate": "python"},
+          {"kind": "round_trip", "test": "tests/formats/test_voc_import.py::test_a_voc_export_of_whole_pixel_boxes_imports_back_without_loss", "gate": "python"}
+        ],
+        "notes": "No check against the VOC devkit: fixture and round trip only. Fractional boxes are rounded outwards, so only whole-pixel boxes round-trip exactly."
+      },
+      "import": {
+        "geometries": ["bbox"],
+        "modalities": ["image"],
+        "evidence": [
+          {"kind": "fixture", "test": "tests/formats/test_voc_import.py::test_a_one_based_inclusive_box_reads_back_as_the_domain_s_box", "gate": "python"},
+          {"kind": "round_trip", "test": "tests/formats/test_voc_import.py::test_a_voc_export_of_whole_pixel_boxes_imports_back_without_loss", "gate": "python"}
+        ],
+        "notes": "Segmentation masks in a VOC source are reported as a geometry loss."
+      }
+    },
+    "yolo-obb": {
+      "task": "oriented object detection",
+      "dialects": [
+        "Ultralytics OBB: class x1 y1 x2 y2 x3 y3 x4 y4 rows, normalized, under the ultralytics layout"
+      ],
+      "export": {
+        "lossy": true,
+        "geometries": ["obb"],
+        "degraded_geometries": [],
+        "modalities": ["image"],
+        "evidence": [
+          {"kind": "fixture", "test": "tests/formats/test_yolo_obb.py::test_a_rotated_box_is_a_class_and_its_four_normalized_corners", "gate": "python"},
+          {"kind": "round_trip", "test": "tests/formats/test_yolo_obb.py::test_rotated_boxes_survive_export_and_import_within_the_documented_tolerance", "gate": "python"}
+        ],
+        "notes": "An ultralytics label-parser check exists in test_yolo_obb.py but no CI job runs it, so it is not recorded here: fixture and round trip only."
+      },
+      "import": {
+        "geometries": ["obb"],
+        "modalities": ["image"],
+        "evidence": [
+          {"kind": "fixture", "test": "tests/formats/test_yolo_obb.py::test_any_start_corner_in_either_direction_is_the_same_canonical_box", "gate": "python"},
+          {"kind": "round_trip", "test": "tests/formats/test_yolo_obb.py::test_rotated_boxes_survive_export_and_import_within_the_documented_tolerance", "gate": "python"}
+        ]
+      }
+    },
+    "yolov5-yaml": {
+      "task": "object detection",
+      "dialects": [
+        "YOLOv5 data.yaml grammar (nc, a names list, ./ split paths) over YOLO class cx cy w h rows"
+      ],
+      "export": {
+        "lossy": true,
+        "geometries": ["bbox"],
+        "degraded_geometries": ["obb", "polygon"],
+        "modalities": ["image"],
+        "evidence": [
+          {"kind": "fixture", "test": "tests/formats/test_yolov5_yaml.py::test_the_descriptor_is_the_yolov5_grammar", "gate": "python"},
+          {"kind": "independent_reader", "test": "tests/formats/test_yolov5_yaml.py::test_a_reader_of_the_grammar_finds_nc_equal_to_the_names", "gate": "python", "reader": "test-local parser of the YOLOv5 data.yaml grammar (descriptor only)", "external": false},
+          {"kind": "round_trip", "test": "tests/formats/test_yolo_import.py::test_a_detect_export_imports_back_without_loss", "gate": "python"}
+        ],
+        "notes": "No check against a YOLOv5 or YOLOv7 trainer."
+      },
+      "import": {
+        "geometries": ["bbox", "polygon"],
+        "modalities": ["image"],
+        "evidence": [
+          {"kind": "fixture", "test": "tests/formats/test_yolo_import.py::test_the_descriptor_grammars_both_dialects_write_and_read", "gate": "python"},
+          {"kind": "round_trip", "test": "tests/formats/test_yolo_import.py::test_a_detect_export_imports_back_without_loss", "gate": "python"}
+        ],
+        "notes": "Shares the YOLO row reader, so a polygon row is read as a polygon; only box rows are exercised for this dialect."
+      }
+    }
+  }
+}

@@ -211,6 +211,7 @@ def test_the_package_itself_is_all_there(names: list[str]) -> None:
         "visionset/formats/darknet/__init__.py",
         "visionset/formats/coco/__init__.py",
         "visionset/formats/voc/__init__.py",
+        "visionset/formats/verification.json",
     ):
         assert expected in names, expected
 
