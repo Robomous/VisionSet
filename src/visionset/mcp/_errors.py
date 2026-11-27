@@ -49,11 +49,12 @@ import json
 import logging
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
-from typing import Annotated, Any, Final, ParamSpec, TypedDict, TypeVar, get_args, get_origin
+from typing import Annotated, Any, Final, ParamSpec, TypeVar, get_args, get_origin
 from uuid import uuid4
 
 from mcp.types import CallToolResult, TextContent
 from pydantic import ConfigDict, RootModel, ValidationError, with_config
+from typing_extensions import TypedDict
 
 from visionset.kernel import (
     BatchNotComplete,
