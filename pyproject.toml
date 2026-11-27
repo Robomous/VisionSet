@@ -177,6 +177,9 @@ nuscenes-import = "visionset.formats.nuscenes:NuScenesImporter"
 # Semantic segmentation: class-index PNG masks read as a descriptor file states them.
 segmentation-png = "visionset.formats.segmentation_png:SegmentationPngExporter"
 segmentation-png-import = "visionset.formats.segmentation_png:SegmentationPngImporter"
+# LabelMe JSON: one document per picture, rectangles and polygons in pixels.
+labelme = "visionset.formats.labelme:LabelmeExporter"
+labelme-import = "visionset.formats.labelme:LabelmeImporter"
 
 # Inference driver discovery. A third-party distribution registers its own
 # provider in this same group, and pins the VisionSet it was built for in its

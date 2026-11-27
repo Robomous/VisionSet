@@ -542,6 +542,7 @@ The catalog this build ships, generated from the declarations by
 | `cvat-video` | cvat-video | `other` | `cvat-video` | — | bbox, obb, polygon, polyline | — | — |
 | `dota` | dota | `other` | `dota` | — | obb | — | — |
 | `kitti` | kitti | `other` | `kitti` | — | cuboid_3d | — | — |
+| `labelme` | labelme | `other` | `labelme` | — | bbox, polygon | — | — |
 | `mot` | mot | `other` | `mot` | — | bbox | — | — |
 | `openlane-2d` | openlane-2d | `other` | `openlane-2d` | — | polyline | — | — |
 | `segmentation-png` | segmentation-png | `other` | `segmentation-png` | — | mask, polygon | — | — |

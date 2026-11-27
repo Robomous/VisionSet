@@ -13,7 +13,7 @@ import re
 from collections import Counter
 from collections.abc import Iterable
 from pathlib import Path, PurePosixPath
-from typing import Final
+from typing import BinaryIO, Final
 
 from pydantic import ValidationError
 
@@ -138,7 +138,7 @@ def _heif_registered() -> None:
     register_heif_opener()
 
 
-def measure(path: Path) -> tuple[int, int] | None:
+def measure(path: Path | BinaryIO) -> tuple[int, int] | None:
     """The picture's width and height as a viewer shows it, or ``None`` when unreadable.
 
     Read from the header, with an EXIF quarter turn applied, because ingest

@@ -213,6 +213,16 @@ def _dota_counts(root: Path) -> Counter[str]:
     return found
 
 
+def _labelme_counts(root: Path) -> Counter[str]:
+    """Every shape in a LabelMe document, by its ``label``; other JSON is not a document."""
+    found: Counter[str] = Counter()
+    for path in sorted(root.rglob("*.json")):
+        document = json.loads(path.read_text(encoding="utf-8"))
+        if isinstance(document, dict) and "shapes" in document:
+            found.update(shape["label"] for shape in document["shapes"])
+    return found
+
+
 def _segmentation_png_counts(root: Path) -> Counter[str]:
     """Every class present in a mask, once per mask, by the name the descriptor gives its id.
 
@@ -244,6 +254,7 @@ COUNTERS: dict[str, Callable[[Path], Counter[str]]] = {
     "cvat-images": _cvat_images_counts,
     "cvat-video": _cvat_video_counts,
     "segmentation-png": _segmentation_png_counts,
+    "labelme": _labelme_counts,
 }
 
 #: Formats whose layout depends on what the release holds, and are therefore

@@ -314,6 +314,14 @@ def test_the_installed_exporters_declare_what_they_can_carry() -> None:
                 "targets": ["kitti"],
             },
             {
+                "name": "labelme",
+                "lossy": True,
+                "geometries": ["bbox", "polygon"],
+                "degraded_geometries": [],
+                "modalities": ["image"],
+                "targets": ["labelme"],
+            },
+            {
                 "name": "mot",
                 "lossy": True,
                 "geometries": ["bbox"],
@@ -395,7 +403,7 @@ def test_the_installed_exporters_declare_what_they_can_carry() -> None:
                 "targets": ["yolov7"],
             },
         ],
-        "total": 19,
+        "total": 20,
     }
 
 

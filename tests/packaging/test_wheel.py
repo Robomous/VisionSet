@@ -358,6 +358,7 @@ def test_the_installed_command_finds_every_exporter(installed: Path) -> None:
         "darknet",
         "dota",
         "kitti",
+        "labelme",
         "mot",
         "openlane-2d",
         "segmentation-png",
