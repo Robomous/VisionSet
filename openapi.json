@@ -3783,6 +3783,222 @@
         "title": "ExportTargetPage",
         "type": "object"
       },
+      "FormatEvidenceOut": {
+        "description": "One recorded test behind a format's verification status.\n\n`kind` is `fixture`, `schema`, `round_trip` or `independent_reader`. `test` is\nthe pytest node that proves it. `gate` is where it runs: `python` (the default\nCI suite), `format-smoke` (CI with the optional format groups) or `opt-in`\n(only where a developer supplies data or tools; it does not count towards\n`validated`). `reader` and `external` describe an independent reader: a\nthird-party library when `external` is true, a test-local parser written from\nthe published format otherwise. `requires` names the optional dependency\ngroup the test needs.",
+        "properties": {
+          "external": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "External"
+          },
+          "gate": {
+            "title": "Gate",
+            "type": "string"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "reader": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reader"
+          },
+          "requires": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Requires"
+          },
+          "test": {
+            "title": "Test",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "test",
+          "gate",
+          "reader",
+          "external",
+          "requires"
+        ],
+        "title": "FormatEvidenceOut",
+        "type": "object"
+      },
+      "FormatMatrixOut": {
+        "description": "Every installed format plugin, once per direction, with its verification status.",
+        "properties": {
+          "descriptor_version": {
+            "title": "Descriptor Version",
+            "type": "integer"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/FormatMatrixRowOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "descriptor_version",
+          "items",
+          "total"
+        ],
+        "title": "FormatMatrixOut",
+        "type": "object"
+      },
+      "FormatMatrixRowOut": {
+        "description": "One installed format plugin in one direction, and what is known about it.\n\n`direction` is `export` or `import`; `availability` is `both`, `export_only`\nor `import_only`. For an exporter, the geometries, `lossy` and `targets` are\nthe plugin's own declarations; an importer declares none, so its geometries\nare the verification descriptor's record and `lossy` is null \u2014 an import\nreports what it drops per run. `status` is `validated` (a test CI runs backs\nit), `implemented` (recorded, but no test CI runs) or `no_recorded_evidence`\n(a plugin the descriptor does not cover, such as a third-party one).",
+        "properties": {
+          "aliases": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Aliases",
+            "type": "array"
+          },
+          "availability": {
+            "title": "Availability",
+            "type": "string"
+          },
+          "degraded_geometries": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Degraded Geometries",
+            "type": "array"
+          },
+          "dialects": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Dialects",
+            "type": "array"
+          },
+          "direction": {
+            "title": "Direction",
+            "type": "string"
+          },
+          "evidence": {
+            "items": {
+              "$ref": "#/components/schemas/FormatEvidenceOut"
+            },
+            "title": "Evidence",
+            "type": "array"
+          },
+          "format": {
+            "title": "Format",
+            "type": "string"
+          },
+          "geometries": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Geometries",
+            "type": "array"
+          },
+          "lossy": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lossy"
+          },
+          "modalities": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Modalities",
+            "type": "array"
+          },
+          "notes": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notes"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "targets": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Targets",
+            "type": "array"
+          },
+          "task": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Task"
+          },
+          "unsupported_geometries": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Unsupported Geometries",
+            "type": "array"
+          }
+        },
+        "required": [
+          "format",
+          "direction",
+          "availability",
+          "aliases",
+          "task",
+          "dialects",
+          "geometries",
+          "degraded_geometries",
+          "unsupported_geometries",
+          "modalities",
+          "targets",
+          "lossy",
+          "status",
+          "evidence",
+          "notes"
+        ],
+        "title": "FormatMatrixRowOut",
+        "type": "object"
+      },
       "FormatOut": {
         "description": "An installed export format, and what it can express.",
         "properties": {
@@ -11296,7 +11512,7 @@
     },
     "/formats": {
       "get": {
-        "description": "Every export format installed on this server, by name.\n\n`name` is what `POST /releases/{release_id}/export?format=` takes. `targets`\nnames the models this format writes for; `GET /export-targets` carries each\none in full.\n\n`lossy` says the format cannot carry everything the kernel can represent \u2014\nsome geometry, attribute kind, or per-annotation provenance is dropped. It is\na property of the format rather than of any one release, so it is answered\nhere and not per export, and exporting in one requires `allow_lossy=true`.\n\nNever empty in practice: a built-in no-op format ships with VisionSet so the\nplugin path is exercised even before a real exporter is installed.",
+        "description": "Every export format installed on this server, by name.\n\n`name` is what `POST /releases/{release_id}/export?format=` takes. `targets`\nnames the models this format writes for; `GET /export-targets` carries each\none in full.\n\n`lossy` says the format cannot carry everything the kernel can represent \u2014\nsome geometry, attribute kind, or per-annotation provenance is dropped. It is\na property of the format rather than of any one release, so it is answered\nhere and not per export, and exporting in one requires `allow_lossy=true`.\n\nLists whatever is installed: the formats VisionSet ships and any a\nthird-party distribution registers.",
         "operationId": "list_formats",
         "responses": {
           "200": {
@@ -11356,6 +11572,73 @@
           }
         ],
         "summary": "List Formats",
+        "tags": [
+          "formats"
+        ]
+      }
+    },
+    "/formats/matrix": {
+      "get": {
+        "description": "Every installed format, once per direction, with what is known to back it.\n\nA row per installed exporter and per installed importer. `geometries` and\n`degraded_geometries` are what the plugin carries intact and reduced;\n`unsupported_geometries` is every other geometry an annotation can hold. An\nexporter's capability is its own declaration; an importer declares none, so\nits geometries are the verification descriptor's record and `lossy` is null.\n\n`status` is not a compatibility promise. `validated` means a test that CI\nruns backs the row, and `evidence` names each one and its kind \u2014 a fixture,\na schema check, a round trip through VisionSet's own importer, or an\nindependent reader. A plugin the descriptor does not cover, such as one a\nthird-party distribution installs, is `no_recorded_evidence`.",
+        "operationId": "format_matrix",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FormatMatrixOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Missing or invalid bearer token"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The request payload is not processable"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unhandled server error, with an incident id"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The workspace is busy; retry after the header says"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Format Matrix",
         "tags": [
           "formats"
         ]

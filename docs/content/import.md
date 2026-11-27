@@ -143,6 +143,12 @@ naming the kinds to accept. See [mcp-tools.md](mcp-tools.md).
 | `cvat-video` | CVAT for video 1.1: every `annotations.xml` holding `<track>` elements, its frames `images/frame_<frame:06d><ext>` beside it; each task as an image sequence and its tracks' ids as tracks, with boxes, rotated boxes, polygons and polylines per frame and `<tag frame>` as untracked tags | Tracks of shapes the domain has no geometry for, a box whose `rotation` is not a finite number, attribute definitions of an input type the domain has no kind for, `occluded`, `z_order`, `group_id`, the `keyframe="0"` mark of an interpolated frame, the frames CVAT interpolates between stored shapes or carries to the task's end, frames the task counts but does not hold. A malformed document refuses the source by file and line |
 | `nuscenes` | A data root: a version folder (`v1.0-mini`, `v1.0-trainval`, ...) of JSON tables beside `samples/LIDAR_TOP/*.pcd.bin`; the LIDAR_TOP keyframes, boxes as `cuboid_3d` in the `lidar_rfu` frame, and each keyframe's scene name as its group label | Attributes, visibility, instance tokens (tracking identity, because a track follows 2D labels only), `num_lidar_pts` and `num_radar_pts`, a scene's description, log and map, the ego pose and calibration themselves, a box leaning more than 6 degrees, a malformed box or a dimension that is not positive, an annotation whose sample has no LIDAR_TOP keyframe, the sweeps, and every other sensor's data |
 
+This table says what each importer reads. What has been checked, and how, is the
+[verification matrix](architecture/backend/formats.md#verification-matrix): per format and
+direction, the tests recorded for it and whether each is a fixture, a round trip through the
+exporter, or an independent reader. `visionset format matrix` prints it for the formats installed
+here.
+
 **COCO attributes.** A label's attribute values are read from the `"visionset"` object the
 exporter writes on each annotation, else from the row's own `attributes`, as CVAT's COCO export
 writes them; when both are present the row's own are an `attribute` loss. A string, a boolean or a

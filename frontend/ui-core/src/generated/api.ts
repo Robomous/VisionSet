@@ -955,10 +955,42 @@ export interface paths {
          *     a property of the format rather than of any one release, so it is answered
          *     here and not per export, and exporting in one requires `allow_lossy=true`.
          *
-         *     Never empty in practice: a built-in no-op format ships with VisionSet so the
-         *     plugin path is exercised even before a real exporter is installed.
+         *     Lists whatever is installed: the formats VisionSet ships and any a
+         *     third-party distribution registers.
          */
         get: operations["list_formats"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/formats/matrix": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Format Matrix
+         * @description Every installed format, once per direction, with what is known to back it.
+         *
+         *     A row per installed exporter and per installed importer. `geometries` and
+         *     `degraded_geometries` are what the plugin carries intact and reduced;
+         *     `unsupported_geometries` is every other geometry an annotation can hold. An
+         *     exporter's capability is its own declaration; an importer declares none, so
+         *     its geometries are the verification descriptor's record and `lossy` is null.
+         *
+         *     `status` is not a compatibility promise. `validated` means a test that CI
+         *     runs backs the row, and `evidence` names each one and its kind — a fixture,
+         *     a schema check, a round trip through VisionSet's own importer, or an
+         *     independent reader. A plugin the descriptor does not cover, such as one a
+         *     third-party distribution installs, is `no_recorded_evidence`.
+         */
+        get: operations["format_matrix"];
         put?: never;
         post?: never;
         delete?: never;
@@ -5561,6 +5593,89 @@ export interface components {
             total: number;
         };
         /**
+         * FormatEvidenceOut
+         * @description One recorded test behind a format's verification status.
+         *
+         *     `kind` is `fixture`, `schema`, `round_trip` or `independent_reader`. `test` is
+         *     the pytest node that proves it. `gate` is where it runs: `python` (the default
+         *     CI suite), `format-smoke` (CI with the optional format groups) or `opt-in`
+         *     (only where a developer supplies data or tools; it does not count towards
+         *     `validated`). `reader` and `external` describe an independent reader: a
+         *     third-party library when `external` is true, a test-local parser written from
+         *     the published format otherwise. `requires` names the optional dependency
+         *     group the test needs.
+         */
+        FormatEvidenceOut: {
+            /** External */
+            external: boolean | null;
+            /** Gate */
+            gate: string;
+            /** Kind */
+            kind: string;
+            /** Reader */
+            reader: string | null;
+            /** Requires */
+            requires: string | null;
+            /** Test */
+            test: string;
+        };
+        /**
+         * FormatMatrixOut
+         * @description Every installed format plugin, once per direction, with its verification status.
+         */
+        FormatMatrixOut: {
+            /** Descriptor Version */
+            descriptor_version: number;
+            /** Items */
+            items: components["schemas"]["FormatMatrixRowOut"][];
+            /** Total */
+            total: number;
+        };
+        /**
+         * FormatMatrixRowOut
+         * @description One installed format plugin in one direction, and what is known about it.
+         *
+         *     `direction` is `export` or `import`; `availability` is `both`, `export_only`
+         *     or `import_only`. For an exporter, the geometries, `lossy` and `targets` are
+         *     the plugin's own declarations; an importer declares none, so its geometries
+         *     are the verification descriptor's record and `lossy` is null — an import
+         *     reports what it drops per run. `status` is `validated` (a test CI runs backs
+         *     it), `implemented` (recorded, but no test CI runs) or `no_recorded_evidence`
+         *     (a plugin the descriptor does not cover, such as a third-party one).
+         */
+        FormatMatrixRowOut: {
+            /** Aliases */
+            aliases: string[];
+            /** Availability */
+            availability: string;
+            /** Degraded Geometries */
+            degraded_geometries: string[];
+            /** Dialects */
+            dialects: string[];
+            /** Direction */
+            direction: string;
+            /** Evidence */
+            evidence: components["schemas"]["FormatEvidenceOut"][];
+            /** Format */
+            format: string;
+            /** Geometries */
+            geometries: string[];
+            /** Lossy */
+            lossy: boolean | null;
+            /** Modalities */
+            modalities: string[];
+            /** Notes */
+            notes: string | null;
+            /** Status */
+            status: string;
+            /** Targets */
+            targets: string[];
+            /** Task */
+            task: string | null;
+            /** Unsupported Geometries */
+            unsupported_geometries: string[];
+        };
+        /**
          * FormatOut
          * @description An installed export format, and what it can express.
          */
@@ -10119,6 +10234,62 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["FormatPage"];
+                };
+            };
+            /** @description Missing or invalid bearer token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description The request payload is not processable */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unhandled server error, with an incident id */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description The workspace is busy; retry after the header says */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    format_matrix: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FormatMatrixOut"];
                 };
             };
             /** @description Missing or invalid bearer token */

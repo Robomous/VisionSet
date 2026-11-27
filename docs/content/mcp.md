@@ -244,6 +244,7 @@ annotation write already did. There is no `get_track`; every write answers the w
 | `verify_release` | Re-hash every blob a release names. |
 | `list_formats` | Installed exporters, which are lossy, what each can write, and the targets it writes for. |
 | `list_export_targets` | The models a release can be exported for, each with the format it resolves to and its hints. |
+| `format_matrix` | Every installed importer and exporter once per direction, with its geometries, lossiness and the tests recorded for it ([verification matrix](architecture/backend/formats.md#verification-matrix)). |
 | `check_export` | What a target or a format would drop from a release, before writing anything. Exactly one of `target` and `format`; `recipe` also checks that the recipe can run, and counts what a cropping resize cuts away. |
 | `export_release` | Write a release to a local directory, for a target or in a format. `dest` is absolute, outside the workspace, and empty unless `allow_non_empty`; every image is hash-checked first. `allow_lossy` where needed; `recipe` applies a pre-processing recipe by name. |
 | `create_preprocessing_recipe` | Store a named [pre-processing recipe](preprocessing.md) on a project: a resize step, augmentation steps, and how many variants each train image gets. |

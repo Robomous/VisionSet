@@ -271,6 +271,7 @@ a deliberate manual run, because each costs minutes or needs its own install.
 | MCP tool reference | `uv run python scripts/export_mcp_tools.py` (commit the diff) — `docs/content/mcp-tools.md` is generated from the server's own tool listing, because a tool description *is* the interface an agent reads | `generated` |
 | Error code reference | `uv run python scripts/export_error_codes.py` (commit the diff) — `docs/content/error-codes.md` is generated from `ERROR_CODES`, the server's status rules, each error's own docstring and the surfaces' hint tables | `generated` |
 | Export target catalog | `uv run python scripts/export_target_catalog.py` (commit the diff) — the target table in `docs/content/releases.md` is generated from what the installed formats declare, the same catalog `GET /export-targets` serves | `generated` |
+| Format verification matrix | `uv run python scripts/export_format_matrix.py` (commit the diff) — the table in `docs/content/architecture/backend/formats.md` is generated from the installed plugins and `src/visionset/formats/verification.json`, the same matrix `GET /formats/matrix` serves. A new built-in format needs a descriptor entry citing its tests | `generated` |
 
 **`scripts/check.sh` runs pytest under `pytest-xdist` with `-n auto`.** The suite is
 roughly 3200 tests averaging 63 ms, with only eight over a second — there is no expensive

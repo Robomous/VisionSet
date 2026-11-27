@@ -23,6 +23,9 @@ from tests.server._exports import (
     with_exporters,
 )
 
+from visionset import wire
+from visionset.formats.matrix import build
+from visionset.formats.registry import exporters, importers
 from visionset.kernel.domain import GeometryType
 
 
@@ -88,6 +91,37 @@ def test_the_listing_uses_the_envelope_like_every_other_collection(
 def test_the_listing_is_protected(client: TestClient) -> None:
     with TestClient(client.app) as anonymous:
         assert anonymous.get("/formats").status_code == 401
+
+
+# --- the verification matrix ---------------------------------------------------
+
+
+def test_the_matrix_is_every_installed_plugin_once_per_direction(client: TestClient) -> None:
+    """No override: the real scan, joined with the descriptor the wheel ships."""
+    body = client.get("/formats/matrix").json()
+
+    assert body == wire.format_matrix(build(exporters(), importers()))
+    keys = [(row["format"], row["direction"]) for row in body["items"]]
+    assert len(keys) == len(set(keys)) == body["total"]
+    rows = {key: row for key, row in zip(keys, body["items"], strict=True)}
+    assert rows[("coco", "export")]["status"] == "validated"
+    assert rows[("dummy", "export")]["status"] == "no_recorded_evidence"
+
+
+def test_the_matrix_reads_the_exporters_the_server_resolves(client: TestClient) -> None:
+    with_exporters(client.app, WritingExporter())
+
+    rows = client.get("/formats/matrix").json()["items"]
+
+    exported = [row for row in rows if row["direction"] == "export"]
+    assert [(row["format"], row["status"], row["evidence"]) for row in exported] == [
+        ("writing", "no_recorded_evidence", [])
+    ]
+
+
+def test_the_matrix_is_protected(client: TestClient) -> None:
+    with TestClient(client.app) as anonymous:
+        assert anonymous.get("/formats/matrix").status_code == 401
 
 
 # --- the target catalog --------------------------------------------------------

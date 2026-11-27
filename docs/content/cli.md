@@ -73,6 +73,7 @@ visionset export --project P --release TAG --target T|--format F --check   # wri
 visionset recipe create NAME --project P --spec FILE | --resize letterbox:640x640 --augment hflip --variants 2 --target T
 visionset recipe list|show NAME|update NAME|delete NAME --project P
 visionset format list                                    # no --workspace: it opens nothing
+visionset format matrix                                  # every format, each direction, and what backs it
 visionset target list                                    # the models a release can be exported for
 
 visionset backfill-thumbnails --project P
@@ -254,9 +255,10 @@ the callback would have to *precede* the subcommand - `visionset --workspace X t
 ci` would work and `visionset token create --name ci --workspace X` would fail with "No such
 option". Nobody types the first one.
 
-`--json` is per command for the identical reason, and so is every other option here. Five
-commands do without `--workspace`, each because it needs none: `visionset format list` and
-`visionset target list` read installed distributions, which is a fact about the process, and
+`--json` is per command for the identical reason, and so is every other option here. Six
+commands do without `--workspace`, each because it needs none: `visionset format list`,
+`visionset format matrix` and `visionset target list` read installed distributions, which is a
+fact about the process, and
 `visionset inference providers` reads the installed drivers too; `visionset inference size` asks
 the publishing hub about a model that no row has to name yet; `visionset init` takes a positional
 `PATH`,
@@ -582,7 +584,11 @@ the kernel is forbidden from finding a plugin itself. `--target` names the model
 train and resolves to the format that writes for it; `--format` names a format and addresses no
 trainer. Exactly one of the two: both or neither is a usage error at exit 2. `format list` says
 which formats are installed and `target list` which models can be trained on their output, each
-with the format it resolves to; both take `--json`, whose shape is the wire's. `--format yolo`, the
+with the format it resolves to; both take `--json`, whose shape is the wire's. `format matrix`
+lists every installed exporter and importer once per direction, with the geometries it carries,
+whether it is lossy and its verification status - the tests recorded for it and their kind (see
+[formats.md](architecture/backend/formats.md#verification-matrix)); it takes `--json` too, and a
+third-party format shows `no_recorded_evidence`. `--format yolo`, the
 former name of `ultralytics`, still works for one release and prints a deprecation line on stderr.
 
 `--out` is resolved against the working directory and must lie outside the workspace; a directory
