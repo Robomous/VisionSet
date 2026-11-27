@@ -116,6 +116,7 @@ def test_the_export_wrote_where_it_was_told(summary: Any) -> None:
         "bdd100k-lane",
         "classification",
         "coco",
+        "coco-panoptic",
         "createml",
         "culane",
         "curvelanes",

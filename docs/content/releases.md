@@ -159,9 +159,10 @@ release holding no `mask` keeps the version and the hash it had; a manifest hold
 a version below 10 does not load, and a build that predates the geometry refuses a version-10
 manifest, since it does not know the `mask` type. The mask is copied in its canonical spelling (see
 [annotations](annotations.md#a-mask-is-run-length-encoded-pixels-over-the-whole-asset)), so two
-publishes of an unchanged dataset still agree byte for byte. Two exporters write a mask whole,
-[`coco`](#the-coco-format) as RLE and [`segmentation-png`](#the-segmentation-png-format) as a
-class-index PNG; every other export reports each one **dropped**, never degraded.
+publishes of an unchanged dataset still agree byte for byte. Three exporters write a mask whole,
+[`coco`](#the-coco-format) as RLE, [`segmentation-png`](#the-segmentation-png-format) as a
+class-index PNG and [`coco-panoptic`](#the-coco-panoptic-format) as one segment of an RGB segment
+map; every other export reports each one **dropped**, never degraded.
 
 Publishing content that needs a newer version than an older build wrote still produces a
 different manifest hash, because the version number is part of the document.
@@ -420,7 +421,8 @@ The fix is vocabulary rather than capability. `Exporter` declares two geometry s
 - **`supported_geometries`** - written as they stand.
 - **`degraded_geometries`** - written, having lost something the kernel could represent. `{obb,
   polygon}` for `yolov5-yaml`, `darknet` and `voc`, each written as its axis-aligned bounding box;
-  `{polygon}` for `segmentation-png`, which rasterizes a polygon into its class map; and empty
+  `{polygon}` for `segmentation-png` and `coco-panoptic`, which rasterize a polygon into their pixel
+  maps; and empty
   for `coco`, which writes a polygon as a polygon and a mask as RLE and drops a rotated box,
   for `yolo-obb` and `dota`, which write a rotated box as itself and drop everything else, for
   `labelme`, which writes boxes and polygons as themselves and drops everything else, for
@@ -538,6 +540,7 @@ The catalog this build ships, generated from the declarations by
 | `bdd100k-lane` | bdd100k-lane | `other` | `bdd100k-lane` | — | polyline | — | — |
 | `classification` | classification | `other` | `classification` | — | classification_tag | — | — |
 | `coco` | coco | `other` | `coco` | — | bbox, mask, polygon | — | — |
+| `coco-panoptic` | coco-panoptic | `other` | `coco-panoptic` | — | mask, polygon | — | — |
 | `createml` | createml | `other` | `createml` | — | bbox | — | — |
 | `culane` | culane | `other` | `culane` | — | polyline | — | — |
 | `curvelanes` | curvelanes | `other` | `curvelanes` | — | polyline | — | — |
@@ -877,7 +880,43 @@ pixel, so what it cannot say is content, not geometry: several masks of one clas
 written as their union, one region on re-import, and a pixel two classes claim keeps the **lower**
 id. Each picture where classes contested pixels is listed under `visionset.overlaps` with the
 contested pixel count and the classes involved, the one that kept them included. Attributes, confidence and provenance have nowhere to go, so `lossy` is
-true. COCO panoptic layouts and RGB colour-encoded masks are not written.
+true. COCO panoptic segment maps are [`coco-panoptic`](#the-coco-panoptic-format)'s, and RGB
+colour-encoded masks are not written.
+
+### The coco-panoptic format
+
+`coco-panoptic` writes COCO panoptic segmentation, independent of `coco`'s instance files:
+`annotations/panoptic_<fold>.json`, one RGB PNG per picture under `annotations/panoptic_<fold>/`
+named `<hash>.png`, and the pictures under `images/<fold>/`. The
+[`coco-panoptic` importer](import.md#formats) reads it back, as it reads COCO's own release.
+
+The JSON carries `info` (the release's tag, date and hashes, as `coco` writes it), one `unspecified`
+license, `images` (ids `1` upward per fold, in manifest order, with `file_name`, `width` and
+`height`), `categories` and `annotations`, one per picture with its `image_id`, its PNG's
+`file_name` and `segments_info`. Every class whose declared geometries include `mask` or `polygon`
+is a category, ids `1` upward in the frozen schema's order, as `segmentation-png` numbers them;
+`supercategory` is the class's own name, since VisionSet has no class hierarchy, and `isthing` is
+`1`, since VisionSet has no thing/stuff flag and a mask is one object. No `color` is written.
+
+Each mask or polygon on a picture is one segment, its id `1` upward in the manifest's order of the
+picture's annotations, so two exports of one release agree byte for byte. The PNG holds each
+pixel's segment id as `R + 256 × G + 65536 × B`, and `0` (void) wherever no segment is, so an
+unlabelled picture's PNG is all void. Each `segments_info` entry is `id`, `category_id`, `area`
+(the segment's pixel count), `bbox` (`[x, y, width, height]`, the smallest pixel-aligned box
+holding it) and `iscrowd` `0`.
+
+`supported_geometries` is `{mask}`: a mask's pixels are written exactly. `degraded_geometries` is
+`{polygon}`: a polygon is rasterized at the picture's size, lighting each pixel whose centre it
+holds. A box, a tag and every other geometry are dropped. A panoptic map gives each pixel one
+segment and, unlike a class map, keeps segments of one class apart, so nothing is merged: an asset
+where two masks or polygons claim one pixel **refuses the export**, naming the asset and both
+annotations, and so does one that covers no pixel - a panoptic segment holds at least one - and a
+mask not the size of its picture. Resolve the overlap, or export to `coco`, which keeps
+overlapping masks. Attributes, confidence and provenance have nowhere to go, so `lossy` is true.
+
+What has been checked is in the
+[verification matrix](architecture/backend/formats.md#verification-matrix): fixtures and round
+trips built in the tests. No panopticapi or other external reader is run.
 
 ### The Pascal VOC format
 

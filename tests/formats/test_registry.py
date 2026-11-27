@@ -139,6 +139,7 @@ def test_every_installed_exporter_stays_discovered() -> None:
         "yolov5-yaml",
         "darknet",
         "coco",
+        "coco-panoptic",
         "voc",
         "classification",
         "tusimple",

@@ -22,8 +22,8 @@ lower id; each picture where that happened is recorded under
 classes involved. Attributes, confidence and provenance
 have nowhere to go, so the format is lossy.
 
-COCO panoptic layouts and colour-encoded masks beyond an explicit palette are
-not read or written.
+COCO panoptic segment maps are :mod:`visionset.formats.coco_panoptic`'s, and
+colour-encoded masks beyond an explicit palette are not read or written.
 """
 
 from __future__ import annotations

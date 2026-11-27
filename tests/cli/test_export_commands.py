@@ -121,6 +121,7 @@ def test_format_list_names_the_installed_exporters() -> None:
         ["bdd100k-lane", "yes"],
         ["classification", "yes"],
         ["coco", "no"],
+        ["coco-panoptic", "yes"],
         ["createml", "yes"],
         ["culane", "yes"],
         ["curvelanes", "yes"],
@@ -192,6 +193,14 @@ def test_format_list_json_is_the_envelope() -> None:
             "degraded_geometries": [],
             "modalities": ["image"],
             "targets": ["coco"],
+        },
+        {
+            "name": "coco-panoptic",
+            "lossy": True,
+            "geometries": ["mask"],
+            "degraded_geometries": ["polygon"],
+            "modalities": ["image"],
+            "targets": ["coco-panoptic"],
         },
         {
             "name": "createml",

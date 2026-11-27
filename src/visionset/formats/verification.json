@@ -78,6 +78,35 @@
         "notes": "A multi-part polygon is read as the union of its parts (a mask unless one drawable ring remains); iscrowd is reported as an attribute loss."
       }
     },
+    "coco-panoptic": {
+      "task": "panoptic segmentation",
+      "dialects": [
+        "COCO panoptic: panoptic_<split>.json with segments_info per picture, and an RGB segment PNG per picture (id = R + 256 * G + 65536 * B)"
+      ],
+      "export": {
+        "lossy": true,
+        "geometries": ["mask"],
+        "degraded_geometries": ["polygon"],
+        "modalities": ["image"],
+        "evidence": [
+          {"kind": "fixture", "test": "tests/formats/test_coco_panoptic.py::test_the_export_writes_categories_segments_and_an_rgb_png_per_picture", "gate": "python"},
+          {"kind": "fixture", "test": "tests/formats/test_coco_panoptic.py::test_two_overlapping_segments_refuse_the_export_naming_both", "gate": "python"},
+          {"kind": "round_trip", "test": "tests/formats/test_coco_panoptic.py::test_the_export_reimports_with_every_pixel_owned_by_the_same_class", "gate": "python"},
+          {"kind": "round_trip", "test": "tests/formats/test_coco_panoptic.py::test_import_export_reimport_preserves_segment_classes_and_pixels", "gate": "python"}
+        ],
+        "notes": "isthing is always 1 and iscrowd always 0: the schema has no thing/stuff or crowd flag. Overlapping masks refuse the export. No panopticapi check runs; fixture and round trip only."
+      },
+      "import": {
+        "geometries": ["mask"],
+        "modalities": ["image"],
+        "evidence": [
+          {"kind": "fixture", "test": "tests/formats/test_coco_panoptic.py::test_each_segment_is_one_mask_of_its_category_with_stuff_crowd_and_void_reported", "gate": "python"},
+          {"kind": "fixture", "test": "tests/formats/test_coco_panoptic.py::test_contradictory_or_malformed_metadata_is_refused", "gate": "python"},
+          {"kind": "round_trip", "test": "tests/formats/test_coco_panoptic.py::test_import_export_reimport_preserves_segment_classes_and_pixels", "gate": "python"}
+        ],
+        "notes": "Each segment is one mask of its category. Void pixels, iscrowd 1, isthing 0 and fields with no place in the schema are reported as losses; JSON and PNG that contradict each other refuse the import."
+        }
+    },
     "createml": {
       "task": "object detection",
       "dialects": [
