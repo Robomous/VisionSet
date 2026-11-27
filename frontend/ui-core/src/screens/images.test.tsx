@@ -24,6 +24,7 @@ import { ingestKeys, useBatches } from "./queries";
 const PROJECT = "11111111-1111-4111-8111-111111111111";
 const FOLDER = "22222222-2222-4222-8222-222222222222";
 const CLIP = "33333333-3333-4333-8333-333333333333";
+const SEGMENT = "44444444-4444-4444-8444-444444444444";
 
 // Every field `AssetOut` declares beyond the id and project: the server sends all
 // of them on every asset, and `unwrap` says so when a fixture does not.
@@ -49,7 +50,7 @@ function assets(from: number, n: number, over: Record<string, unknown> = {}): Re
   return Array.from({ length: n }, (_, i) => asset(`a${from + i}`, over));
 }
 
-function source(id: string, name: string, kind: "image_directory" | "video", registered: string): Record<string, unknown> {
+function source(id: string, name: string, kind: "image_directory" | "video" | "image_sequence", registered: string): Record<string, unknown> {
   return { id, project_id: PROJECT, kind, name, registered_at: registered, video: null, frame: null };
 }
 
@@ -239,6 +240,22 @@ describe("the Images section", () => {
     expect(screen.getByTestId(`images-source-${FOLDER}`).textContent).toContain("Folder · 5 images · 640 × 480 · PNG");
     expect(screen.getByTestId("images-source-menu").getAttribute("aria-label")).toBe("Source: All sources");
     expect(screen.getByTestId("images-source-line").textContent).toBe("8 images from 2 sources");
+  });
+
+  it("calls an imported image sequence a sequence, and gives it its own group in the menu", async () => {
+    twoSources();
+    sources = [...sources, source(SEGMENT, "segment-1004", "image_sequence", "2026-09-30T02:00:00Z")];
+    held = [...held, ...assets(10, 4, { source_id: SEGMENT, width: 1920, height: 1280, format: "jpeg" })];
+    renderImages();
+
+    await waitFor(() => expect(screen.getByTestId(`images-source-${SEGMENT}`).textContent).toContain("Sequence · 4 images · 1920 × 1280 · JPEG"));
+    expect(screen.getByTestId(`images-source-${FOLDER}`).textContent).toContain("Folder · 5 images");
+
+    await userEvent.click(screen.getByTestId("images-source-menu"));
+    const menu = await screen.findByRole("menu");
+    const labels = [...menu.querySelectorAll('[data-slot="dropdown-menu-label"]')].map((one) => one.textContent);
+    expect(labels).toEqual(["Videos", "Sequences", "Folders"]);
+    expect(within(menu).getByRole("menuitemradio", { name: /segment-1004/ }).textContent).toContain("Sequence · 1920 × 1280");
   });
 
   it("narrows to a source from its heading's name, the same as choosing it in the menu", async () => {

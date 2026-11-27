@@ -72,6 +72,13 @@ export function isVideo(source: Source | undefined): boolean {
   return source?.kind === "video";
 }
 
+/** What a source is, in one word: a video, an imported image sequence, or a folder. */
+export function sourceKindWord(source: Source | undefined): "Video" | "Sequence" | "Folder" {
+  if (source?.kind === "video") return "Video";
+  if (source?.kind === "image_sequence") return "Sequence";
+  return "Folder";
+}
+
 /** A run of assets as the section's items, each named. */
 export function itemsOf(assets: readonly Asset[]): ImageItem[] {
   return assets.map((asset, i) => ({ asset, label: asset.frame_index != null ? `Frame ${asset.frame_index}` : `Image ${i + 1}` }));
@@ -121,7 +128,7 @@ export function groupLine(group: ImageGroup): string {
   const sizes = new Set(group.images.map((i) => dimsOf(i.asset))).size;
   const formats = group.formats.map(formatName).filter((f): f is string => f !== null);
   const parts: (string | null)[] = [
-    group.source === undefined ? null : video ? "Video" : "Folder",
+    group.source === undefined ? null : sourceKindWord(group.source),
     `${n.toLocaleString()} ${video ? (n === 1 ? "frame" : "frames") : n === 1 ? "image" : "images"}`,
     group.dims ?? (sizes > 1 ? `${sizes} sizes` : null),
     formats.length === 0 ? null : formats.length === 1 ? formats[0]! : `${formats.slice(0, -1).join(", ")} and ${formats.at(-1)}`,

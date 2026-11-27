@@ -5,7 +5,7 @@
  * that choice's one-line description, so the band always says what the sheet
  * holds. The menu shows each source the way you would recognise it — its first
  * image as a cover, its name, then a short line of what it is — grouped by
- * kind once a project has both videos and folders. The current choice carries
+ * kind once a project has more than one kind of source. The current choice carries
  * the radio check; counts sit in a right-aligned tabular column.
  */
 
@@ -21,16 +21,22 @@ import {
   DropdownMenuTrigger,
 } from "@robomous/ui-core";
 import { ChevronsUpDown, Layers } from "lucide-react";
-import type { JSX, ReactNode } from "react";
+import { Fragment, type JSX, type ReactNode } from "react";
 
 import { formatCount } from "../../lib/format";
-import { dimsOf, groupLine, isVideo, type ImageGroup } from "./imageFacts";
+import { dimsOf, groupLine, sourceKindWord, type ImageGroup } from "./imageFacts";
 import { SourceIcon, Thumb } from "./ImageParts";
+
+const KINDS = [
+  { word: "Video", label: "Videos" },
+  { word: "Sequence", label: "Sequences" },
+  { word: "Folder", label: "Folders" },
+] as const;
 
 /** A row's second line: short enough not to truncate in the menu. */
 function shortLine(g: ImageGroup): string {
   const sizes = new Set(g.images.map((i) => dimsOf(i.asset))).size;
-  return [isVideo(g.source) ? "Video" : "Folder", g.dims ?? `${sizes} sizes`, g.added === null ? null : `added ${g.added}`].filter(Boolean).join(" · ");
+  return [sourceKindWord(g.source), g.dims ?? `${sizes} sizes`, g.added === null ? null : `added ${g.added}`].filter(Boolean).join(" · ");
 }
 
 export function SourceMenu({
@@ -46,9 +52,9 @@ export function SourceMenu({
 }): JSX.Element {
   const total = groups.reduce((n, g) => n + g.total, 0);
   const current = value === null ? undefined : groups.find((g) => g.key === value);
-  const videos = groups.filter((g) => isVideo(g.source));
-  const folders = groups.filter((g) => !isVideo(g.source));
-  const byKind = videos.length > 0 && folders.length > 0;
+  const kinds = KINDS.map(({ word, label }) => ({ label, groups: groups.filter((g) => sourceKindWord(g.source) === word) })).filter(
+    (k) => k.groups.length > 0,
+  );
   const allLine = `${formatCount(total)} images from ${groups.length} sources`;
 
   return (
@@ -77,12 +83,13 @@ export function SourceMenu({
               count={total}
             />
             <DropdownMenuSeparator />
-            {byKind ? (
-              <>
-                <Kind projectId={projectId} label="Videos" groups={videos} />
-                <DropdownMenuSeparator />
-                <Kind projectId={projectId} label="Folders" groups={folders} />
-              </>
+            {kinds.length > 1 ? (
+              kinds.map((k, i) => (
+                <Fragment key={k.label}>
+                  {i > 0 && <DropdownMenuSeparator />}
+                  <Kind projectId={projectId} label={k.label} groups={k.groups} />
+                </Fragment>
+              ))
             ) : (
               <Kind projectId={projectId} label="Sources" groups={groups} />
             )}
