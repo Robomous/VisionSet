@@ -4,6 +4,7 @@
 #   docker compose -f docker/compose.yaml -f docker/compose.gpu.yaml up --build            # + GPU inference
 #   docker compose -f docker/compose.yaml -f docker/compose.cpu-inference.yaml up --build  # + CPU inference
 #   docker compose -f docker/compose.yaml --profile postgres up                            # unused extras
+#   docker compose -f docker/compose.yaml -f docker/compose.mlflow.yaml --profile mlflow up --build  # + MLflow
 #
 #   App   http://localhost:8080   nginx: /api/ → api, everything else → vite
 #   Docs  http://localhost:4321
@@ -163,6 +164,44 @@ services:
     volumes:
       - minio-data:/data
 
+  # Optional experiment tracking, never started by `up`, and nothing depends on it.
+  # docker/compose.mlflow.yaml points the api at it; see docs/content/tracking.md.
+  mlflow:
+    profiles: ["mlflow"]
+    # A release, never `latest`, kept at the client's version in uv.lock, which
+    # tests/tracking/test_tracking_compose_pin.py enforces. The real-server test in
+    # tests/tracking starts this service, so a bump is tested before it lands.
+    image: ghcr.io/mlflow/mlflow:v3.18.0
+    command:
+      - mlflow
+      - server
+      - --host=0.0.0.0
+      - --port=5000
+      - --workers=1
+      - --backend-store-uri=sqlite:////mlflow/mlflow.db
+      - --artifacts-destination=/mlflow/artifacts
+      # MLflow refuses Host headers outside localhost and private addresses, and
+      # other containers address it as `mlflow`.
+      - --allowed-hosts=mlflow,mlflow:5000,localhost,localhost:*,127.0.0.1,127.0.0.1:*
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:5000/health', timeout=5)"
+      interval: 5s
+      timeout: 10s
+      retries: 30
+      start_period: 10s
+    ports:
+      # Loopback, and not 5000, which macOS gives to AirPlay. Change it in docker/.env:
+      #   printf 'VISIONSET_MLFLOW_PORT=5051\n' >> docker/.env
+      - "127.0.0.1:${VISIONSET_MLFLOW_PORT:-5050}:5000"
+    volumes:
+      # Its own volume, not the workspace: `down -v` deletes it.
+      - mlflow-data:/mlflow
+
 volumes:
   postgres-data:
   minio-data:
+  mlflow-data:

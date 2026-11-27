@@ -61,6 +61,7 @@ from visionset.inference import (
     select_pre_labelable,
     served_for,
 )
+from visionset.jobs.inline import Surface, pre_label_observer
 from visionset.kernel.domain import (
     AssetProgress,
     AssetSort,
@@ -492,6 +493,7 @@ def pre_label_batch(
         items: list[JobPreLabelOutcome] = []
         jobs = open_jobs_of(workspace, batch_uuid)
         counted = PreLabelProgress(report, len(jobs))
+        observer = pre_label_observer(Surface.MCP)
         for job in jobs:
             outcome = pre_label_recorded(
                 workspace,
@@ -502,6 +504,7 @@ def pre_label_batch(
                 geometries=geometry_selection(geometries),
                 on_plan=counted.planned,
                 on_progress=counted.asset_done,
+                observer=observer,
             )
             items.append({"job_id": str(job.id), **_pre_label_outcome(outcome, counted.plans[-1])})
         counted.finish()
@@ -576,6 +579,7 @@ def pre_label_project(
             geometries=geometry_selection(geometries),
             on_plan=lambda _batch, _index, plan: counted.planned(plan),
             on_progress=lambda _batch, done, total: counted.asset_done(done, total),
+            observer=pre_label_observer(Surface.MCP),
         )
         counted.finish()
         items: list[ProjectBatchPreLabelOutcome] = [

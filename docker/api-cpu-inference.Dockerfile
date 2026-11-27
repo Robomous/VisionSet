@@ -16,8 +16,11 @@ WORKDIR /workspace
 
 COPY pyproject.toml uv.lock ./
 
+# One extra from uv.lock to add, e.g. `mlflow` (docker/compose.mlflow.yaml); none by default.
+ARG VISIONSET_EXTRA=""
+
 RUN --mount=type=cache,target=/root/.cache/uv \
-    uv sync --frozen --no-install-project
+    uv sync --frozen --no-install-project ${VISIONSET_EXTRA:+--extra "$VISIONSET_EXTRA"}
 
 # The install below must stay after `uv sync`, which prunes anything the lockfile does not
 # name — and the extra is not in the lock.

@@ -45,6 +45,8 @@ from visionset.kernel.domain import (
     AssetPrediction,
     AssetProgress,
     Attribute,
+    BackgroundJob,
+    BackgroundJobOutcome,
     BackgroundJobState,
     Batch,
     BboxGeometry,
@@ -1833,6 +1835,37 @@ def test_an_inline_run_that_fails_settles_failed_with_its_reason(
     assert run is not None
     assert run.state is BackgroundJobState.FAILED
     assert run.error == "the model fell over"
+
+
+def test_an_inline_run_whose_receipt_fails_unexpectedly_still_tells_the_observer(
+    prelabel_fixture: Fixture, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    settled: list[tuple[BackgroundJobState, BaseException | None]] = []
+
+    class Observer:
+        def recorded(self, row: BackgroundJob) -> None:
+            pass
+
+        def settled(
+            self, row: BackgroundJob, outcome: BackgroundJobOutcome, error: BaseException | None
+        ) -> None:
+            settled.append((outcome.state, error))
+
+    def broken_finish(job_id: UUID, outcome: BackgroundJobOutcome) -> None:
+        raise RuntimeError("the store went away")
+
+    monkeypatch.setattr(prelabel_fixture.workspace.job_queue, "finish", broken_finish)
+
+    with pytest.raises(RuntimeError, match="the store went away"):
+        pre_label_recorded(
+            prelabel_fixture.workspace,
+            job_id=prelabel_fixture.job_id,
+            connection_id=prelabel_fixture.connection.id,
+            pool=prelabel_fixture.pool,
+            observer=Observer(),
+        )
+
+    assert settled == [(BackgroundJobState.SUCCEEDED, None)]
 
 
 # --- #951: a confirmed label in the trunk is not replaceable from another batch --

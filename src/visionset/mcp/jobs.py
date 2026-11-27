@@ -36,6 +36,7 @@ from visionset.inference import (
     geometry_selection,
     pre_label_recorded,
 )
+from visionset.jobs.inline import Surface, pre_label_observer
 from visionset.kernel.domain import AssetProgress
 from visionset.kernel.services import (
     InferenceConnectionService,
@@ -176,6 +177,7 @@ def pre_label_job(
             geometries=geometry_selection(geometries),
             on_plan=counted.planned,
             on_progress=counted.asset_done,
+            observer=pre_label_observer(Surface.MCP),
         )
         counted.finish()
     return {"job_id": str(resolved_job), **_pre_label_outcome(outcome, counted.plans[0])}

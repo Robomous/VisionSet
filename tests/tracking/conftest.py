@@ -5,7 +5,7 @@ from collections.abc import Iterator
 import pytest
 
 from visionset.tracking import tracking_settings
-from visionset.tracking._mlflow import ENVIRONMENT_DEFAULTS
+from visionset.tracking._mlflow import ENVIRONMENT_DEFAULTS, ENVIRONMENT_FORCED
 
 _VARIABLES = (
     "VISIONSET_MLFLOW_ENABLED",
@@ -15,6 +15,7 @@ _VARIABLES = (
     "MLFLOW_TRACKING_PASSWORD",
     "MLFLOW_TRACKING_TOKEN",
     *ENVIRONMENT_DEFAULTS,
+    *ENVIRONMENT_FORCED,
 )
 
 
