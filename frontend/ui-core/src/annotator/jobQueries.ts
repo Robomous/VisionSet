@@ -76,6 +76,7 @@ import {
 } from "../generated/checks";
 import type { components } from "../generated/api";
 import { batchKeys, type Batch, type BatchAsset } from "../screens/queries";
+import { trackKeys } from "./trackQueries";
 
 export type Job = components["schemas"]["JobOut"];
 export type AssetProgress = components["schemas"]["AssetProgress"];
@@ -572,6 +573,9 @@ export function useSaveAnnotations(jobId: string, assetId: string | undefined) {
       // suite that annotates three assets and then presses it.
       void queries.invalidateQueries({ queryKey: jobKeys.job(jobId) });
       void queries.invalidateQueries({ queryKey: ["batches"] });
+      // Deleting an observed annotation deletes its observation, and an edit
+      // moves the progress a track's status counts.
+      void queries.invalidateQueries({ queryKey: trackKeys.all });
     },
   });
 }
@@ -603,6 +607,7 @@ export function useSetAssetProgress(jobId: string) {
       // And the frame's own declarations: `skipped` offers `restore` and nothing
       // else, which is the toolbar's next state.
       void queries.invalidateQueries({ queryKey: ["batches"] });
+      void queries.invalidateQueries({ queryKey: trackKeys.all });
     },
   });
 }

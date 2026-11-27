@@ -123,6 +123,22 @@ export const REFUSAL_PROSE: Record<string, string> = {
   ASSET_NOT_WRITABLE: "This asset's labeling is settled — its labels cannot be changed here.",
   JOB_NOT_COMPLETE: "Some assets still need annotating or skipping.",
   ASSET_NOT_IN_JOB: "This asset is not part of this job.",
+
+  // Tracks. A track follows one object through one sequence source, and every
+  // write follows the annotation it observes (docs/content/annotations.md).
+  TRACK_NOT_FOUND: "That track is no longer on record.",
+  FRAME_OCCURRENCE_NOT_FOUND: "That frame is no longer a position of its source.",
+  OBSERVATION_NOT_FOUND: "The track no longer follows the object at that frame.",
+  SOURCE_NOT_SEQUENCE: "Only a video or an image sequence can hold a track.",
+  TRACK_SOURCE_MISMATCH: "That track belongs to another source — a track never spans two.",
+  TRACK_EXTERNAL_ID_TAKEN: "Another track of this source already carries that id.",
+  ANNOTATION_NOT_AT_OCCURRENCE: "That object is not drawn on the frame at that position.",
+  TRACK_CLASS_MISMATCH: "The object's class is not the track's — every object a track follows carries the track's class.",
+  OCCURRENCE_ALREADY_OBSERVED: "The track already follows an object at that frame — remove it from the track first.",
+  ANNOTATION_ALREADY_OBSERVED: "That object is already on a track. A repeated frame needs one object per position it is tracked at.",
+  ASSET_NOT_JUDGED: "A model's labels on this frame have not been judged yet — confirm or edit them first, then add the object to the track.",
+  TRACK_SPLIT_EMPTY: "A split there would leave one of the two tracks empty.",
+  TRACK_MERGE_WITH_ITSELF: "A track cannot be merged with itself.",
   ASSET_NOT_IN_DATASET: "That asset is no longer in the dataset.",
   ASSET_NOT_IN_BATCH: "That asset is not in the batch this one corrects.",
   ASSET_NOT_FOUND: "Some of those assets are not in this project.",
