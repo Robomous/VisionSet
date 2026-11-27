@@ -378,7 +378,8 @@ against one format's declaration and returns an `ExportCompatibility`:
      "reason": "yolov5-yaml cannot place a classification_tag and drops it",
      "cropped_by": null}
   ],
-  "dropped_modalities": []
+  "dropped_modalities": [],
+  "untagged_assets": 0
 }
 ```
 
@@ -481,6 +482,15 @@ that format would otherwise write and no track in the release observes leaves it
 `dropped` row of its own, with its own counts and a reason saying no track observes it, so an
 untracked box is counted in `excluded_annotations` and asks for consent like any other loss.
 
+**A single-tag format keeps one tag per asset.** A format may declare `single_tag`, as
+[`classification-dir`](#the-classification-dir-format) does, because a class directory gives a
+picture one class. Of an asset's tags, the first by class name in code-point order is kept; each
+other tag leaves its row for a `dropped` row of its own, counted in `excluded_annotations`. An
+asset with no tag to keep is not written at all and is counted in `untagged_assets`; it is
+counted in `excluded_assets` too only when it also carries a label the format drops. A non-zero
+`untagged_assets` makes the report incompatible and is named in the refusal, so either loss asks
+for consent.
+
 ### Consent is required if *either* says so
 
 `export` refuses with `LossyExportNotConsented` when the format declares itself lossy **or** when
@@ -539,6 +549,7 @@ The catalog this build ships, generated from the declarations by
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | `bdd100k-lane` | bdd100k-lane | `other` | `bdd100k-lane` | — | polyline | — | — |
 | `classification` | classification | `other` | `classification` | — | classification_tag | — | — |
+| `classification-dir` | classification-dir | `other` | `classification-dir` | — | classification_tag | — | — |
 | `coco` | coco | `other` | `coco` | — | bbox, mask, polygon | — | — |
 | `coco-panoptic` | coco-panoptic | `other` | `coco-panoptic` | — | mask, polygon | — | — |
 | `createml` | createml | `other` | `createml` | — | bbox | — | — |
@@ -1066,7 +1077,9 @@ duplicates included, rather than deduplicating a label space this format does no
 alternative - a folder per class, which is what most single-label tooling reads - cannot express any
 of this: a multi-tagged image would have to be copied into every class directory, doubling the bytes
 and making one picture look like several examples. It would also disagree with the pre-export
-report, which counts annotations rather than images.
+report, which counts annotations rather than images. That single-label layout is a separate format,
+[`classification-dir`](#the-classification-dir-format), which writes one tag per picture and reports
+the rest.
 
 `image` is relative to the export root, so the directory is movable to a training machine and still
 resolves. `fold` is derivable from that path and is written anyway, so a consumer reading one split
@@ -1096,6 +1109,33 @@ names them by class with a count before anything is written.
 
 An asset with no tags gets its bytes and no row. There is no per-image file to leave empty here, so
 absence from `labels.csv` is the only available spelling and it is the honest one.
+
+### The classification-dir format
+
+`classification-dir` writes the conventional single-label class-directory layout,
+`<fold>/<class>/<content-hash>.<ext>`, with the folds `train`, `val` and `test` the release's split
+assigns (everything in `train` without a recipe). It is independent of
+[`classification`](#the-classification-format), whose multi-label CSV it neither reads nor changes,
+and the [`classification-dir` importer](import.md#formats) reads it back.
+
+Every class declaring a classification tag gets a directory under every fold a picture is written
+to, whether or
+not anything was tagged with it, so a loader that numbers classes by sorted directory name - as
+`torchvision.datasets.ImageFolder` does - numbers them the same in every fold, and an empty class is
+kept as an empty directory. `ImageFolder` refuses a class directory holding no picture unless it is
+given `allow_empty=True`. A class that cannot carry a tag gets no directory.
+
+Each picture is written once, as its stored bytes, never copied into a second class directory. The
+format declares `single_tag`: a picture with several tags is written under the first of them by
+class name, and the [report](#what-a-format-can-carry-and-what-this-release-actually-holds) counts
+the others dropped; a picture with no tag is not written and is counted in `untagged_assets`.
+`lossy = True`, so neither happens without `allow_lossy`, and boxes, every other geometry,
+attributes, confidence and provenance are dropped as well.
+
+A class name must be one portable directory name: the export is refused for a name that is not
+NFC-normalized, holds a control character, a `/` or a `\`, starts with a dot or has surrounding
+whitespace, and for two names equal ignoring case, which a case-insensitive filesystem would hold
+as one directory.
 
 ### The lane formats
 

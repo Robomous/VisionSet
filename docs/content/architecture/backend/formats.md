@@ -27,12 +27,12 @@ target - never through a dict, so a typo answers a `VisionSetError` rather than 
 
 ## What ships
 
-Forty-one plugins in [`pyproject.toml`](../../../../pyproject.toml)'s
-`[project.entry-points."visionset.formats"]`: the twenty-two exporters below and nineteen importers,
+Forty-three plugins in [`pyproject.toml`](../../../../pyproject.toml)'s
+`[project.entry-points."visionset.formats"]`: the twenty-three exporters below and twenty importers,
 `ultralytics-import`, `yolov5-yaml-import`, `darknet-import`, `yolo-obb-import`, `dota-import`,
 `coco-import`, `coco-panoptic-import`, `segmentation-png-import`, `voc-import`, `labelme-import`,
 `createml-import`, `open-images-import`,
-`classification-import`, `openlane-2d-import`, `kitti-import`, `mot-import`, `cvat-images-import`,
+`classification-import`, `classification-dir-import`, `openlane-2d-import`, `kitti-import`, `mot-import`, `cvat-images-import`,
 `cvat-video-import` and `nuscenes-import` (see [Importers](#importers)).
 
 | Name | Module |
@@ -50,6 +50,7 @@ Forty-one plugins in [`pyproject.toml`](../../../../pyproject.toml)'s
 | `createml` | [`createml/`](../../../../src/visionset/formats/createml/) - one Apple Create ML object-detection JSON array beside the pictures of each folder, boxes as centre and size in pixels |
 | `open-images` | [`open_images/`](../../../../src/visionset/formats/open_images/) - one Open Images `<split>-annotations-bbox.csv` of normalized corners per split, the pictures under `<split>/` and a `class-descriptions-boxable.csv` |
 | `classification` | [`classification/`](../../../../src/visionset/formats/classification/) - `labels.csv`, one row per (image, tag) |
+| `classification-dir` | [`classification_dir/`](../../../../src/visionset/formats/classification_dir/) - `<fold>/<class>/<picture>`, each picture once under one class; declares `single_tag`, so extra tags are reported dropped and untagged assets counted in `untagged_assets` |
 | `tusimple`, `curvelanes`, `bdd100k-lane`, `culane`, `openlane-2d` | [`lanes/`](../../../../src/visionset/formats/lanes/) - five plugins over one shared core |
 | `mot` | [`mot/writer.py`](../../../../src/visionset/formats/mot/writer.py) - one MOTChallenge sequence per source a released track observes; declares `tracked_only`, so an untracked box is reported dropped |
 | `cvat-images`, `cvat-video` | [`cvat/`](../../../../src/visionset/formats/cvat/) - CVAT XML 1.1 as two named dialects over a shared [`_document.py`](../../../../src/visionset/formats/cvat/_document.py), shapes per picture and tracks per task; `cvat-video` declares `tracked_only` |
@@ -70,7 +71,7 @@ and labels in the one `ScanFrame` the dataset declares; `ImportService` stores e
 of the same bytes under a point-cloud source declaring that frame. `registry.importers()` filters the scan by that
 port, and `registry.pick_importer(installed, name)` resolves a name with the same aliases,
 refusing with `ImportFormatNotFound`. `ImportService` takes the instance, as `ReleaseService.export`
-takes an exporter. The built-ins are nineteen, eighteen of them answering to their exporter's `format_name`:
+takes an exporter. The built-ins are twenty, nineteen of them answering to their exporter's `format_name`:
 [`ultralytics-import`](../../../../src/visionset/formats/ultralytics/reader.py),
 [`yolov5-yaml-import`](../../../../src/visionset/formats/yolov5_yaml/reader.py),
 [`darknet-import`](../../../../src/visionset/formats/darknet/reader.py) and
@@ -91,7 +92,10 @@ reads masks only as its descriptor states them,
 `image` inside the source the same way and measures the picture, because the file records no size,
 [`open-images-import`](../../../../src/visionset/formats/open_images/reader.py), which maps each
 `LabelName` through the class descriptions file and measures each picture an `ImageID` names,
-[`classification-import`](../../../../src/visionset/formats/classification/reader.py) and
+[`classification-import`](../../../../src/visionset/formats/classification/reader.py),
+[`classification-dir-import`](../../../../src/visionset/formats/classification_dir/reader.py), which
+refuses a picture filed under two classes, nested directories and class names that collide ignoring
+case, and
 [`openlane-2d-import`](../../../../src/visionset/formats/lanes/reader.py), which with
 [`mot-import`](../../../../src/visionset/formats/mot/reader.py) and
 [`cvat-video-import`](../../../../src/visionset/formats/cvat/video.py) is one of the three that
@@ -140,7 +144,9 @@ The last two are disjoint, and a geometry in neither is not written at all. An o
 and `cvat-video` do, so the report counts every other label dropped; the frames they write are
 every occurrence the manifest's `sources` hold of that track's source, not only the observed ones.
 A video source is not listed in `sources`, and a manifest older than version 9 lists none, so for
-those only the observed frames are written. Three
+those only the observed frames are written. An optional `single_tag` says the format writes one
+classification tag per asset, as `classification-dir` does: the report counts every tag beside the
+one kept (the first by class name) dropped, and an asset with no tag in `untagged_assets`. Three
 states rather than two, because a boolean answers "is this written?" and "is this
 written intact?" with one word - and a caller consenting to lose three annotations
 would receive two of them back as boxes.
@@ -256,6 +262,8 @@ The table is generated by `scripts/export_format_matrix.py` and held current by 
 | `bdd100k-lane` | export | lane detection: BDD100K lane labels: one JSON per picture, each lane an open poly2d with its own category | polyline | — | yes | validated | fixture |
 | `classification` | export | image classification: labels.csv, one row per (image, tag), beside the pictures under their folds | classification_tag | — | yes | validated | fixture; round trip |
 | `classification` | import | image classification: labels.csv, one row per (image, tag), beside the pictures under their folds | classification_tag | — | — | validated | fixture; round trip |
+| `classification-dir` | export | image classification: class directories, &lt;split>/&lt;class>/&lt;image> with splits train, val (or valid, validation) and test, or a flat &lt;class>/&lt;image>; one label per picture | classification_tag | — | yes | validated | fixture; round trip |
+| `classification-dir` | import | image classification: class directories, &lt;split>/&lt;class>/&lt;image> with splits train, val (or valid, validation) and test, or a flat &lt;class>/&lt;image>; one label per picture | classification_tag | — | — | validated | fixture; round trip |
 | `coco` | export | object detection, instance segmentation: COCO instances JSON, one instances file per fold (instances_train.json and so on); segmentation as polygons or as compressed RLE masks | bbox, mask, polygon | — | no | validated | fixture; round trip; independent reader (pycocotools, `coco` group) |
 | `coco` | import | object detection, instance segmentation: COCO instances JSON, one instances file per fold (instances_train.json and so on); segmentation as polygons or as compressed RLE masks | bbox, mask, polygon | — | — | validated | fixture; round trip; independent reader (pycocotools, `coco` group) |
 | `coco-panoptic` | export | panoptic segmentation: COCO panoptic: panoptic_&lt;split>.json with segments_info per picture, and an RGB segment PNG per picture (id = R + 256 * G + 65536 * B) | mask | polygon | yes | validated | fixture; round trip |

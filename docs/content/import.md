@@ -140,6 +140,7 @@ naming the kinds to accept. See [mcp-tools.md](mcp-tools.md).
 | `createml` | Every `.json` under the source that is an array of objects holding `image`, Apple Create ML's object-detection annotation JSON, each `image` resolved against the file's directory and measured for its size; each annotation's `coordinates` (`x`, `y` the centre, `width`, `height`, in pixels) as a box, its `label` its class | An annotation with no label or wholly outside its picture, other keys of an entry or annotation, other keys of `coordinates` (kept as the box and a `geometry` loss). An `image` leaving the source or not in it, an unreadable picture, malformed JSON or coordinates, a non-finite number or a width or height that is not positive refuses the source |
 | `open-images` | `<split>-annotations-bbox.csv` at the top (an `oidv<N>-` prefix allowed), its pictures `<split>/**/<ImageID>.<ext>` measured for their size, and one `class-descriptions-boxable.csv` (or `class-descriptions.csv`) mapping `LabelName` to `DisplayName`; each row a box from its normalized `XMin`, `XMax`, `YMin`, `YMax`, its class the `DisplayName`, `Confidence` other than `1` its confidence and `IsOccluded`, `IsTruncated`, `IsGroupOf`, `IsDepiction`, `IsInside` of `1` or `0` boolean attributes | A `LabelName` other than its `DisplayName`, a non-blank `Source`, extreme-click points (kept as the box and a `geometry` loss), other columns, a box wholly outside its picture, an `ImageID` with no picture (an `image` loss, its boxes `label` losses). A malformed row or header, a non-numeric or non-finite coordinate, a maximum not above its minimum, an undescribed `LabelName`, two used `LabelName` sharing a `DisplayName`, an `ImageID` in two splits or matching two pictures, and an unreadable picture refuse the source |
 | `classification` | `labels.csv` (`image`, `class`) and `classes.txt` beside `images/`; one tag per row | A row naming a class `classes.txt` does not declare, a second row of one class on one picture, a malformed row, a row with no picture or class |
+| `classification-dir` | Class directories: `<split>/<class>/<picture>` with splits `train`, `val` (or `valid`, `validation`) and `test`, or `<class>/<picture>` when there is no split directory; each picture as one tag of its directory's class, every class directory a class, an empty one included | A picture outside every class directory, a file in a class directory that is not a picture this import reads, a picture or split-level directory whose name starts with a dot (`image`). A directory inside a class directory, split directories beside other directories, two directories naming one split, class names that are not NFC-normalized or collide ignoring case, one picture filed under two classes, a link to a directory or out of the source refuse the source |
 | `kitti` | A 3D object detection split: `velodyne/*.bin` scans, `label_2/*.txt` and `calib/*.txt`, at the top or in `training/` and `testing/` (or the `train/`, `val/`, `test/` the exporter writes); boxes as `cuboid_3d` in the `lidar_flu` frame | `DontCare` regions, each box's 2D image `bbox`, truncation, occlusion and alpha, the calibration itself, a score outside 0 to 1, a label with no scan, no usable calibration, a malformed line or a dimension that is not positive |
 | `mot` | MOTChallenge (MOT16/17/20) sequences: every directory holding a `seqinfo.ini`, its frames `<imDir>/<frame:06d><imExt>` for frames 1 to `seqLength`, and `gt/gt.txt` boxes with `gt/labels.txt` as the class table; each sequence as an image sequence and its ids as tracks | A row whose `conf` is `0` (ignored), each box's `visibility`, the identity of a row whose `id` is not positive (the box is kept untracked), frames the sequence names but does not hold; `det/det.txt` is not read. A malformed row or `seqinfo.ini` refuses the source |
 | `cvat-images` | CVAT for images 1.1: every `annotations.xml` holding `<image>` elements, its pictures under `images/` beside it; boxes, rotated boxes, polygons, polylines and image-level tags | Points, ellipses, cuboids, masks, skeletons, a box whose `rotation` is not a finite number, attribute definitions of an input type the domain has no kind for, `occluded`, a non-zero `z_order`, a `group_id`, a `subset` other than `default`, a second tag of one class on a picture. A malformed document refuses the source by file and line |
@@ -176,6 +177,32 @@ polygons by its own rule, so the mask can differ from `annToMask` along the edge
 exactly. VisionSet has no crowd flag: a row with `iscrowd` `1` keeps its shape - a crowd RLE becomes
 an ordinary mask, a crowd polygon an ordinary polygon - and the flag is an `attribute` loss. Holes,
 disconnected regions and an all-background mask are pixels like any other and read as they are.
+
+**Class directories** (`classification-dir`). The single-label layout most classification
+tooling reads, independent of the multi-label `classification` CSV. When the top of the source holds
+any of `train`, `val`, `valid`, `validation` or `test`, those are the split directories and every
+directory directly under one is a class; `valid` and `validation` are read as `val`, and two
+directories naming one split refuse the source. Without them, the top-level directories are the
+classes and the source is one undivided set. The split is not imported, as no importer imports
+one: a release's split recipe assigns folds, and an export without one writes every picture under
+`train`. Split directories beside other directories refuse the source, since either reading would
+be a guess.
+
+Each picture carries one tag, its directory's class. Every class directory is a class, sorted by
+name in code-point order, including an empty one. Names are kept verbatim; one that is not
+NFC-normalized or not valid UTF-8, holds a control character or surrounding whitespace, or equals
+another ignoring case refuses the source, naming the directories. A directory inside a class
+directory refuses the source rather than flattening it. The same bytes under two different classes
+refuse the source, naming both paths: a class-directory dataset gives a picture one class, and
+reading it as two tags would invent a multi-label fact the layout cannot state. The same bytes twice
+under one class are left to the import's ordinary handling of repeated pictures.
+
+Entries whose name starts with a dot (`.DS_Store`, `.ipynb_checkpoints`) are skipped as filesystem
+metadata; a skipped picture, and a skipped directory directly under a split, where a class would
+sit, are `image` losses. A picture directly under the top or a split directory, and any file in a class directory
+that is not a picture with one of the suffixes the import reads (a `.gif`, a `.txt`), are `image`
+losses, so the import asks before leaving them out; other files outside class directories, such as
+a README, are ignored. A link to a directory, and a link resolving outside the source, refuse it.
 
 **COCO panoptic** (`coco-panoptic`). Independent of `coco`: the source holds
 `panoptic_<split>.json` files under `annotations/` or at its top, and nothing else is read as one.
