@@ -116,6 +116,7 @@
                 "bbox": "#/components/schemas/BboxBody",
                 "classification_tag": "#/components/schemas/ClassificationBody",
                 "cuboid_3d": "#/components/schemas/Cuboid3DBody",
+                "keypoints": "#/components/schemas/KeypointsBody",
                 "mask": "#/components/schemas/MaskBody",
                 "obb": "#/components/schemas/ObbBody",
                 "polygon": "#/components/schemas/PolygonBody",
@@ -136,6 +137,9 @@
               },
               {
                 "$ref": "#/components/schemas/PolylineBody"
+              },
+              {
+                "$ref": "#/components/schemas/KeypointsBody"
               },
               {
                 "$ref": "#/components/schemas/Polyline3DBody"
@@ -238,6 +242,7 @@
                 "bbox": "#/components/schemas/BboxBody",
                 "classification_tag": "#/components/schemas/ClassificationBody",
                 "cuboid_3d": "#/components/schemas/Cuboid3DBody",
+                "keypoints": "#/components/schemas/KeypointsBody",
                 "mask": "#/components/schemas/MaskBody",
                 "obb": "#/components/schemas/ObbBody",
                 "polygon": "#/components/schemas/PolygonBody",
@@ -258,6 +263,9 @@
               },
               {
                 "$ref": "#/components/schemas/PolylineBody"
+              },
+              {
+                "$ref": "#/components/schemas/KeypointsBody"
               },
               {
                 "$ref": "#/components/schemas/Polyline3DBody"
@@ -396,6 +404,7 @@
                 "bbox": "#/components/schemas/BboxBody",
                 "classification_tag": "#/components/schemas/ClassificationBody",
                 "cuboid_3d": "#/components/schemas/Cuboid3DBody",
+                "keypoints": "#/components/schemas/KeypointsBody",
                 "mask": "#/components/schemas/MaskBody",
                 "obb": "#/components/schemas/ObbBody",
                 "polygon": "#/components/schemas/PolygonBody",
@@ -416,6 +425,9 @@
               },
               {
                 "$ref": "#/components/schemas/PolylineBody"
+              },
+              {
+                "$ref": "#/components/schemas/KeypointsBody"
               },
               {
                 "$ref": "#/components/schemas/Polyline3DBody"
@@ -3256,6 +3268,7 @@
                 "bbox": "#/components/schemas/BboxGeometry",
                 "classification_tag": "#/components/schemas/ClassificationGeometry",
                 "cuboid_3d": "#/components/schemas/Cuboid3DGeometry",
+                "keypoints": "#/components/schemas/KeypointsGeometry",
                 "mask": "#/components/schemas/MaskGeometry",
                 "obb": "#/components/schemas/ObbGeometry",
                 "polygon": "#/components/schemas/PolygonGeometry",
@@ -3276,6 +3289,9 @@
               },
               {
                 "$ref": "#/components/schemas/PolylineGeometry"
+              },
+              {
+                "$ref": "#/components/schemas/KeypointsGeometry"
               },
               {
                 "$ref": "#/components/schemas/Polyline3DGeometry"
@@ -3561,6 +3577,40 @@
         "title": "DraftAttributeBody",
         "type": "object"
       },
+      "DraftKeypointSpecBody": {
+        "additionalProperties": false,
+        "description": "A keypoint spec somebody is still writing: names may be blank and edges may dangle.\n\nEvery rule `KeypointSpecBody` states is checked when the draft is published.",
+        "properties": {
+          "names": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Names",
+            "type": "array"
+          },
+          "skeleton": {
+            "default": [],
+            "items": {
+              "maxItems": 2,
+              "minItems": 2,
+              "prefixItems": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "integer"
+                }
+              ],
+              "type": "array"
+            },
+            "title": "Skeleton",
+            "type": "array"
+          }
+        },
+        "title": "DraftKeypointSpecBody",
+        "type": "object"
+      },
       "DraftLabelClassBody": {
         "additionalProperties": false,
         "description": "One class being written: a name that may be blank, shapes that may be none.\n\n`geometries` has no minimum here and does on `LabelClassBody`, which is the\ndifference between the two types. Publishing the draft applies the minimum.",
@@ -3591,6 +3641,16 @@
             },
             "title": "Geometries",
             "type": "array"
+          },
+          "keypoints": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DraftKeypointSpecBody"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "name": {
             "default": "",
@@ -4632,6 +4692,128 @@
         "type": "object"
       },
       "JsonValue": {},
+      "KeypointSpecBody": {
+        "additionalProperties": false,
+        "description": "The named points of a keypoints class, in order, and the edges joining them.\n\n`names[i]` names point `i` of every keypoints annotation of the class, so an\nannotation carries exactly one point per name, in this order. Names are\nstripped, never blank, and unique ignoring case. `skeleton` lists undirected\nedges as pairs of indices into `names`: an edge joins two different points\nand no pair appears twice in either order. It says how the points are drawn\nand constrains no coordinate.",
+        "properties": {
+          "names": {
+            "items": {
+              "type": "string"
+            },
+            "minItems": 1,
+            "title": "Names",
+            "type": "array"
+          },
+          "skeleton": {
+            "default": [],
+            "items": {
+              "maxItems": 2,
+              "minItems": 2,
+              "prefixItems": [
+                {
+                  "minimum": 0.0,
+                  "type": "integer"
+                },
+                {
+                  "minimum": 0.0,
+                  "type": "integer"
+                }
+              ],
+              "type": "array"
+            },
+            "title": "Skeleton",
+            "type": "array"
+          }
+        },
+        "required": [
+          "names"
+        ],
+        "title": "KeypointSpecBody",
+        "type": "object"
+      },
+      "KeypointsBody": {
+        "additionalProperties": false,
+        "description": "At least one keypoint as finite `(x, y)` asset pixels, in order.\n\nThe position in `points` is the keypoint's identity. When the class declares\na keypoint spec, `points` carries exactly one point per name, in the spec's\norder, or the write is refused with `KEYPOINT_COUNT_MISMATCH`; without one,\nany count of at least one is accepted. Points are never reordered, padded or\ntruncated. `visibility` follows the polyline's rules exactly: one state per\npoint (0 unlabeled, 1 occluded, 2 visible), or absent; never null.",
+        "properties": {
+          "points": {
+            "items": {
+              "maxItems": 2,
+              "minItems": 2,
+              "prefixItems": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "number"
+                }
+              ],
+              "type": "array"
+            },
+            "title": "Points",
+            "type": "array"
+          },
+          "type": {
+            "const": "keypoints",
+            "title": "Type",
+            "type": "string"
+          },
+          "visibility": {
+            "items": {
+              "$ref": "#/components/schemas/VertexVisibility"
+            },
+            "title": "Visibility",
+            "type": "array"
+          }
+        },
+        "required": [
+          "type",
+          "points"
+        ],
+        "title": "KeypointsBody",
+        "type": "object"
+      },
+      "KeypointsGeometry": {
+        "additionalProperties": false,
+        "description": "An ordered set of at least one ``(x, y)`` keypoint in pixels.\n\n**The position in the list is the keypoint's identity.** When the class\ndeclares a :class:`~visionset.kernel.domain.schema.KeypointSpec`, point ``i``\nis the keypoint the spec names at ``i`` and the count must equal the spec's;\nthat rule needs the schema, so the annotation writer checks it. Nothing ever\nsorts, deduplicates or truncates the list: two keypoints may share a pixel.\n\nCoordinates are finite. ``visibility`` is the polyline's optional\n:class:`VertexVisibility` field under the same validator, one state per\npoint, so an unlabeled keypoint keeps its slot and says so with ``0``.",
+        "properties": {
+          "points": {
+            "items": {
+              "maxItems": 2,
+              "minItems": 2,
+              "prefixItems": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "number"
+                }
+              ],
+              "type": "array"
+            },
+            "minItems": 1,
+            "title": "Points",
+            "type": "array"
+          },
+          "type": {
+            "const": "keypoints",
+            "default": "keypoints",
+            "title": "Type",
+            "type": "string"
+          },
+          "visibility": {
+            "items": {
+              "$ref": "#/components/schemas/VertexVisibility"
+            },
+            "title": "Visibility",
+            "type": "array"
+          }
+        },
+        "required": [
+          "points"
+        ],
+        "title": "KeypointsGeometry",
+        "type": "object"
+      },
       "LabelClassBody": {
         "additionalProperties": false,
         "description": "One labelable class, and the geometries an annotation of it may carry.",
@@ -4662,6 +4844,16 @@
             "minItems": 1,
             "title": "Geometries",
             "type": "array"
+          },
+          "keypoints": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/KeypointSpecBody"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "name": {
             "title": "Name",
@@ -5921,6 +6113,7 @@
                 "bbox": "#/components/schemas/BboxBody",
                 "classification_tag": "#/components/schemas/ClassificationBody",
                 "cuboid_3d": "#/components/schemas/Cuboid3DBody",
+                "keypoints": "#/components/schemas/KeypointsBody",
                 "mask": "#/components/schemas/MaskBody",
                 "obb": "#/components/schemas/ObbBody",
                 "polygon": "#/components/schemas/PolygonBody",
@@ -5941,6 +6134,9 @@
               },
               {
                 "$ref": "#/components/schemas/PolylineBody"
+              },
+              {
+                "$ref": "#/components/schemas/KeypointsBody"
               },
               {
                 "$ref": "#/components/schemas/Polyline3DBody"
@@ -7845,6 +8041,7 @@
                 "bbox": "#/components/schemas/BboxGeometry",
                 "classification_tag": "#/components/schemas/ClassificationGeometry",
                 "cuboid_3d": "#/components/schemas/Cuboid3DGeometry",
+                "keypoints": "#/components/schemas/KeypointsGeometry",
                 "mask": "#/components/schemas/MaskGeometry",
                 "obb": "#/components/schemas/ObbGeometry",
                 "polygon": "#/components/schemas/PolygonGeometry",
@@ -7865,6 +8062,9 @@
               },
               {
                 "$ref": "#/components/schemas/PolylineGeometry"
+              },
+              {
+                "$ref": "#/components/schemas/KeypointsGeometry"
               },
               {
                 "$ref": "#/components/schemas/Polyline3DGeometry"

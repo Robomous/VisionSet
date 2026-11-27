@@ -53,11 +53,18 @@ class Attribute(TypedDict):
 
 
 @closed
+class KeypointSpec(TypedDict):
+    names: list[str]
+    skeleton: list[list[int]]
+
+
+@closed
 class LabelClass(TypedDict):
     name: str
     geometries: list[str]
     color: str | None
     attributes: list[Attribute]
+    keypoints: KeypointSpec | None
 
 
 @closed
@@ -85,6 +92,7 @@ class DraftLabelClass(TypedDict):
     geometries: list[str]
     color: str | None
     attributes: list[DraftAttribute]
+    keypoints: KeypointSpec | None
 
 
 @closed

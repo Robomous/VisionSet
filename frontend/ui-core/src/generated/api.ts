@@ -4091,7 +4091,7 @@ export interface components {
             /** Confidence */
             confidence?: number | null;
             /** Geometry */
-            geometry: components["schemas"]["BboxBody"] | components["schemas"]["ObbBody"] | components["schemas"]["PolygonBody"] | components["schemas"]["PolylineBody"] | components["schemas"]["Polyline3DBody"] | components["schemas"]["Cuboid3DBody"] | components["schemas"]["MaskBody"] | components["schemas"]["ClassificationBody"];
+            geometry: components["schemas"]["BboxBody"] | components["schemas"]["ObbBody"] | components["schemas"]["PolygonBody"] | components["schemas"]["PolylineBody"] | components["schemas"]["KeypointsBody"] | components["schemas"]["Polyline3DBody"] | components["schemas"]["Cuboid3DBody"] | components["schemas"]["MaskBody"] | components["schemas"]["ClassificationBody"];
             /** Label Class */
             label_class: string;
             /** Model Ref */
@@ -4128,7 +4128,7 @@ export interface components {
             /** Confidence */
             confidence: number | null;
             /** Geometry */
-            geometry: components["schemas"]["BboxBody"] | components["schemas"]["ObbBody"] | components["schemas"]["PolygonBody"] | components["schemas"]["PolylineBody"] | components["schemas"]["Polyline3DBody"] | components["schemas"]["Cuboid3DBody"] | components["schemas"]["MaskBody"] | components["schemas"]["ClassificationBody"];
+            geometry: components["schemas"]["BboxBody"] | components["schemas"]["ObbBody"] | components["schemas"]["PolygonBody"] | components["schemas"]["PolylineBody"] | components["schemas"]["KeypointsBody"] | components["schemas"]["Polyline3DBody"] | components["schemas"]["Cuboid3DBody"] | components["schemas"]["MaskBody"] | components["schemas"]["ClassificationBody"];
             /**
              * Id
              * Format: uuid
@@ -4173,7 +4173,7 @@ export interface components {
             /** Confidence */
             confidence?: number | null;
             /** Geometry */
-            geometry: components["schemas"]["BboxBody"] | components["schemas"]["ObbBody"] | components["schemas"]["PolygonBody"] | components["schemas"]["PolylineBody"] | components["schemas"]["Polyline3DBody"] | components["schemas"]["Cuboid3DBody"] | components["schemas"]["MaskBody"] | components["schemas"]["ClassificationBody"];
+            geometry: components["schemas"]["BboxBody"] | components["schemas"]["ObbBody"] | components["schemas"]["PolygonBody"] | components["schemas"]["PolylineBody"] | components["schemas"]["KeypointsBody"] | components["schemas"]["Polyline3DBody"] | components["schemas"]["Cuboid3DBody"] | components["schemas"]["MaskBody"] | components["schemas"]["ClassificationBody"];
             /**
              * Id
              * Format: uuid
@@ -5366,7 +5366,7 @@ export interface components {
             /** Confidence */
             confidence: number;
             /** Geometry */
-            geometry: components["schemas"]["BboxGeometry"] | components["schemas"]["ObbGeometry"] | components["schemas"]["PolygonGeometry"] | components["schemas"]["PolylineGeometry"] | components["schemas"]["Polyline3DGeometry"] | components["schemas"]["Cuboid3DGeometry"] | components["schemas"]["MaskGeometry"] | components["schemas"]["ClassificationGeometry"];
+            geometry: components["schemas"]["BboxGeometry"] | components["schemas"]["ObbGeometry"] | components["schemas"]["PolygonGeometry"] | components["schemas"]["PolylineGeometry"] | components["schemas"]["KeypointsGeometry"] | components["schemas"]["Polyline3DGeometry"] | components["schemas"]["Cuboid3DGeometry"] | components["schemas"]["MaskGeometry"] | components["schemas"]["ClassificationGeometry"];
             /** Id */
             id: string;
             /** Label */
@@ -5503,6 +5503,27 @@ export interface components {
             required: boolean;
         };
         /**
+         * DraftKeypointSpecBody
+         * @description A keypoint spec somebody is still writing: names may be blank and edges may dangle.
+         *
+         *     Every rule `KeypointSpecBody` states is checked when the draft is published.
+         */
+        DraftKeypointSpecBody: {
+            /**
+             * Names
+             * @default []
+             */
+            names: string[];
+            /**
+             * Skeleton
+             * @default []
+             */
+            skeleton: [
+                number,
+                number
+            ][];
+        };
+        /**
          * DraftLabelClassBody
          * @description One class being written: a name that may be blank, shapes that may be none.
          *
@@ -5522,6 +5543,7 @@ export interface components {
              * @default []
              */
             geometries: components["schemas"]["GeometryType"][];
+            keypoints?: components["schemas"]["DraftKeypointSpecBody"] | null;
             /**
              * Name
              * @default
@@ -6023,6 +6045,82 @@ export interface components {
         };
         JsonValue: unknown;
         /**
+         * KeypointSpecBody
+         * @description The named points of a keypoints class, in order, and the edges joining them.
+         *
+         *     `names[i]` names point `i` of every keypoints annotation of the class, so an
+         *     annotation carries exactly one point per name, in this order. Names are
+         *     stripped, never blank, and unique ignoring case. `skeleton` lists undirected
+         *     edges as pairs of indices into `names`: an edge joins two different points
+         *     and no pair appears twice in either order. It says how the points are drawn
+         *     and constrains no coordinate.
+         */
+        KeypointSpecBody: {
+            /** Names */
+            names: string[];
+            /**
+             * Skeleton
+             * @default []
+             */
+            skeleton: [
+                number,
+                number
+            ][];
+        };
+        /**
+         * KeypointsBody
+         * @description At least one keypoint as finite `(x, y)` asset pixels, in order.
+         *
+         *     The position in `points` is the keypoint's identity. When the class declares
+         *     a keypoint spec, `points` carries exactly one point per name, in the spec's
+         *     order, or the write is refused with `KEYPOINT_COUNT_MISMATCH`; without one,
+         *     any count of at least one is accepted. Points are never reordered, padded or
+         *     truncated. `visibility` follows the polyline's rules exactly: one state per
+         *     point (0 unlabeled, 1 occluded, 2 visible), or absent; never null.
+         */
+        KeypointsBody: {
+            /** Points */
+            points: [
+                number,
+                number
+            ][];
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "keypoints";
+            /** Visibility */
+            visibility?: components["schemas"]["VertexVisibility"][];
+        };
+        /**
+         * KeypointsGeometry
+         * @description An ordered set of at least one ``(x, y)`` keypoint in pixels.
+         *
+         *     **The position in the list is the keypoint's identity.** When the class
+         *     declares a :class:`~visionset.kernel.domain.schema.KeypointSpec`, point ``i``
+         *     is the keypoint the spec names at ``i`` and the count must equal the spec's;
+         *     that rule needs the schema, so the annotation writer checks it. Nothing ever
+         *     sorts, deduplicates or truncates the list: two keypoints may share a pixel.
+         *
+         *     Coordinates are finite. ``visibility`` is the polyline's optional
+         *     :class:`VertexVisibility` field under the same validator, one state per
+         *     point, so an unlabeled keypoint keeps its slot and says so with ``0``.
+         */
+        KeypointsGeometry: {
+            /** Points */
+            points: [
+                number,
+                number
+            ][];
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "keypoints";
+            /** Visibility */
+            visibility?: components["schemas"]["VertexVisibility"][];
+        };
+        /**
          * LabelClassBody
          * @description One labelable class, and the geometries an annotation of it may carry.
          */
@@ -6036,6 +6134,7 @@ export interface components {
             color?: string | null;
             /** Geometries */
             geometries: components["schemas"]["GeometryType"][];
+            keypoints?: components["schemas"]["KeypointSpecBody"] | null;
             /** Name */
             name: string;
         };
@@ -6824,7 +6923,7 @@ export interface components {
             /** Confidence */
             confidence: number | null;
             /** Geometry */
-            geometry: components["schemas"]["BboxBody"] | components["schemas"]["ObbBody"] | components["schemas"]["PolygonBody"] | components["schemas"]["PolylineBody"] | components["schemas"]["Polyline3DBody"] | components["schemas"]["Cuboid3DBody"] | components["schemas"]["MaskBody"] | components["schemas"]["ClassificationBody"];
+            geometry: components["schemas"]["BboxBody"] | components["schemas"]["ObbBody"] | components["schemas"]["PolygonBody"] | components["schemas"]["PolylineBody"] | components["schemas"]["KeypointsBody"] | components["schemas"]["Polyline3DBody"] | components["schemas"]["Cuboid3DBody"] | components["schemas"]["MaskBody"] | components["schemas"]["ClassificationBody"];
             /** Id */
             id: string;
             /** Label Class */
@@ -7801,7 +7900,7 @@ export interface components {
                 number
             ][];
             /** Geometry */
-            geometry: components["schemas"]["BboxGeometry"] | components["schemas"]["ObbGeometry"] | components["schemas"]["PolygonGeometry"] | components["schemas"]["PolylineGeometry"] | components["schemas"]["Polyline3DGeometry"] | components["schemas"]["Cuboid3DGeometry"] | components["schemas"]["MaskGeometry"] | components["schemas"]["ClassificationGeometry"];
+            geometry: components["schemas"]["BboxGeometry"] | components["schemas"]["ObbGeometry"] | components["schemas"]["PolygonGeometry"] | components["schemas"]["PolylineGeometry"] | components["schemas"]["KeypointsGeometry"] | components["schemas"]["Polyline3DGeometry"] | components["schemas"]["Cuboid3DGeometry"] | components["schemas"]["MaskGeometry"] | components["schemas"]["ClassificationGeometry"];
         };
         /**
          * SuggestionOut

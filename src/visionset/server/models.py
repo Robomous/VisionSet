@@ -105,6 +105,7 @@ from visionset.kernel.domain import (
     DatasetStats,
     DownloadSize,
     DraftAttribute,
+    DraftKeypointSpec,
     DraftLabelClass,
     ExportCompatibility,
     ExportTarget,
@@ -121,6 +122,7 @@ from visionset.kernel.domain import (
     ItemFailure,
     JobAction,
     KeypointsGeometry,
+    KeypointSpec,
     LabelClass,
     MaskGeometry,
     MembershipChange,
@@ -536,6 +538,42 @@ class AttributeBody(BaseModel):
         )
 
 
+# Strict like the domain's own index, so `true` and `1.0` are refused rather than
+# read as 1 and 1.
+KeypointIndexBody = Annotated[int, Field(strict=True, ge=0)]
+
+
+# Request and response, for the reason above ``AttributeBody``.
+class KeypointSpecBody(BaseModel):
+    """The named points of a keypoints class, in order, and the edges joining them.
+
+    `names[i]` names point `i` of every keypoints annotation of the class, so an
+    annotation carries exactly one point per name, in this order. Names are
+    stripped, never blank, and unique ignoring case. `skeleton` lists undirected
+    edges as pairs of indices into `names`: an edge joins two different points
+    and no pair appears twice in either order. It says how the points are drawn
+    and constrains no coordinate.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    names: tuple[str, ...] = Field(min_length=1)
+    skeleton: tuple[tuple[KeypointIndexBody, KeypointIndexBody], ...] = ()
+
+    @model_validator(mode="after")
+    def _the_domain_accepts_it(self) -> Self:
+        # Parsing-time construction, for the reason in ``AttributeBody``.
+        self.to_domain()
+        return self
+
+    def to_domain(self) -> KeypointSpec:
+        return KeypointSpec(names=self.names, skeleton=self.skeleton)
+
+    @classmethod
+    def of(cls, spec: KeypointSpec) -> Self:
+        return cls(names=spec.names, skeleton=spec.skeleton)
+
+
 # Request and response, for the reason above ``AttributeBody``.
 class LabelClassBody(BaseModel):
     """One labelable class, and the geometries an annotation of it may carry."""
@@ -543,10 +581,10 @@ class LabelClassBody(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     name: str
-    # Every ``GeometryType`` member, including ``mask`` and ``keypoints``, which
-    # have no implementation yet. They are the domain's vocabulary, and naming one
-    # produces a precise 422 UNSUPPORTED_GEOMETRY from ``SchemaService``. Narrowing
-    # the enum here would be a second list to keep in step with
+    # Every ``GeometryType`` member. A member without an implementation is still
+    # the domain's vocabulary, and naming one produces a precise 422
+    # UNSUPPORTED_GEOMETRY from ``SchemaService``. Narrowing the enum here would be
+    # a second list to keep in step with
     # ``IMPLEMENTED_GEOMETRIES`` — which is derived off the ``Geometry`` union
     # precisely so no second list exists, and which ``GET /geometries`` publishes.
     #
@@ -558,6 +596,9 @@ class LabelClassBody(BaseModel):
     geometries: tuple[GeometryType, ...] = Field(min_length=1)
     color: str | None = None
     attributes: tuple[AttributeBody, ...] = ()
+    # Null in a response for a class without a spec, the ``color`` precedent. Legal
+    # only beside the keypoints geometry; the domain refuses it anywhere else.
+    keypoints: KeypointSpecBody | None = None
 
     @model_validator(mode="after")
     def _the_domain_accepts_it(self) -> Self:
@@ -571,6 +612,7 @@ class LabelClassBody(BaseModel):
             geometries=self.geometries,
             color=self.color,
             attributes=tuple(attribute.to_domain() for attribute in self.attributes),
+            keypoints=None if self.keypoints is None else self.keypoints.to_domain(),
         )
 
     @classmethod
@@ -580,6 +622,9 @@ class LabelClassBody(BaseModel):
             geometries=label_class.geometries,
             color=label_class.color,
             attributes=tuple(AttributeBody.of(a) for a in label_class.attributes),
+            keypoints=None
+            if label_class.keypoints is None
+            else KeypointSpecBody.of(label_class.keypoints),
         )
 
 
@@ -621,6 +666,25 @@ class DraftAttributeBody(BaseModel):
         )
 
 
+class DraftKeypointSpecBody(BaseModel):
+    """A keypoint spec somebody is still writing: names may be blank and edges may dangle.
+
+    Every rule `KeypointSpecBody` states is checked when the draft is published.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    names: tuple[str, ...] = ()
+    skeleton: tuple[tuple[int, int], ...] = ()
+
+    def to_domain(self) -> DraftKeypointSpec:
+        return DraftKeypointSpec(names=self.names, skeleton=self.skeleton)
+
+    @classmethod
+    def of(cls, spec: DraftKeypointSpec) -> Self:
+        return cls(names=spec.names, skeleton=spec.skeleton)
+
+
 class DraftLabelClassBody(BaseModel):
     """One class being written: a name that may be blank, shapes that may be none.
 
@@ -634,6 +698,7 @@ class DraftLabelClassBody(BaseModel):
     geometries: tuple[GeometryType, ...] = ()
     color: str | None = None
     attributes: tuple[DraftAttributeBody, ...] = ()
+    keypoints: DraftKeypointSpecBody | None = None
 
     def to_domain(self) -> DraftLabelClass:
         return DraftLabelClass(
@@ -641,6 +706,7 @@ class DraftLabelClassBody(BaseModel):
             geometries=self.geometries,
             color=self.color,
             attributes=tuple(attribute.to_domain() for attribute in self.attributes),
+            keypoints=None if self.keypoints is None else self.keypoints.to_domain(),
         )
 
     @classmethod
@@ -650,6 +716,9 @@ class DraftLabelClassBody(BaseModel):
             geometries=declared.geometries,
             color=declared.color,
             attributes=tuple(DraftAttributeBody.of(a) for a in declared.attributes),
+            keypoints=None
+            if declared.keypoints is None
+            else DraftKeypointSpecBody.of(declared.keypoints),
         )
 
 

@@ -42,6 +42,7 @@ from tests.fixtures.samples import (
     COUNTS,
     DATASET,
     DATASET_STATS,
+    DRAFT_KEYPOINT_CLASS,
     EXPORT_COMPATIBILITY,
     EXPORT_RESULT,
     EXPORT_RESULT_WITH_RECIPE,
@@ -49,6 +50,9 @@ from tests.fixtures.samples import (
     INGEST_FAILURE,
     INGEST_JOB,
     JOB,
+    KEYPOINT_CLASS,
+    KEYPOINT_SPEC,
+    KEYPOINTS,
     POLYGON,
     POLYLINE,
     POLYLINE_WITH_VISIBILITY,
@@ -85,6 +89,7 @@ from visionset.kernel.domain import (
     AssetCalibration,
     AssetProgress,
     BackgroundJobState,
+    DraftLabelClass,
     FrameOccurrence,
     GeometryType,
     ImportedClass,
@@ -95,6 +100,7 @@ from visionset.kernel.domain import (
     ImportLossKind,
     ImportPlan,
     ImportRun,
+    LabelClass,
     ObservedFrame,
     ObservedLabel,
     PolylineGeometry,
@@ -183,6 +189,9 @@ PAIRS: list[tuple[str, Mapping[str, Any], type[BaseModel]]] = [
     # projects every change.
     ("schema_change", wire.schema_change(SCHEMA_DIFF.changes[1]), models.SchemaChangeOut),
     ("label_class", wire.label_class(SCHEMA_VERSION.classes[0]), models.LabelClassBody),
+    # The sample class above carries no spec, so this one proves the populated half.
+    ("label_class_keypoints", wire.label_class(KEYPOINT_CLASS), models.LabelClassBody),
+    ("keypoint_spec", wire.keypoint_spec(KEYPOINT_SPEC), models.KeypointSpecBody),
     (
         "attribute",
         wire.attribute(SCHEMA_VERSION.classes[0].attributes[0]),
@@ -208,6 +217,11 @@ PAIRS: list[tuple[str, Mapping[str, Any], type[BaseModel]]] = [
     (
         "draft_label_class",
         wire.draft_label_class(SCHEMA_DRAFT.classes[0]),
+        models.DraftLabelClassBody,
+    ),
+    (
+        "draft_label_class_keypoints",
+        wire.draft_label_class(DRAFT_KEYPOINT_CLASS),
         models.DraftLabelClassBody,
     ),
     (
@@ -293,6 +307,7 @@ PAIRS: list[tuple[str, Mapping[str, Any], type[BaseModel]]] = [
     # that omits it is pinned by its own test.
     ("geometry_polyline", wire.geometry(POLYLINE_WITH_VISIBILITY), models.PolylineBody),
     ("geometry_classification", wire.geometry(CLASSIFICATION), models.ClassificationBody),
+    ("geometry_keypoints", wire.geometry(KEYPOINTS), models.KeypointsBody),
     ("dataset_stats", wire.dataset_stats(DATASET_STATS), models.DatasetStatsOut),
     ("class_count", wire.class_count(DATASET_STATS.per_class[0]), models.ClassCountOut),
     ("release", wire.release(RELEASE), models.ReleaseOut),
@@ -417,6 +432,32 @@ def test_a_batch_asset_projects_its_withheld_actions_as_the_wire_model_does(
             "label_class": "car",
         }
     ]
+
+
+@pytest.mark.parametrize(
+    "label_class", [SCHEMA_VERSION.classes[0], KEYPOINT_CLASS], ids=["no-spec", "spec"]
+)
+def test_a_label_class_projects_exactly_as_the_wire_model_serializes_it(
+    label_class: LabelClass,
+) -> None:
+    assert wire.label_class(label_class) == models.LabelClassBody.of(label_class).model_dump(
+        mode="json"
+    )
+
+
+@pytest.mark.parametrize(
+    "declared", [SCHEMA_DRAFT.classes[0], DRAFT_KEYPOINT_CLASS], ids=["no-spec", "spec"]
+)
+def test_a_draft_label_class_projects_exactly_as_the_wire_model_serializes_it(
+    declared: DraftLabelClass,
+) -> None:
+    assert wire.draft_label_class(declared) == models.DraftLabelClassBody.of(declared).model_dump(
+        mode="json"
+    )
+
+
+def test_a_keypoints_geometry_projects_exactly_as_the_wire_model_serializes_it() -> None:
+    assert wire.geometry(KEYPOINTS) == models.KeypointsBody.of(KEYPOINTS).model_dump(mode="json")
 
 
 def test_unknown_visibility_is_absent_from_the_projection_not_null() -> None:
@@ -557,6 +598,8 @@ SHAPES: dict[str, Any] = {
     "blocking_asset": shapes.BlockingAsset,
     "schema_change": shapes.SchemaChange,
     "label_class": shapes.LabelClass,
+    "label_class_keypoints": shapes.LabelClass,
+    "keypoint_spec": shapes.KeypointSpec,
     "attribute": shapes.Attribute,
     "schema_draft": shapes.SchemaDraft,
     "preprocessing_recipe": shapes.PreprocessingRecipe,
@@ -564,6 +607,7 @@ SHAPES: dict[str, Any] = {
     "recipe_usage": shapes.RecipeUsage,
     "preprocessing_preview": shapes.PreprocessingPreview,
     "draft_label_class": shapes.DraftLabelClass,
+    "draft_label_class_keypoints": shapes.DraftLabelClass,
     "draft_attribute": shapes.DraftAttribute,
     "source": shapes.Source,
     "video_provenance": shapes.VideoProvenance,
@@ -587,6 +631,7 @@ SHAPES: dict[str, Any] = {
     "geometry_polygon": shapes.Geometry,
     "geometry_polyline": shapes.Geometry,
     "geometry_classification": shapes.Geometry,
+    "geometry_keypoints": shapes.Geometry,
     "dataset_stats": shapes.DatasetStats,
     "class_count": shapes.ClassCount,
     "release": shapes.Release,
