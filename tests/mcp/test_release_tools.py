@@ -10,7 +10,9 @@ from typing import Any
 import pytest
 from tests.mcp._flow import BBOX, SCHEMA_CLASSES, call, error, open_batch, payload
 
+from visionset import wire
 from visionset.formats._targets import self_target
+from visionset.formats.matrix import format_matrix
 from visionset.kernel.domain import GeometryType
 from visionset.kernel.ports import ContentReader, Exporter
 from visionset.kernel.services import EXPORT_REPORT_FILENAME
@@ -533,6 +535,13 @@ def test_check_export_by_target_names_the_target_on_the_report(
     report = payload(call("check_export", project=named, tag="v1.0", target="dummy"))
 
     assert (report["format"], report["target"]) == ("dummy", "dummy")
+
+
+def test_the_format_matrix_is_the_one_the_other_surfaces_publish() -> None:
+    document = payload(call("format_matrix"))
+
+    assert document == wire.format_matrix(format_matrix())
+    assert document["total"] == len(document["items"]) > 0
 
 
 def test_the_catalog_is_the_one_the_other_surfaces_publish() -> None:

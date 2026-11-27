@@ -1,5 +1,5 @@
 # usage: from visionset.mcp import formats
-"""``list_formats`` and ``list_export_targets`` — what this installation can write.
+"""The format listings: ``list_formats``, ``list_export_targets`` and ``format_matrix``.
 
 Discovery is over the ``visionset.formats`` entry-point group, so a third-party
 distribution's exporter is indistinguishable from a built-in here. Nothing is
@@ -9,6 +9,7 @@ cached: the alternative is a server that has to be restarted after an install.
 from __future__ import annotations
 
 from visionset import wire
+from visionset.formats.matrix import format_matrix as build_format_matrix
 from visionset.formats.registry import exporters
 from visionset.wire import shapes
 
@@ -45,3 +46,20 @@ def list_export_targets() -> shapes.Page[shapes.ExportTarget]:
     own, and whether augmentation is the ordinary practice.
     """
     return wire.page(wire.export_targets(exporters()))
+
+
+def format_matrix() -> shapes.FormatMatrix:
+    """List every installed format once per direction, with the tests that back it.
+
+    One row per installed exporter and per installed importer. `geometries` and
+    `degraded_geometries` are what the plugin carries intact and reduced, and
+    `unsupported_geometries` is every other geometry an annotation can hold. An
+    importer declares no capability of its own, so its geometries are the
+    verification descriptor's record and `lossy` is null.
+
+    `status` is not a compatibility promise: `validated` means a test CI runs
+    backs the row, and `evidence` names each test and its kind (`fixture`,
+    `schema`, `round_trip` or `independent_reader`). A plugin the descriptor does
+    not cover, such as a third-party one, is `no_recorded_evidence`.
+    """
+    return wire.format_matrix(build_format_matrix())

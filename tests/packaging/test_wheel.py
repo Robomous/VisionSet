@@ -30,6 +30,7 @@ nothing goes red rather than quietly shrinking the suite.
 
 from __future__ import annotations
 
+import json
 import os
 import re
 import socket
@@ -369,6 +370,16 @@ def test_the_installed_command_finds_every_exporter(installed: Path) -> None:
         "yolo-obb",
         "yolov5-yaml",
     ]
+
+
+def test_the_installed_command_reads_the_shipped_verification_descriptor(installed: Path) -> None:
+    """The descriptor is package data; a wheel without it would call every built-in unproven."""
+    result = _command(installed, "format", "matrix", "--json")
+
+    assert result.returncode == 0, result.stderr
+    document = json.loads(result.stdout)
+    assert document["descriptor_version"] >= 1
+    assert {row["status"] for row in document["items"]} == {"validated"}
 
 
 def test_the_installed_server_serves_the_real_app(installed: Path, tmp_path: Path) -> None:

@@ -288,6 +288,15 @@ export const checkExportTargetOut: Check<Schemas["ExportTargetOut"]> =
 export const checkExportTargetPage: Check<Schemas["ExportTargetPage"]> =
   /*#__PURE__*/ object({ "items": [true, arrayOf(checkExportTargetOut)], "total": [true, isInteger] } as const);
 
+export const checkFormatEvidenceOut: Check<Schemas["FormatEvidenceOut"]> =
+  /*#__PURE__*/ object({ "external": [true, either([isBoolean, isNull] as const)], "gate": [true, isString], "kind": [true, isString], "reader": [true, either([isString, isNull] as const)], "requires": [true, either([isString, isNull] as const)], "test": [true, isString] } as const);
+
+export const checkFormatMatrixRowOut: Check<Schemas["FormatMatrixRowOut"]> =
+  /*#__PURE__*/ object({ "aliases": [true, arrayOf(isString)], "availability": [true, isString], "degraded_geometries": [true, arrayOf(isString)], "dialects": [true, arrayOf(isString)], "direction": [true, isString], "evidence": [true, arrayOf(checkFormatEvidenceOut)], "format": [true, isString], "geometries": [true, arrayOf(isString)], "lossy": [true, either([isBoolean, isNull] as const)], "modalities": [true, arrayOf(isString)], "notes": [true, either([isString, isNull] as const)], "status": [true, isString], "targets": [true, arrayOf(isString)], "task": [true, either([isString, isNull] as const)], "unsupported_geometries": [true, arrayOf(isString)] } as const);
+
+export const checkFormatMatrixOut: Check<Schemas["FormatMatrixOut"]> =
+  /*#__PURE__*/ object({ "descriptor_version": [true, isInteger], "items": [true, arrayOf(checkFormatMatrixRowOut)], "total": [true, isInteger] } as const);
+
 export const checkFormatOut: Check<Schemas["FormatOut"]> =
   /*#__PURE__*/ object({ "degraded_geometries": [true, arrayOf(isString)], "geometries": [true, arrayOf(isString)], "lossy": [true, isBoolean], "modalities": [true, arrayOf(isString)], "name": [true, isString], "targets": [true, arrayOf(isString)] } as const);
 
@@ -580,6 +589,7 @@ export const checkDiscardSchemaDraft = checkNoContent;
 export const checkDownloadConnectionWeights = checkBackgroundJobOut;
 export const checkExportRelease = checkBackgroundJobOut;
 export const checkFinishBatch = checkBatchFinishedOut;
+export const checkFormatMatrix = checkFormatMatrixOut;
 export const checkGetActiveSchema = checkSchemaVersionOut;
 export const checkGetAsset = checkAssetOut;
 export const checkGetAssetCalibration = checkAssetCalibrationOut;
