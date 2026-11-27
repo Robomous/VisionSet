@@ -280,7 +280,7 @@ a frame outside `1..seqLength` or not an integer, a non-integer id, a box with n
 outside 0 to 1, a visibility neither `-1` nor within 0 to 1, a class that is not a positive integer
 or not in the table, and a `seqinfo.ini` missing a field or giving one that is not a positive
 number. The image size `seqinfo.ini` gives must be the size of every frame it holds. MOTS, whose
-rows are instance masks, is not read: it needs raster masks, which the domain does not have yet.
+rows are instance masks, is not read: the domain stores masks, but no importer reads them yet.
 
 **CVAT XML.** Two dialects of CVAT's XML 1.1 are read, each by its own importer, and neither reads
 the other's documents: `cvat-images` refuses a `<track>` and `cvat-video` refuses an `<image>`.

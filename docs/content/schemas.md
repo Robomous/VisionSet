@@ -206,13 +206,14 @@ straight into the document it hashes, so a set whose order depended on how a cal
 would make two identical schemas produce two different release hashes. Class *order* is
 authored and preserved; geometry order carries no meaning and nobody can read one into it.
 
-`GeometryType` names nine geometries; seven have a model in the `Geometry` union today -
-`bbox`, `obb`, `polygon`, `polyline`, `polyline_3d`, `cuboid_3d` and `classification_tag`.
+`GeometryType` names nine geometries; eight have a model in the `Geometry` union today -
+`bbox`, `obb`, `polygon`, `polyline`, `mask`, `polyline_3d`, `cuboid_3d` and `classification_tag`.
+Only `keypoints` is still reserved.
 `IMPLEMENTED_GEOMETRIES` is read *off* the union, so shipping a variant widens it with no
 second edit, and `create_version` refuses a class naming anything outside it:
 
 ```python
-LabelClass(name="road", geometries=(GeometryType.MASK,))  # constructs fine
+LabelClass(name="pose", geometries=(GeometryType.KEYPOINTS,))  # constructs fine
 schemas.create_version(project.id, [that])  # UnsupportedGeometry
 ```
 
@@ -229,7 +230,13 @@ silently reinterpreted.
 Declaring a class whose geometry has no implementation would create a class nobody could
 ever label. Refusing at the schema is better than discovering it at the first annotation.
 
-**`obb` (#1160) is the newest: a rotated box in pixels**, a centre, two side lengths and an
+**`mask` (#1162) is the newest: a run-length encoded raster over the whole asset.** A class may
+declare it, and `GET /geometries`, the CLI and MCP list it, since each reads the union. One `mask`
+annotation is one instance of one class; see
+[annotations](annotations.md#a-mask-is-run-length-encoded-pixels-over-the-whole-asset). It is a 2D
+shape: a scan refuses it, and the annotator does not draw or edit masks yet.
+
+**`obb` (#1160) is a rotated box in pixels**, a centre, two side lengths and an
 angle, stored in one canonical spelling (see
 [annotations](annotations.md#a-rotated-box-is-a-centre-a-size-and-an-angle)). It is a 2D shape
 like `bbox`, never a 3D one: the browser draws, moves, resizes and rotates it on an image, and a

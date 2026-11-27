@@ -109,6 +109,9 @@ part:
   `degraded_detect_rows`, so the `ultralytics` dialect, which does not declare
   it, writes none.
 
+No current exporter writes a `mask`: none declares it supported or degraded, so every export
+reports each mask annotation as dropped through the same compatibility and loss report.
+
 The last two are disjoint, and a geometry in neither is not written at all. An optional
 `tracked_only` says the format writes a label only as an observation of a released track, as `mot`
 and `cvat-video` do, so the report counts every other label dropped; the frames they write are

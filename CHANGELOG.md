@@ -13,6 +13,19 @@ nothing was being distributed. This is the first version that is.
 
 ### Added
 
+- **Raster masks: the `mask` geometry.** A class may declare `mask`, a binary raster over the whole asset stored
+  inline as COCO compressed run-length encoding: `size` is `[height, width]` and must equal the asset's pixel size,
+  and `counts` is the string over the pixels read column-major, first run background. Each side is 1 to 32768, the
+  area at most 100,000,000 pixels and `counts` at most 4,194,304 characters; malformed or oversized input is
+  refused, and decoding is bounded by the declared size, never by the string. A mask is re-encoded canonically on
+  construction, so equal masks have equal `counts` and a read may spell them differently from the write; an
+  uncompressed run list is not accepted on the wire. One mask is one instance of one class, and the kernel's
+  `split_class_map` and `compose_class_map` convert a class-id map to and from one mask per class present.
+  `rasterize_polygon`, `rasterize_rings` and `trace_mask` convert between polygons and masks. The SDK, REST and MCP
+  carry it; the annotator carries it untouched and does not draw or edit it yet. `hflip` and `rot90` move it
+  exactly; every resize strategy refuses it, and the preview's size cap resamples it nearest-neighbour. No exporter
+  writes a mask: every export reports it dropped. A release holding one is a version-10 manifest; every other
+  release keeps its version, bytes and hash (#1162).
 - **Rotated-box formats: `yolo-obb` and `dota`, import and export.** `yolo-obb` is the Ultralytics OBB layout - the
   `ultralytics` detection layout and `data.yaml` with rows of a class index and four normalized corners - and `dota`
   is the DOTA benchmark's `<fold>/images` and `<fold>/labelTxt`, rows of four pixel corners, a category and

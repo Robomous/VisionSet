@@ -482,9 +482,9 @@ or a second agent between calls.
 geometry and the pre-processing steps alike. The domain models give the tag a default, so the
 server corrects the schema it derives from them rather than publishing it as optional.
 
-**Only the geometries a class can use are offered.** `GeometryType` also names `mask` and
-`keypoints`, reserved for geometries with no implementation yet. Every input schema here lists
-only `bbox`, `obb`, `polygon`, `polyline`, `polyline_3d`, `cuboid_3d` and `classification_tag`,
+**Only the geometries a class can use are offered.** `GeometryType` also names
+`keypoints`, reserved for a geometry with no implementation yet. Every input schema here lists
+only `bbox`, `obb`, `polygon`, `polyline`, `mask`, `polyline_3d`, `cuboid_3d` and `classification_tag`,
 and a
 reserved value that is sent anyway is refused by the kernel exactly as before
 (`UNSUPPORTED_GEOMETRY` when a version is published). The REST API keeps the full enum, because

@@ -95,14 +95,14 @@ the same arithmetic: `canvas_fit` is the single spelling of where `letterbox`, `
 each offset as the integer-floored half of `target - content`, negative where the content
 overflows and is cropped - and the per-variant draws come from one seed.
 
-| step | bbox | obb | polygon | polyline | polyline_3d, cuboid_3d | classification_tag |
-| --- | --- | --- | --- | --- | --- | --- |
-| stretch | scale x, y | **refused** | scale | scale | **refused** | unchanged |
-| letterbox | scale then offset | centre and sides scaled, centre offset, angle kept | same | same | **refused** | unchanged |
-| fill, center_crop | scale then offset, clipped to the canvas | **refused** | same, clipped; the largest piece kept | **refused** | **refused** | unchanged |
-| hflip | `x' = W - x - w` | `cx' = W - cx`, `angle' = -angle` | mirror points | mirror points, order kept | **refused** | unchanged |
-| brightness_contrast | unchanged | unchanged | unchanged | unchanged | unchanged, calibration kept | unchanged |
-| rot90 | rotate corners, rebuilt axis-aligned | `(cx, cy)' = (cy, W - cx)`, `angle' = angle - pi/2` | rotate points | **refused** | **refused** | unchanged |
+| step | bbox | obb | polygon | polyline | mask | polyline_3d, cuboid_3d | classification_tag |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| stretch | scale x, y | **refused** | scale | scale | **refused** | **refused** | unchanged |
+| letterbox | scale then offset | centre and sides scaled, centre offset, angle kept | same | same | **refused** | **refused** | unchanged |
+| fill, center_crop | scale then offset, clipped to the canvas | **refused** | same, clipped; the largest piece kept | **refused** | **refused** | **refused** | unchanged |
+| hflip | `x' = W - x - w` | `cx' = W - cx`, `angle' = -angle` | mirror points | mirror points, order kept | mirrored, exact | **refused** | unchanged |
+| brightness_contrast | unchanged | unchanged | unchanged | unchanged | unchanged | unchanged, calibration kept | unchanged |
+| rot90 | rotate corners, rebuilt axis-aligned | `(cx, cy)' = (cy, W - cx)`, `angle' = angle - pi/2` | rotate points | **refused** | turned, exact; `size` swaps | **refused** | unchanged |
 
 A step declares what it can transform, and a geometry it cannot is a **typed refusal, never a
 consent**: `PreprocessingStepUnsupportedGeometry` names the step, the geometry and the first asset
@@ -112,7 +112,9 @@ pieces with no rule for which piece is the lane - a resize's reach depends on it
 rotated box (`obb`) under `stretch`, which scales the axes apart and turns a rotated rectangle
 into a parallelogram, and under `fill` or `center_crop`, whose canvas edge cuts one into a shape
 that is no longer a rectangle - only `letterbox` carries it, exactly, since its one scale keeps
-every angle; and every pixel-moving step over a
+every angle; every resize strategy - `stretch`, `letterbox`, `fill` and `center_crop` - over a
+`mask`, which is not resized (`hflip` and `rot90` move one exactly, and
+`rot90` swaps its `size`; `brightness_contrast` leaves it); and every pixel-moving step over a
 3D label: a resize changes the
 intrinsics it is read through, and a mirror or a quarter turn changes the frame's handedness or
 axes, so each would need a new calibration per variant. Only `brightness_contrast` keeps one, and
@@ -244,7 +246,9 @@ the image and its placed annotations, rendered on the export's own kernel path o
 manifest with the asset in the train fold - so every variant a spec declares can be looked at
 whether or not a release exists. The image is capped to 512 pixels on its longer side, labels
 scaled to match - a rotated box by the cap's one ratio on both axes, so it stays a rectangle and
-may sit under half a pixel off on the short axis, where the capped size was rounded - and the
+may sit under half a pixel off on the short axis, where the capped size was rounded, and a
+mask is resampled nearest-neighbour to the capped size, which is lossy and a preview-only
+resampling - and the
 response is never cached: the spec is the request's own. `width` and
 `height` are the rendered size; `original_width` and `original_height` are the size the asset
 recorded, and `frame_index` and `source_name` say where the sample came from - the frame of a
