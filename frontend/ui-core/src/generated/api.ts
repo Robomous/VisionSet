@@ -861,7 +861,9 @@ export interface paths {
          *     A release holding an asset of an image-sequence source lists that source
          *     with every occurrence whose asset it holds, as `sources`, and is a manifest
          *     version 9; so is one whose observed timing is unknown (`null`, not `0`).
-         *     A release holding no image-sequence asset omits `sources`.
+         *     A point-cloud sequence is listed the same way with `kind`
+         *     `point_cloud_sequence`, and makes the release a manifest version 11, as a
+         *     track on a scan does. A release holding no sequenced asset omits `sources`.
          */
         post: operations["publish_release"];
         delete?: never;
