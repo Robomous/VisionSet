@@ -1069,8 +1069,8 @@ control would say "this schema has no lanes", which is false, and it is exactly 
 ambiguity `ui-capabilities` forbids: absent and not-yet-available look identical and
 only one of them is true. The record holds `mask`, so a schema declaring one gets that
 button, with the reason that masks cannot be drawn or edited here yet and stored masks are
-kept as they are. `keypoints` is still refused when a schema version is written, so no
-schema declares it and it gets no button. A class declaring `polyline_3d` or `cuboid_3d` gets **no** button on
+kept as they are. A `keypoints` class is declared the same way and the annotator has no
+tool to place its points yet; stored keypoints are kept as they are. A class declaring `polyline_3d` or `cuboid_3d` gets **no** button on
 an image - those two are drawn on a scan, in its own
 [editor](ui/annotator.md#editing-cuboids-and-polylines-on-a-scan), and drawn read-only
 on an image (see [below](#3d-labels-are-drawn-not-edited)).

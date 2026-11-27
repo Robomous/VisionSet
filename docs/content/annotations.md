@@ -301,6 +301,44 @@ and COCO panoptic segment maps by `coco-panoptic` (see [import](import.md#format
 annotator does not draw or edit masks yet. See [releases](releases.md#the-manifests-own-format-version) for the
 manifest and [pre-processing](preprocessing.md) for how a step treats one.
 
+## Keypoints are an ordered list of named positions
+
+`keypoints` (#1158) is a set of at least one `[x, y]` point in **asset pixels**, never normalized,
+and the **position in the list is each keypoint's identity**:
+
+```json
+{ "type": "keypoints", "points": [[412.0, 96.5], [430.0, 140.0], [398.5, 141.0]], "visibility": [2, 2, 1] }
+```
+
+| Field | Meaning |
+| --- | --- |
+| `points` | at least one `[x, y]`, each coordinate finite |
+| `visibility` | optional, one state per point, in point order; absent when unknown, never `null` |
+
+**Order is meaning.** Point `i` is the same landmark in every annotation of the class, so nothing
+ever sorts, deduplicates, pads or truncates the list, and two keypoints may share a pixel. Which
+landmark each position is comes from the class's keypoint spec, when it declares one; see
+[schemas](schemas.md#a-keypoints-class-may-name-its-points-and-join-them).
+
+**Visibility** is the polyline's field under the same validator: one `VertexVisibility` per point,
+`0` unlabeled, `1` occluded, `2` visible, only as strict JSON integers (see
+[above](#a-polyline-may-say-which-of-its-vertices-are-visible)). A keypoint nobody placed keeps its slot
+and says so with `0`; it is never left out of the list.
+
+**Count.** Without a spec any count of at least one is accepted. With one, the annotation must carry
+exactly as many points as the spec has names, in that order, or it is refused with
+`KEYPOINT_COUNT_MISMATCH` (422).
+
+**Against the frame**, a keypoints label must have at least one point inside the asset's frame, edges
+included, when the asset's size is known; otherwise it is refused with
+`ANNOTATION_GEOMETRY_OUT_OF_BOUNDS` (422). Other points may lie outside, as a polyline's may. It is
+a 2D shape: a point-cloud scan refuses it like any other pixel shape.
+
+No exporter writes keypoints yet: every export reports each one dropped (see
+[releases](releases.md#the-manifests-own-format-version)). `hflip` mirrors the coordinates only and
+does not swap left- and right-named keypoints, because no metadata says which pairs mirror each
+other; see [pre-processing](preprocessing.md).
+
 ## A 3D polyline is read against a calibration
 
 `polyline_3d` is an open path of at least two `[x, y, z]` points, in order, in **metres in the
@@ -615,11 +653,10 @@ uv run python scripts/export_wire_fixtures.py
 **Two vocabularies, one union - and the editor keeps both.** `GeometryType` names nine
 geometries because that is what a `LabelClass` declares (see [schemas](schemas.md)); `Geometry`
 has a variant for each the kernel implements, because that is what an annotation can carry. So
-`parseGeometry` tells `keypoints` apart from a typo: the first is a declared geometry with no
-model, refused in the kernel's own words (`UNSUPPORTED_GEOMETRY`), and the remedy is to wait for
-a variant rather than to fix the caller. `polyline` was the example here until #223 shipped its
-variant and #342 its tool, and `mask` until #1162 shipped its variant - the remedy arriving,
-which is exactly what the split predicted would happen.
+`parseGeometry` tells a declared geometry apart from a typo: one the kernel declares but this
+build's editor has no model for is refused in the kernel's own words (`UNSUPPORTED_GEOMETRY`), and the
+remedy is to wait for a variant rather than to fix the caller. `polyline` was the example here until
+#223 shipped its variant and #342 its tool, and `mask` until #1162 shipped its variant - the remedy arriving, which is exactly what the split predicted would happen.
 
 The parser is strict about unknown keys as well as missing ones. That is not fussiness: the editor
 hands back what it was given, so a key it silently dropped would be a field the kernel wrote and
@@ -1036,7 +1073,8 @@ than half of them describe things this build does not do.
 | `lane-export.spec.ts` | 206 | **Superseded rather than ported.** #223 landed the lane formats as `visionset.formats` plugins, and they are tested where the other exporters are: `tests/formats/test_lanes.py` ports v1's 53 unit tests, and `test_report_agreement.py` checks each one's report against the bytes it wrote. v1's spec drove per-item HTTP export endpoints that have no counterpart here |
 
 The demo's **sixth** class, `pose`, is that state made visible - it is declared `keypoints`,
-`toolFor` answers `select` for it, and a scenario asserts that activating it draws nothing.
+`toolFor` answers `select` for it, and a scenario asserts that activating it draws nothing. The kernel has
+since gained the geometry and the annotator draws it read-only; the demo class stays because no drawing tool exists.
 `centerline` held the role twice and lost it twice: #223 made it a carryable geometry with
 no drawing tool, and #342 gave it the tool. The role moved to a class genuinely still in
 that position rather than being deleted along with the case, because a schema really can be

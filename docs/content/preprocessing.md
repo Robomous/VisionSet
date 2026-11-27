@@ -95,14 +95,19 @@ the same arithmetic: `canvas_fit` is the single spelling of where `letterbox`, `
 each offset as the integer-floored half of `target - content`, negative where the content
 overflows and is cropped - and the per-variant draws come from one seed.
 
-| step | bbox | obb | polygon | polyline | mask | polyline_3d, cuboid_3d | classification_tag |
-| --- | --- | --- | --- | --- | --- | --- | --- |
-| stretch | scale x, y | **refused** | scale | scale | **refused** | **refused** | unchanged |
-| letterbox | scale then offset | centre and sides scaled, centre offset, angle kept | same | same | **refused** | **refused** | unchanged |
-| fill, center_crop | scale then offset, clipped to the canvas | **refused** | same, clipped; the largest piece kept | **refused** | **refused** | **refused** | unchanged |
-| hflip | `x' = W - x - w` | `cx' = W - cx`, `angle' = -angle` | mirror points | mirror points, order kept | mirrored, exact | **refused** | unchanged |
-| brightness_contrast | unchanged | unchanged | unchanged | unchanged | unchanged | unchanged, calibration kept | unchanged |
-| rot90 | rotate corners, rebuilt axis-aligned | `(cx, cy)' = (cy, W - cx)`, `angle' = angle - pi/2` | rotate points | **refused** | turned, exact; `size` swaps | **refused** | unchanged |
+| step | bbox | obb | polygon | polyline | mask | keypoints | polyline_3d, cuboid_3d | classification_tag |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| stretch | scale x, y | **refused** | scale | scale | **refused** | scale | **refused** | unchanged |
+| letterbox | scale then offset | centre and sides scaled, centre offset, angle kept | same | same | **refused** | same | **refused** | unchanged |
+| fill, center_crop | scale then offset, clipped to the canvas | **refused** | same, clipped; the largest piece kept | **refused** | **refused** | **refused** | **refused** | unchanged |
+| hflip | `x' = W - x - w` | `cx' = W - cx`, `angle' = -angle` | mirror points | mirror points, order kept | mirrored, exact | mirror points, order and visibility kept | **refused** | unchanged |
+| brightness_contrast | unchanged | unchanged | unchanged | unchanged | unchanged | unchanged | unchanged, calibration kept | unchanged |
+| rot90 | rotate corners, rebuilt axis-aligned | `(cx, cy)' = (cy, W - cx)`, `angle' = angle - pi/2` | rotate points | **refused** | turned, exact; `size` swaps | rotate points, order and visibility kept | **refused** | unchanged |
+
+`hflip` mirrors a keypoints label's coordinates and nothing else. It does not swap the points a
+class's spec names left and right, because no metadata says which pairs mirror each other yet, so a
+flipped `left_eye` is still point `1` and now sits on the right of the picture. A dataset whose
+keypoints are handed (left and right limbs) should not use `hflip` until that exists.
 
 A step declares what it can transform, and a geometry it cannot is a **typed refusal, never a
 consent**: `PreprocessingStepUnsupportedGeometry` names the step, the geometry and the first asset
@@ -114,7 +119,10 @@ into a parallelogram, and under `fill` or `center_crop`, whose canvas edge cuts 
 that is no longer a rectangle - only `letterbox` carries it, exactly, since its one scale keeps
 every angle; every resize strategy - `stretch`, `letterbox`, `fill` and `center_crop` - over a
 `mask`, which is not resized (`hflip` and `rot90` move one exactly, and
-`rot90` swaps its `size`; `brightness_contrast` leaves it); and every pixel-moving step over a
+`rot90` swaps its `size`; `brightness_contrast` leaves it); a `fill` or `center_crop` resize over
+`keypoints` (#1158), because a keypoint cut away keeps its slot in the list and nothing in a crop
+can say whether it became occluded or unlabeled - so no step ever moves a point out of the frame and
+a keypoint's visibility is never rewritten; and every pixel-moving step over a
 3D label: a resize changes the
 intrinsics it is read through, and a mirror or a quarter turn changes the frame's handedness or
 axes, so each would need a new calibration per variant. Only `brightness_contrast` keeps one, and

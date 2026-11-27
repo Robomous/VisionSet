@@ -136,6 +136,10 @@ part:
   `degraded_detect_rows`, so the `ultralytics` dialect, which does not declare
   it, writes none.
 
+No current exporter writes `keypoints`: none declares it supported or degraded, so every export
+reports each keypoints annotation as dropped through the same compatibility and loss report and
+needs lossy consent. Pose adapters, such as COCO keypoints and YOLO pose, are separate work.
+
 Three exporters write a `mask`: `coco`, `coco-panoptic` and `segmentation-png` declare it
 supported, and `coco-panoptic` and `segmentation-png` declare `polygon` degraded because they
 rasterize one into their pixel maps. Every other export reports each mask annotation as dropped

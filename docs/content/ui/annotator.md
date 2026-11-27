@@ -498,7 +498,8 @@ allow — and, **with a class selected, only that class's own**: offering a poly
 under a boxes-only class would answer *what can I draw here* with a lie. With no class
 selected it is the schema's union. A `mask` class can be declared, and the strip lists a disabled
 Mask button carrying the reason, because the annotator has no tool to draw or edit one; stored masks
-are kept as they are. Switching to a class that forbids the active tool never
+are kept as they are. A `keypoints` class is declared likewise; the annotator draws its labels
+read-only and has no tool to place or move their points yet. Switching to a class that forbids the active tool never
 strands it — the derived tool resolves to the class's first allowed shape — and the route to
 a different class's geometry is the class list, which is where choosing a class belongs.
 **The rail picks how to draw; it does not add classes** — a class is added from the panel's

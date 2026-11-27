@@ -116,6 +116,11 @@ is carried untouched in the same way: it parses as a `StoredGeometry`, `document
 out of the scene, nothing draws, selects or edits it, and it goes back unchanged on save;
 `parseGeometry` refuses it explicitly.
 
+A `keypoints` annotation (`{type: "keypoints", points, visibility?}`, pixel points in order) is
+rendered read-only: its points, the skeleton edges of the class's keypoint spec and the visibility
+styling are drawn, and nothing selects or edits it; there is no keypoint drawing tool yet. It goes
+back unchanged on save.
+
 | Piece | Image engine | Scan editor |
 | --- | --- | --- |
 | Document | `AnnotationDocument` (`documentFromWire`) | `ScanDocument` (`scanDocumentFromWire`), `cuboid_3d` and `polyline_3d` |
