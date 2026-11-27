@@ -253,6 +253,33 @@
         "notes": "A calibration tilted past the tolerance is a label loss rather than a flattened box."
       }
     },
+    "labelme": {
+      "task": "object detection, instance segmentation",
+      "dialects": [
+        "LabelMe JSON: one document per picture beside it, rectangle and polygon shapes in pixels"
+      ],
+      "export": {
+        "lossy": true,
+        "geometries": ["bbox", "polygon"],
+        "degraded_geometries": [],
+        "modalities": ["image"],
+        "evidence": [
+          {"kind": "fixture", "test": "tests/formats/test_labelme.py::test_the_written_document_carries_every_key_labelme_reads", "gate": "python"},
+          {"kind": "round_trip", "test": "tests/formats/test_labelme.py::test_rectangles_and_polygons_round_trip_through_a_release", "gate": "python"}
+        ],
+        "notes": "The docs say an export opens in LabelMe 7.9.1's own reader; that was a manual check, and no test runs LabelMe. Fixture and round trip only."
+      },
+      "import": {
+        "geometries": ["bbox", "polygon"],
+        "modalities": ["image"],
+        "evidence": [
+          {"kind": "fixture", "test": "tests/formats/test_labelme.py::test_rectangles_and_polygons_read_as_the_pixels_written", "gate": "python"},
+          {"kind": "fixture", "test": "tests/formats/test_labelme.py::test_unsupported_shape_types_are_label_losses_never_converted", "gate": "python"},
+          {"kind": "round_trip", "test": "tests/formats/test_labelme.py::test_rectangles_and_polygons_round_trip_through_a_release", "gate": "python"}
+        ],
+        "notes": "Other shape types are label losses, never converted. Reading files written by LabelMe 7.9.1 was checked by hand; no test runs LabelMe."
+      }
+    },
     "mot": {
       "task": "multi-object tracking",
       "dialects": [
