@@ -5,8 +5,9 @@ VisionSet can record its work as runs on an [MLflow](https://mlflow.org/) tracki
 database stays the record of what happened; a tracking server receives a copy of the parts listed
 below, on a best-effort basis.
 
-This page covers the adapter and its configuration. Which operations open a run is not decided
-here: until a later change instruments them, an enabled tracker records nothing on its own.
+This page covers the adapter, its configuration, and what it records today: one run for each time
+a [background job](background-jobs.md) is executed. Nothing else opens a run. Clicks and edits in
+the UI, and work the CLI or MCP runs in its own process, are not tracked.
 
 ## Turning it on
 
@@ -94,13 +95,16 @@ Each run carries the name, parameters, metrics and tags VisionSet passes to it, 
 adds on its own beyond its client version header and a start time. The requests are a lookup of the
 experiment by name (and its creation, the first time), the run's creation, one batch per call that
 records parameters, metrics or tags, and, to end the run, a read of the run followed by its update:
-MLflow's client reads a run back before marking it finished. The user is recorded as
+MLflow's client reads a run back before marking it finished. Closing a run its worker left open
+([runs left open](#runs-left-open)) adds one search of the experiment for running runs carrying a
+given VisionSet id; the search names only that id, `visionset.execution_source`, and the `RUNNING`
+status. The user is recorded as
 `unknown`: VisionSet does not send the operating-system user name, the host name or the working
 directory.
 
-What the tracked operations put in those fields is decided by the change that instruments each
-one, under these rules: no images, annotations, model weights, export archives, credentials or
-absolute paths, and no artifact uploads.
+What the tracked operations put in those fields is listed under
+[background jobs](#background-jobs), and follows these rules: no images, annotations, model weights,
+export archives, credentials or absolute paths, and no artifact uploads.
 
 **Telemetry and printing.** VisionSet sets `MLFLOW_DISABLE_TELEMETRY=true`,
 `MLFLOW_DISABLE_AGENT_HINT=true` and `MLFLOW_SUPPRESS_PRINTING_URL_TO_STDOUT=true` before it imports
@@ -115,3 +119,106 @@ A tracker is never passed to one. What crosses a process boundary is `TrackingSe
 only `mlflow_enabled` and `mlflow_experiment`. A worker inherits the environment and builds its own
 client from the same variables, so the tracking URI and credentials are never written into a job
 payload or a log.
+
+## Background jobs
+
+**One run per execution attempt.** A run is opened when a worker starts a job it was handed, not
+when the job is queued, and it is closed when that attempt ends. A job retried after a failure is a
+new job ([background jobs](background-jobs.md)), so it gets a run of its own; so does a job the
+server re-queues after a crash. Runs belong to one attempt each and are correlated by the tags
+below, never by an active run: every call names its run by id, so concurrent workers cannot write
+into each other's runs.
+
+A job that never reaches a worker opens no run: one cancelled while queued, one whose type nothing
+runs, and one the pool would not accept.
+
+### How a run ends
+
+| Job state | Run status | `visionset.job_state` |
+| --- | --- | --- |
+| `succeeded` | `FINISHED` | `succeeded` |
+| `failed` | `FAILED` | `failed` |
+| `cancelled` (stopped on request) | `KILLED` | `cancelled` |
+
+The job database is the record. A run reports what the worker saw; if the server cannot write the
+job's row afterwards, the row and the run can disagree, and the row is right.
+
+### What a run carries
+
+The run is named after the job type (`annotation.pre_label`, for instance), or `background_job` if
+the type is not a plain lower-case name. Everything else is from
+this list, and a value that is missing or not of the expected shape is left out rather than filled
+in: there are no zero counts standing in for unknowns.
+
+| Kind | Key | When |
+| --- | --- | --- |
+| Tag | `visionset.job_id` | Always |
+| Tag | `visionset.job_type` | When the type is a plain lower-case name, which every shipped type is. |
+| Tag | `visionset.execution_id` | Always. A fresh id for each attempt the dispatcher hands to a worker. |
+| Tag | `visionset.attempt` | Always. How many times the job's row has been claimed. |
+| Tag | `visionset.execution_source` | Always `background_job`. |
+| Tag | `visionset.version` | The installed VisionSet version. No build commit is recorded: the package does not carry one. |
+| Tag | `visionset.batch_id`, `visionset.connection_id`, `visionset.annotation_job_id` | When the job names them, and only as ids. |
+| Tag | `visionset.job_state` | When the attempt ends. |
+| Tag | `visionset.error_class`, `visionset.error_code` | When it fails: the exception's class name and its [error code](error-codes.md) if it has one. Never the message. |
+| Tag | `visionset.reconciled` | When the run was ended by someone other than its worker; see below. |
+| Metric | `duration_seconds` | Always. How long the worker spent on the job, on a monotonic clock. It excludes time spent queued and time spent talking to the tracking server. |
+| Metric | `processed_count`, `failures_count`, `total_count` | When the attempt returns and the job reported progress. `total_count` only when the total was known. Not sent for a failed attempt, whose job row keeps no counts either. |
+
+Pre-labeling adds what it was asked for and what it did:
+
+| Kind | Key | When |
+| --- | --- | --- |
+| Parameter | `minimum_confidence` | A number from 0 to 1. |
+| Parameter | `replace_model_labels` | `True` or `False`. |
+| Parameter | `requested_geometries` | When the launch narrowed the shapes, as a sorted, comma-separated list. Absent means every shape the model produces. |
+| Parameter | `model_id`, `model_revision` | When the run succeeded and the model that answered is named as `<id>@<40-character commit>`. A model named any other way, including by a path or an address, is left out. The provider is not recorded. |
+| Metric | `annotations_written_count`, `annotations_replaced_count`, `assets_skipped_count`, `regions_discarded_count`, `regions_out_of_bounds_count` | When the run returns. |
+
+These counts are what the job did, not how good the model is: none of them is an accuracy figure.
+
+### Delivery never holds a job
+
+A worker does not wait for the tracking server. Opening and closing a run are queued for a thread in
+the worker's own process, which sends them in order while the job runs on. A slow, failing or
+unreachable server therefore cannot delay a job or change its outcome; at worst a run is missing or
+incomplete, with a warning on the `visionset.tracking` logger.
+
+The one thing a worker does itself is build its client, once, before its first tracked job: that
+imports MLflow and sends nothing. It happens before the job's clock starts, so it is not counted in
+`duration_seconds`.
+
+- If 64 or more deliveries are waiting in one process, a new attempt is not tracked at all, rather
+  than letting the queue grow without bound.
+- A worker that exits, for instance when the server stops, waits up to 10 seconds for its queued
+  deliveries and then gives them up.
+- When tracking cannot be set up in a process (the client is missing, or `MLFLOW_TRACKING_URI` is
+  absent or refused), that process logs the reason once and tracks nothing. Jobs run as usual. An
+  unreadable `VISIONSET_MLFLOW_ENABLED` is logged by the server at startup, and jobs then run
+  untracked.
+
+### Runs left open
+
+A run is closed by the worker that opened it. When the worker cannot close it, VisionSet tries once
+to close it from elsewhere, with status `FAILED` and a `visionset.reconciled` tag naming why:
+
+| `visionset.reconciled` | What happened |
+| --- | --- |
+| `worker_lost` | The worker process died during the job. The dispatcher fails the job and then looks for a running run with that attempt's `visionset.execution_id`. |
+| `server_restart` | The server was killed or crashed while the job was running (a graceful stop waits for running jobs). At the next start, the sweep that fails the job also looks for running runs with its `visionset.job_id`. |
+
+This is best effort, and a run can stay `RUNNING` on the tracking server for good:
+
+- when the tracking server cannot be reached at the moment of the lookup; nothing retries it later;
+- when a worker gives up on queued deliveries at exit, because its job settled normally and nothing
+  looks for its run afterwards;
+- when a run's own end could not be delivered, for the same reason.
+
+It can also close a run twice. A worker that outlives a killed server can still close its own run
+while the next server closes it as `server_restart`, and when a pool breaks, its other workers can be
+closing their runs as the dispatcher fails them. The run then ends up with whichever status arrived
+last, and can carry both `visionset.reconciled` and a `visionset.job_state` other than `failed`.
+The job's row is still the answer.
+
+Treat a `RUNNING` run with no live job behind it as abandoned, and read the job's state from
+VisionSet.

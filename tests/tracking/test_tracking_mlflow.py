@@ -353,6 +353,11 @@ class _FakeClient:
         self._maybe_fail("set_terminated")
         self.calls.append(("set_terminated", status))
 
+    def search_runs(self, experiment_ids: list[str], **kwargs: Any) -> list[Any]:
+        self._maybe_fail("search_runs")
+        self.calls.append(("search_runs", kwargs))
+        return [SimpleNamespace(info=SimpleNamespace(run_id="r"))]
+
 
 _ENTITIES: Any = SimpleNamespace(
     Param=lambda key, value: (key, value),
@@ -399,3 +404,64 @@ def test_a_run_that_never_started_sends_nothing() -> None:
 
     assert client.calls == []
     assert client.lookups == 0
+
+
+def test_running_runs_finds_only_open_runs_carrying_every_tag(server: MlflowServer) -> None:
+    tracker = build_tracker(load_tracking_settings())
+    open_match = tracker.start_run("a", tags={"visionset.job_id": "j-1", "k": "v"})
+    ended_match = tracker.start_run("b", tags={"visionset.job_id": "j-1", "k": "v"})
+    tracker.start_run("c", tags={"visionset.job_id": "j-2", "k": "v"})
+    tracker.end_run(ended_match, RunStatus.FINISHED)
+
+    assert tracker.running_runs({"visionset.job_id": "j-1", "k": "v"}) == [open_match]
+    assert tracker.running_runs({"visionset.job_id": "j-3"}) == []
+
+
+@pytest.mark.parametrize(
+    "tags",
+    [
+        {},
+        {"visionset.job_id": "x' or tags.k != '"},
+        {"visionset.job_id": "/home/user/secret"},
+        {"key with space": "v"},
+        {"k": ""},
+    ],
+)
+def test_running_runs_refuses_a_value_it_would_have_to_quote(tags: dict[str, str]) -> None:
+    client = _FakeClient()
+    tracker = MlflowTracker(client, _ENTITIES, "visionset")
+
+    assert tracker.running_runs(tags) == []
+    assert client.calls == []
+    assert client.lookups == 0
+
+
+def test_running_runs_filters_on_the_tags_and_the_running_status() -> None:
+    client = _FakeClient()
+    tracker = MlflowTracker(client, _ENTITIES, "visionset")
+
+    assert tracker.running_runs({"visionset.execution_id": "e-1"}) == ["r"]
+    assert client.calls == [
+        (
+            "search_runs",
+            {
+                "filter_string": "tags.`visionset.execution_id` = 'e-1' "
+                "and attributes.status = 'RUNNING'",
+                "max_results": 50,
+            },
+        )
+    ]
+
+
+def test_a_failed_lookup_answers_nothing_and_warns_without_the_text(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    tracker = MlflowTracker(_FakeClient(fail={"search_runs"}), _ENTITIES, "visionset")
+
+    with caplog.at_level(logging.WARNING, logger="visionset.tracking"):
+        assert tracker.running_runs({"k": "v"}) == []
+
+    assert _warnings(caplog) == [
+        "MLflow tracking could not look up running runs (RuntimeError: TEMPORARILY_UNAVAILABLE); "
+        "the work continues untracked."
+    ]

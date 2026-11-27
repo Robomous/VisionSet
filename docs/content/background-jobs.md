@@ -224,6 +224,12 @@ nothing below the delivery layer reads an environment variable.
 The four pre-existing bare `os.environ` reads stay where they are; migrating them
 is a change to four shipped surfaces for no behaviour.
 
+With `VISIONSET_MLFLOW_ENABLED=true`, each execution attempt also opens a run on an
+MLflow tracking server. The dispatcher hands a worker the tracking settings and an
+attempt id, never a client, and the run is delivered from a thread beside the job
+so it cannot delay or fail it. What a run carries, and how a run left open by a
+dead worker is closed, is in [experiment tracking](tracking.md#background-jobs).
+
 ## Events
 
 `BackgroundJobSucceeded` and `BackgroundJobFailed` are published by the

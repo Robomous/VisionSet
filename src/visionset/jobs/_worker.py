@@ -12,11 +12,13 @@ side is :mod:`visionset.jobs.context`'s job; this module is what calls it.
 
 from __future__ import annotations
 
+import time
 from pathlib import Path
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, JsonValue
 
+from visionset.jobs._tracking import AttemptTracking, open_attempt
 from visionset.jobs.context import workspace_for
 from visionset.jobs.registry import HandlerRef, load
 from visionset.kernel.adapters.sqlite_progress_reporter import SqliteProgressReporter
@@ -50,28 +52,53 @@ def execute(
     job_id: UUID,
     payload: dict[str, JsonValue],
     progress_min_interval_s: float,
+    tracking: AttemptTracking | None = None,
 ) -> WorkerResult:
     """Resolve the handler, run it, and report what happened.
 
-    Five arguments and every one of them pickles: a frozen model of three scalars,
-    a ``Path``, a ``UUID``, a JSON dict and a float. That property is the whole
-    reason this signature looks the way it does.
+    Every argument pickles: a frozen model of three scalars, a ``Path``, a
+    ``UUID``, a JSON dict, a float, and the attempt's tracking identity — settings
+    and identifiers, never a tracker. That property is the whole reason this
+    signature looks the way it does.
 
     **Exceptions are not caught.** A handler that raises lets the exception travel
     back through the pool's future, where the dispatcher turns it into a failed job
     carrying its text. Catching it here would mean inventing an error shape in the
-    one process that has no queue to write it to.
+    one process that has no queue to write it to. The tracking run sees it on the
+    way past and records its class, then it is re-raised unchanged.
+
+    **Tracking only queues.** Opening and closing the run are handed to this
+    process's delivery thread, so ``duration_seconds`` is the execution alone and
+    a tracking server cannot delay or fail the job.
     """
-    workspace = workspace_for(workspace_root)
-    reporter = SqliteProgressReporter(
-        workspace.metadata_store, job_id, min_interval_s=progress_min_interval_s
-    )
-    handler = load(ref)
-    result = handler(workspace_root, payload, reporter)
-    return WorkerResult(
-        result=result,
-        cancelled=reporter.is_cancelled(),
-        processed=reporter.reported_processed,
-        total=reporter.reported_total,
-        failures=reporter.reported_failures,
-    )
+    run = open_attempt(tracking, payload)
+    started = time.monotonic()
+    try:
+        workspace = workspace_for(workspace_root)
+        reporter = SqliteProgressReporter(
+            workspace.metadata_store, job_id, min_interval_s=progress_min_interval_s
+        )
+        handler = load(ref)
+        result = handler(workspace_root, payload, reporter)
+        outcome = WorkerResult(
+            result=result,
+            cancelled=reporter.is_cancelled(),
+            processed=reporter.reported_processed,
+            total=reporter.reported_total,
+            failures=reporter.reported_failures,
+        )
+    except BaseException as exc:
+        if run is not None:
+            run.close_raised(exc, duration_s=time.monotonic() - started)
+        raise
+    if run is not None:
+        run.close_returned(
+            ref.type,
+            result=outcome.result,
+            cancelled=outcome.cancelled,
+            processed=outcome.processed,
+            total=outcome.total,
+            failures=len(outcome.failures),
+            duration_s=time.monotonic() - started,
+        )
+    return outcome
