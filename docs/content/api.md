@@ -136,6 +136,7 @@ GET    /releases/{release_id}/assignment
 GET    /releases/{release_id}/export-compatibility        ?target=|format=, exactly one; &recipe=
 POST   /releases/{release_id}/export                      ?target=|format=&allow_lossy=&recipe=, launch
 GET    /formats
+GET    /formats/matrix                                    every installed importer and exporter, with its verification evidence
 GET    /export-targets                                    the models a release can be exported for
 GET    /projects/{project_id}/preprocessing-recipes       the project's pre-processing recipes
 POST   /projects/{project_id}/preprocessing-recipes

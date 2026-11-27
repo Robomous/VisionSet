@@ -1227,7 +1227,8 @@ For `export`, the CLI resolves the name through the plugin registry and hands th
 format with `pick` and a target with `resolve_target`, never a dict lookup: a `KeyError` is outside
 the `VisionSetError` tree and a typo would answer with a traceback instead of the list of installed
 names. `visionset format list` and `visionset target list` print those lists without opening a
-workspace at all.
+workspace at all, and `visionset format matrix` adds the importers and the tests recorded for each
+format (see the [verification matrix](architecture/backend/formats.md#verification-matrix)).
 
 **`--target` and `--format` are one choice.** A target is the model the release will train and
 resolves to the format that writes for it; a format addresses no trainer. Giving both, or neither,

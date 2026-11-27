@@ -23,6 +23,20 @@ nothing was being distributed. This is the first version that is.
   embedded is an `image` loss. Malformed JSON refuses the source by file. The exporter writes each picture with its
   document beside it, under `<fold>/` when the release has a split, with `version`, `flags`, `imageData` `null` and
   the picture's size; it opens in LabelMe 7.9.1's own reader (#1166).
+
+- **A format verification matrix.** `src/visionset/formats/verification.json`, a versioned
+  descriptor shipped in the wheel, records for every built-in format and direction its task and
+  dialects, the capability it claims, and the tests that back it, each with its kind (fixture,
+  round trip, or independent reader such as `pycocotools`, `ultralytics` or a test-local parser)
+  and the CI gate it runs under. `visionset format matrix` (text and `--json`, no workspace),
+  `GET /formats/matrix` and the `format_matrix` MCP tool list every installed importer and
+  exporter once per direction with its geometries (supported, degraded, unsupported), lossiness
+  and status: `validated`, `implemented`, or `no_recorded_evidence` for a plugin the descriptor
+  does not cover, such as a third-party one. A generated table in
+  `docs/content/architecture/backend/formats.md` defines the terms. Tests fail when an installed
+  built-in has no entry, an entry names nothing installed, a claim disagrees with the plugin, or a
+  citation names a test that does not exist. `format list`, the export target catalog and the
+  lossy-consent gate are unchanged (#1157).
 - **COCO RLE masks, and semantic segmentation masks as `segmentation-png`, import and export.** The `coco` importer
   reads an RLE `segmentation` object, compressed string or uncompressed list `counts` with `size` `[height, width]`,
   as a mask, which must be the image entry's size; a malformed or wrongly sized one is a `label` loss. A polygon of

@@ -1,11 +1,10 @@
 # usage: from visionset.cli.formats import format_app
 """``visionset format`` — which formats this installation actually has.
 
-Two commands, and with ``init`` and ``--version`` the only ones that open no
-workspace: plugins are discovered from installed distributions through
-``importlib.metadata``, which is a fact about the process rather than about any
-dataset. Running it outside a workspace works, and that is the point — you ask
-what is available *before* choosing an ``--format``.
+Two commands, and neither opens a workspace: plugins are discovered from
+installed distributions through ``importlib.metadata``, which is a fact about the
+process rather than about any dataset. Running either outside a workspace works,
+and that is the point — you ask what is available *before* choosing a ``--format``.
 
 It earns a command because the valid values of ``export --format`` depend on what
 somebody installed, and without this the only way to find out is to guess and

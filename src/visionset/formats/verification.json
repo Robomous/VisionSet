@@ -47,7 +47,7 @@
     "coco": {
       "task": "object detection, instance segmentation",
       "dialects": [
-        "COCO instances JSON, one instances_<fold>.json per fold",
+        "COCO instances JSON, one instances file per fold (instances_train.json and so on)",
         "segmentation as polygons or as compressed RLE masks"
       ],
       "export": {
