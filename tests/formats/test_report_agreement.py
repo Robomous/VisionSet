@@ -163,6 +163,21 @@ def _classification_counts(root: Path) -> Counter[str]:
         return Counter(row["class"] for row in csv.DictReader(handle))
 
 
+def _mot_counts(root: Path) -> Counter[str]:
+    """Every ``gt.txt`` row, by the line of its sequence's ``labels.txt`` its class points at.
+
+    ``DRAWING`` holds no track, so this one finds nothing and the report must
+    call every box dropped; ``test_mot.py`` compares a tracked release.
+    """
+    found: Counter[str] = Counter()
+    for path in sorted(root.glob("*/gt/gt.txt")):
+        names = (path.parent / "labels.txt").read_text(encoding="utf-8").splitlines()
+        for line in path.read_text(encoding="utf-8").splitlines():
+            if line.strip():
+                found[names[int(line.split(",")[7]) - 1]] += 1
+    return found
+
+
 #: How to count what each format actually wrote, keyed by ``format_name``.
 COUNTERS: dict[str, Callable[[Path], Counter[str]]] = {
     "ultralytics": _yolo_counts,
@@ -171,6 +186,7 @@ COUNTERS: dict[str, Callable[[Path], Counter[str]]] = {
     "voc": _voc_counts,
     "coco": _coco_counts,
     "classification": _classification_counts,
+    "mot": _mot_counts,
 }
 
 #: Formats whose layout depends on what the release holds, and are therefore

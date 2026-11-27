@@ -118,10 +118,15 @@ def write_image(asset: ManifestAsset, into: Path, content: ContentReader) -> str
     that quietly skipped an image would write a training set silently short of it
     while its labels claimed otherwise.
     """
+    return write_image_as(asset, into, image_name(asset, ""), content)
+
+
+def write_image_as(asset: ManifestAsset, into: Path, stem: str, content: ContentReader) -> str:
+    """:func:`write_image` under a name the format chooses; the suffix is still sniffed."""
     into.mkdir(parents=True, exist_ok=True)
     with content(asset.content_hash) as stream:
         head = stream.read(_SIGNATURE_BYTES)
-        name = image_name(asset, _suffix_for(head, asset))
+        name = f"{stem}{_suffix_for(head, asset)}"
         with (into / name).open("wb") as handle:
             handle.write(head)
             shutil.copyfileobj(stream, handle)

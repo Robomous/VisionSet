@@ -7,9 +7,12 @@ occurrence model, migration and importer writes, slice 2, the track and observat
 over REST, the CLI and MCP, and slice 4, tracks in the release manifest at version 7, are
 implemented - see
 [annotations](../../annotations.md#a-track-observes-annotations-an-annotation-knows-nothing-of-tracks)
-and [releases](../../releases.md#the-manifests-own-format-version); the rest is not, and
-[#1170](https://github.com/Robomous/VisionSet/issues/1170) and the video variant of
-[#1171](https://github.com/Robomous/VisionSet/issues/1171) stay blocked until the slices below ship.
+and [releases](../../releases.md#the-manifests-own-format-version). So is
+[#1170](https://github.com/Robomous/VisionSet/issues/1170), MOTChallenge sequences in and out with
+2D boxes over image-sequence sources - see [import](../../import.md#formats) and
+[releases](../../releases.md#the-motchallenge-format); MOTS waits for raster masks. The rest is not,
+and the video variant of [#1171](https://github.com/Robomous/VisionSet/issues/1171) stays blocked
+until the slices below ship.
 
 **Amended for slice 5 on 2026-11-26.** Neither imported identity had anything to land on: OpenLane
 frames are stills with no source, and nuScenes keyframes are point-cloud scans with 3D boxes. The

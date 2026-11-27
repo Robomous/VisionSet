@@ -1549,6 +1549,12 @@ def _compatibility(
     ``degraded`` — naming the crop in ``cropped_by``, so every row's count is
     the labels that meet its status and no more. A label the crop cut away
     is not company for a solitary geometry: the plugin never sees it.
+
+    **A tracked-only format drops what no track observes.** An exporter may
+    declare ``tracked_only``, the way a MOT sequence writes a box only as an
+    observation of a track. A label it would otherwise write that no released
+    track observes leaves its row for a ``dropped`` row of its own, unless the
+    crop already drops it.
     """
     writes = supported_modalities_of(exporter)
     unopenable = [asset for asset in manifest.assets if asset.modality not in writes]
@@ -1578,12 +1584,15 @@ def _compatibility(
             if geometry in IMPLEMENTED_GEOMETRIES:
                 per_shape[(declared.name, geometry)] = (0, set())
 
+    untracked = _untracked(manifest, exporter)
+    untracked_rows: dict[tuple[str, GeometryType], tuple[int, set[UUID]]] = {}
     solitary: frozenset[GeometryType] = getattr(exporter, "solitary_geometries", frozenset())
     crowded = any(
         GeometryType(annotation.geometry.type) not in solitary
         and _status_of(GeometryType(annotation.geometry.type), exporter, target)
         is not ClassExportStatus.DROPPED
         and _crop_status(cropping, annotation.id) is not ClassExportStatus.DROPPED
+        and annotation.id not in untracked
         for asset in manifest.assets
         for annotation in asset.annotations
     )
@@ -1612,7 +1621,17 @@ def _compatibility(
             # undeclared label here would make the report silently wrong.
             status = status_of(geometry)
             crop = _crop_status(cropping, annotation.id)
-            if crop is not None and _LOSS_ORDER[crop] > _LOSS_ORDER[status]:
+            if (
+                annotation.id in untracked
+                and status is not ClassExportStatus.DROPPED
+                and crop is not ClassExportStatus.DROPPED
+            ):
+                status = ClassExportStatus.DROPPED
+                key = (annotation.label_class, geometry)
+                count, assets = untracked_rows.get(key, (0, set()))
+                untracked_rows[key] = (count + 1, assets | {asset.asset_id})
+                per_shape.setdefault(key, (0, set()))
+            elif crop is not None and _LOSS_ORDER[crop] > _LOSS_ORDER[status]:
                 status = crop
                 cut_key = (annotation.label_class, geometry, crop)
                 count, assets = cut.get(cut_key, (0, set()))
@@ -1659,6 +1678,22 @@ def _compatibility(
             for cut_count, cut_assets in [cut.get((name, geometry, crop), (0, set()))]
             if cut_count
         ]
+        dropped_count, dropped_assets = untracked_rows.get((name, geometry), (0, set()))
+        if dropped_count:
+            crop_rows.insert(
+                0,
+                ClassCompatibility(
+                    label_class=name,
+                    geometry=geometry,
+                    status=ClassExportStatus.DROPPED,
+                    annotations=dropped_count,
+                    assets=len(dropped_assets),
+                    reason=(
+                        f"{exporter.format_name} writes a label only where a track observes "
+                        f"it, and drops it here: no track observes these {dropped_count}"
+                    ),
+                ),
+            )
         if count or not crop_rows:
             classes.append(
                 ClassCompatibility(
@@ -1698,6 +1733,21 @@ _LOSS_ORDER: Final = {
     ClassExportStatus.DEGRADED: 1,
     ClassExportStatus.DROPPED: 2,
 }
+
+
+def _untracked(manifest: Manifest, exporter: Exporter) -> frozenset[UUID]:
+    """The labels no track observes, when the format writes only observed ones."""
+    if not getattr(exporter, "tracked_only", False):
+        return frozenset()
+    observed = {
+        observation.annotation_id for track in manifest.tracks for observation in track.observations
+    }
+    return frozenset(
+        annotation.id
+        for asset in manifest.assets
+        for annotation in asset.annotations
+        if annotation.id not in observed
+    )
 
 
 def _crop_status(cropping: _Cropping | None, annotation_id: UUID) -> ClassExportStatus | None:

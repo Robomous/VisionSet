@@ -357,6 +357,7 @@ def test_the_installed_command_finds_every_exporter(installed: Path) -> None:
         "curvelanes",
         "darknet",
         "kitti",
+        "mot",
         "openlane-2d",
         "tusimple",
         "ultralytics",
