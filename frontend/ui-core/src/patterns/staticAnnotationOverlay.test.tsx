@@ -77,6 +77,60 @@ describe("StaticAnnotationOverlay", () => {
     expect(screen.getByTestId("preview-overlay").querySelectorAll("[data-testid^='preview-shape-']")).toHaveLength(1);
   });
 
+  describe("keypoints, drawn read-only", () => {
+    const FACE: LabelClass = {
+      name: "face",
+      geometries: ["keypoints"],
+      color: "#2f7fd1",
+      attributes: [],
+      keypoints: { names: ["left_eye", "right_eye", "nose", "chin"], skeleton: [[0, 1], [1, 2], [2, 3], [3, 0]] },
+    };
+    const pose = annotation("pose", "face", {
+      type: "keypoints",
+      points: [[10, 10], [30, 10], [20, 20], [20, 30]],
+      visibility: [2, 1, 2, 0],
+    });
+
+    function drawnKeypoints(): { dots: Element[]; edges: Element[] } {
+      render(<StaticAnnotationOverlay width={640} height={480} src="blob:picture" alt="frame 1" annotations={[pose]} classes={[FACE]} />);
+      const group = screen.getByTestId("keypoint-layer").querySelector("[data-keypoints-id='pose']");
+      if (group === null) throw new Error("the keypoints were not drawn");
+      return { dots: [...group.querySelectorAll("circle")], edges: [...group.querySelectorAll("polyline")] };
+    }
+
+    it("fills a visible point, rings an occluded one and leaves an unlabeled one out", () => {
+      const { dots } = drawnKeypoints();
+
+      expect(dots.map((dot) => dot.getAttribute("data-keypoint"))).toEqual(["0", "1", "2"]);
+      expect(dots.map((dot) => dot.getAttribute("fill"))).toEqual(["#2f7fd1", "none", "#2f7fd1"]);
+      expect(dots.map((dot) => dot.getAttribute("data-occluded"))).toEqual([null, "true", null]);
+      expect(dots[1].getAttribute("stroke-dasharray")).not.toBeNull();
+    });
+
+    it("draws the spec's edges between drawn points, dashed where an end is occluded", () => {
+      const { edges } = drawnKeypoints();
+
+      // `nose`–`chin` and `chin`–`left_eye` reach the unlabeled chin, so two of four remain.
+      expect(edges.map((edge) => edge.getAttribute("points"))).toEqual(["10,10 30,10", "30,10 20,20"]);
+      expect(edges.every((edge) => edge.getAttribute("data-occluded") === "true")).toBe(true);
+    });
+
+    it("draws the points and no edges for a class with no spec", () => {
+      render(<StaticAnnotationOverlay width={640} height={480} src="blob:picture" alt="frame 1" annotations={[pose]} classes={[{ ...FACE, keypoints: null }]} />);
+
+      expect(screen.getByTestId("keypoint-layer").querySelectorAll("circle")).toHaveLength(3);
+      expect(screen.getByTestId("keypoint-layer").querySelectorAll("polyline")).toHaveLength(0);
+    });
+
+    it("skips malformed keypoints rather than failing the picture", () => {
+      const broken = annotation("broken", "face", { type: "keypoints", points: [[1, 2]], visibility: [7] });
+      render(<StaticAnnotationOverlay width={640} height={480} src="blob:picture" alt="frame 1" annotations={[BOX, broken]} classes={[FACE]} />);
+
+      expect(screen.queryByTestId("keypoint-layer")).toBeNull();
+      expect(screen.getByTestId("preview-overlay").querySelectorAll("[data-testid^='preview-shape-']")).toHaveLength(1);
+    });
+  });
+
   it("colours a shape by the class palette: the declared colour, else the engine's derived hue", () => {
     render(
       <StaticAnnotationOverlay

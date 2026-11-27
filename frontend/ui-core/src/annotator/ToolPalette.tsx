@@ -38,9 +38,9 @@
  * said "this schema has no lanes", which was false. It has a tool now, so the
  * button is live and the sentence is gone.
  *
- * `PENDING_TOOLS` holds `mask`. The rule it encodes — *declared but not drawable
- * is disabled-with-reason, never absent* — is why a schema declaring `mask` gets a
- * disabled button, and `keypoints` takes the same path the day a schema declares one.
+ * `PENDING_TOOLS` holds `mask` and `keypoints`. The rule it encodes — *declared
+ * but not drawable is disabled-with-reason, never absent* — is why a schema
+ * declaring either gets a disabled button.
  *
  * ## The suggest button is the one control here that is a mode
  *

@@ -212,6 +212,7 @@ import { AssetImage } from "./AssetImage";
 import { PointCloudStage } from "./PointCloudStage";
 import { useScanWorkspace } from "./scanWorkspace";
 import { carries3DLabels, labels3D, overlay3DFor, overlay3DNotice, type Overlay3DWithheld } from "./overlay3d";
+import { NO_KEYPOINTS, keypointOverlayFor } from "./keypointOverlay";
 import type { AssetProgress, WireAnnotation } from "./jobQueries";
 import type { BatchAsset } from "../screens/queries";
 import { FrameSession } from "./frameSession";
@@ -947,6 +948,11 @@ function Workspace({
   const overlay3dNotice = overlay3DNotice(carries3d, calibration, overlay3d);
 
   const snapshot = useAnnotatorSnapshot(store);
+  const schemaClasses = snapshot.document.schema.classes;
+  const keypoints = useMemo(
+    () => (isScan ? NO_KEYPOINTS : keypointOverlayFor(loaded, schemaClasses)),
+    [isScan, loaded, schemaClasses],
+  );
   const [hiddenIds, setHiddenIds] = useState<ReadonlySet<string>>(() => new Set());
   const [view, setView] = useState<Viewport | null>(null);
   const [helpOpen, setHelpOpen] = useState(false);
@@ -2845,6 +2851,7 @@ function Workspace({
                   onViewChange={setView}
                   hiddenIds={hiddenIds}
                   overlay3d={overlay3d.labels}
+                  keypoints={keypoints}
                   viewRef={viewRef}
                   // One per job, from `JobScreen` — the canvas would otherwise make
                   // its own and lose it on every navigation.

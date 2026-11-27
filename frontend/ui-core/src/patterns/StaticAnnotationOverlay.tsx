@@ -14,9 +14,9 @@
  * without a frame cannot be placed — and renders its own picture instead.
  */
 
-import type { CSSProperties, JSX } from "react";
-import { parseGeometry, type Geometry } from "@visionset/annotator";
-import { BboxShape, ObbShape, PolygonShape, PolylineShape, STROKE_PX } from "@visionset/annotator/react";
+import { useMemo, type CSSProperties, type JSX } from "react";
+import { keypointLabels, parseGeometry, parseStoredGeometry, type Geometry, type KeypointsGeometry } from "@visionset/annotator";
+import { BboxShape, KeypointLayer, ObbShape, PolygonShape, PolylineShape, STROKE_PX } from "@visionset/annotator/react";
 
 import type { WireAnnotation } from "../annotator/jobQueries";
 import { classColor, type LabelClass } from "../palette";
@@ -27,7 +27,7 @@ export interface StaticAnnotationOverlayProps {
   readonly height: number;
   readonly src: string;
   readonly alt: string;
-  /** Wire annotations as the dataset and job routes answer them; a classification tag draws nothing. */
+  /** Wire annotations as the dataset and job routes answer them; a classification tag and a mask draw nothing. */
   readonly annotations: readonly WireAnnotation[];
   /** The schema's classes, for their declared colours; a class not declared here takes the engine's derived hue. */
   readonly classes?: readonly LabelClass[];
@@ -39,7 +39,7 @@ export function StaticAnnotationOverlay({
   src,
   alt,
   annotations,
-  classes = [],
+  classes = NO_CLASSES,
 }: StaticAnnotationOverlayProps): JSX.Element {
   return (
     <div
@@ -58,6 +58,8 @@ export function StaticAnnotationOverlay({
   );
 }
 
+const NO_CLASSES: readonly LabelClass[] = [];
+
 export interface AnnotationLayerProps {
   /** The picture's pixel size, which is the frame every coordinate is read in. */
   readonly width: number;
@@ -71,8 +73,9 @@ export interface AnnotationLayerProps {
  * picture drawn by someone else — the Images section's own frame, whose box is
  * already the picture's aspect — they land where the picture is.
  */
-export function AnnotationLayer({ width, height, annotations, classes = [] }: AnnotationLayerProps): JSX.Element {
+export function AnnotationLayer({ width, height, annotations, classes = NO_CLASSES }: AnnotationLayerProps): JSX.Element {
   const declared = new Map(classes.map((one) => [one.name, one]));
+  const keypoints = useMemo(() => keypointLabels(keypointsOf(annotations), classes), [annotations, classes]);
   const colorOf = (labelClass: string): string => classColor(declared.get(labelClass), labelClass);
 
   // The stage scales its stroke variables with the zoom; a static viewer has no
@@ -96,6 +99,7 @@ export function AnnotationLayer({ width, height, annotations, classes = [] }: An
       {annotations.map((annotation) => (
         <Shape key={annotation.id} annotation={annotation} color={colorOf(annotation.label_class)} />
       ))}
+      <KeypointLayer labels={keypoints} classes={classes} zoom={STROKE_PX / stroke} />
     </svg>
   );
 }
@@ -122,6 +126,21 @@ function Shape({
       )}
     </g>
   );
+}
+
+/** The keypoints annotations, each read strictly; a malformed one is left out rather than failing the page. */
+function keypointsOf(
+  annotations: readonly WireAnnotation[],
+): { readonly id: string; readonly label_class: string; readonly geometry: KeypointsGeometry }[] {
+  return annotations.flatMap((annotation) => {
+    if ((annotation.geometry as { readonly type?: unknown } | null)?.type !== "keypoints") return [];
+    try {
+      const geometry = parseStoredGeometry(annotation.geometry);
+      return geometry.type === "keypoints" ? [{ id: annotation.id, label_class: annotation.label_class, geometry }] : [];
+    } catch {
+      return [];
+    }
+  });
 }
 
 /** `null` for a geometry the engine does not draw — a stored shape is never a reason to fail the page. */

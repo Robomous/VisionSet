@@ -17,9 +17,8 @@ import { geometryLabel } from "../data/geometryCategory";
 /**
  * Why a declared geometry has no tool yet, keyed by the geometry.
  *
- * Holds `mask`: a schema may declare it and stored masks are carried, but nothing
- * here draws or edits one. The day `keypoints` is declared in a schema, an entry
- * here is what makes the strip say so without anyone remembering that it should.
+ * Holds `mask` and `keypoints`: a schema may declare either and stored ones are
+ * carried — keypoints drawn read-only — but nothing here draws or edits one.
  *
  * The record is typed on `string` rather than on the geometry union so an entry
  * can name a geometry `drawableGeometries` never returns, which is the case it
@@ -27,6 +26,7 @@ import { geometryLabel } from "../data/geometryCategory";
  */
 const PENDING_TOOLS: Readonly<Record<string, string>> = {
   mask: "Masks can't be drawn or edited here yet; stored masks are kept as they are.",
+  keypoints: "Keypoints can't be drawn or edited here yet; stored keypoints are shown as they are.",
 };
 
 /**
