@@ -84,6 +84,10 @@ interface World {
   tracks: { id: string; source_id: string; label_class: string; external_id: string | null; observations: ReturnType<typeof observation>[] }[];
   readOnly: boolean;
   refuseObserve: { code: string; message: string } | null;
+  /** While set, an observe waits on it. */
+  observeGate: Promise<void> | null;
+  /** How many more occurrence reads answer 500. */
+  failOccurrences: number;
 }
 
 let world: World;
@@ -105,6 +109,8 @@ function freshWorld(): World {
     ],
     readOnly: false,
     refuseObserve: null,
+    observeGate: null,
+    failOccurrences: 0,
   };
 }
 
@@ -174,6 +180,10 @@ function answer(method: string, path: string, body: unknown): Response {
     const items = ANNOTATIONS[annotations[1]!] ?? [];
     return json({ items, total: items.length });
   }
+  if (path === `/sources/${SOURCE}/occurrences` && world.failOccurrences > 0) {
+    world.failOccurrences -= 1;
+    return json({ code: "INTERNAL", message: "down" }, 500);
+  }
   if (path === `/sources/${SOURCE}/occurrences`) return json({ items: world.occurrences, total: world.occurrences.length });
   if (path === `/sources/${SOURCE}/tracks` && method === "GET") return json({ items: world.tracks, total: world.tracks.length });
   if (path === `/sources/${SOURCE}/tracks` && method === "POST") {
@@ -230,6 +240,7 @@ beforeEach(() => {
     const text = request.method === "GET" ? "" : await request.text();
     const body = text === "" ? null : (JSON.parse(text) as unknown);
     sent.push({ method: request.method, path, body });
+    if (world.observeGate !== null && request.method === "POST" && path.endsWith("/observations")) await world.observeGate;
     return answer(request.method, path, body);
   });
 });
@@ -301,6 +312,16 @@ describe("reading tracks", () => {
     await waitFor(() => expect(sent.some((one) => one.path.endsWith("/occurrences"))).toBe(true));
     expect(screen.queryByTestId("track-region")).toBeNull();
     expect(screen.queryByTestId("panel-split-tracks")).toBeNull();
+  });
+
+  it("says a failed read in the region's place, and reads again on request", async () => {
+    world.failOccurrences = 1;
+    await open();
+    const failed = await screen.findByTestId("track-read-failed", {}, { timeout: 5000 });
+    expect(failed.getAttribute("role")).toBe("alert");
+    await userEvent.click(within(failed).getByRole("button", { name: "Try again" }));
+    await region();
+    expect(screen.queryByTestId("track-read-failed")).toBeNull();
   });
 
   it("asks nothing about tracks for a frame with no source", async () => {
@@ -379,6 +400,24 @@ describe("writing", () => {
     const refusal = await screen.findByTestId("track-refusal");
     expect(refusal.textContent).toMatch(/have not been judged yet/);
     expect(refusal.textContent).not.toContain("ASSET_NOT_JUDGED");
+  });
+
+  it("still says a refusal that lands after a step to another frame", async () => {
+    let release: () => void = () => {};
+    world.observeGate = new Promise((resolve) => {
+      release = resolve;
+    });
+    world.refuseObserve = { code: "ASSET_NOT_JUDGED", message: "kernel wording" };
+    await open();
+    await userEvent.click(await screen.findByTestId("object-select-1"));
+    await focusTrack("track-1");
+    await userEvent.click(screen.getByTestId("track-observe"));
+    await waitFor(() => expect(writes()).toHaveLength(1));
+
+    await userEvent.click(screen.getByTestId("track-next"));
+    await waitFor(() => expect(screen.getByTestId("asset-position").textContent).toContain("2/2"));
+    release();
+    expect((await screen.findByTestId("track-refusal")).textContent).toMatch(/have not been judged yet/);
   });
 
   it("takes the object off the track and keeps it", async () => {

@@ -12,7 +12,7 @@
 
 import { Button, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, cn } from "@robomous/ui-core";
 import { ChevronLeft, ChevronRight, Plus } from "lucide-react";
-import { useState, type JSX } from "react";
+import type { JSX } from "react";
 
 import { refusalProse } from "../data/refusals";
 import { Withheld } from "./Withheld";
@@ -69,9 +69,14 @@ export interface TrackRegionProps {
   readonly focus: TrackFocus | null;
   readonly onFocus: (focus: TrackFocus | null) => void;
   readonly colorOf: (labelClass: string) => string;
+  readonly outcome: TrackOutcome | null;
+  readonly onOutcome: (outcome: TrackOutcome | null) => void;
+  /** A refetch of the tracks or occurrences failed while earlier answers are still shown. */
+  readonly readFailure: { readonly error: unknown; readonly retry: () => void } | null;
 }
 
-type Outcome = { readonly tone: "error" | "done"; readonly text: string } | null;
+/** What the last track write came to, in words. Held above the frame, so a write that lands after a step is still said. */
+export type TrackOutcome = { readonly tone: "error" | "done"; readonly text: string };
 
 function frameWord(position: number): string {
   return `frame ${position}`;
@@ -82,7 +87,7 @@ export function TrackRegion(props: TrackRegionProps): JSX.Element {
   const observe = useObserveTrack(jobId);
   const unobserve = useUnobserveTrack(jobId);
   const start = useStartTrack(jobId);
-  const [outcome, setOutcome] = useState<Outcome>(null);
+  const { outcome, onOutcome: setOutcome } = props;
   const busy = observe.isPending || unobserve.isPending || start.isPending;
 
   const here = occurrencesOf(occurrences, assetId);
@@ -110,17 +115,14 @@ export function TrackRegion(props: TrackRegionProps): JSX.Element {
   function startAt(occurrence: FrameOccurrence): void {
     if (startReason !== null || candidate === null) return;
     withStored((annotationId) =>
-      start.mutate(
-        { sourceId, labelClass: candidate.labelClass, occurrenceId: occurrence.id, annotationId },
-        {
-          onSuccess: (result) => {
-            onFocus({ trackId: result.track.id, position: occurrence.position, passed: 0 });
-            if (result.observeError === null) setOutcome({ tone: "done", text: `Started a track at ${frameWord(occurrence.position)}` });
-            else setOutcome({ tone: "error", text: `Started an empty track. ${refusalProse(result.observeError)}` });
-          },
-          onError: failed,
-        },
-      ),
+      // `mutateAsync` and a handler pair rather than per-call callbacks: the
+      // region remounts with the frame, and a per-call callback does not run
+      // once its component is gone. Both setters are the page's.
+      start.mutateAsync({ sourceId, labelClass: candidate.labelClass, occurrenceId: occurrence.id, annotationId }).then((result) => {
+        onFocus({ trackId: result.track.id, position: occurrence.position, passed: 0 });
+        if (result.observeError === null) setOutcome({ tone: "done", text: `Started a track at ${frameWord(occurrence.position)}` });
+        else setOutcome({ tone: "error", text: `Started an empty track. ${refusalProse(result.observeError)}` });
+      }, failed),
     );
   }
 
@@ -193,27 +195,30 @@ export function TrackRegion(props: TrackRegionProps): JSX.Element {
           candidateOn={candidateOn}
           onObserve={(occurrence) =>
             withStored((annotationId) =>
-              observe.mutate(
-                { trackId: focused.id, occurrenceId: occurrence.id, annotationId },
-                {
-                  onSuccess: () => setOutcome({ tone: "done", text: `Added at ${frameWord(occurrence.position)}` }),
-                  onError: failed,
-                },
-              ),
+              observe
+                .mutateAsync({ trackId: focused.id, occurrenceId: occurrence.id, annotationId })
+                .then(() => setOutcome({ tone: "done", text: `Added at ${frameWord(occurrence.position)}` }), failed),
             )
           }
           onUnobserve={(occurrence) => {
             setOutcome(null);
-            unobserve.mutate(
-              { trackId: focused.id, occurrenceId: occurrence.id },
-              {
-                onSuccess: () =>
-                  setOutcome({ tone: "done", text: `Removed from the track at ${frameWord(occurrence.position)} — the object stays` }),
-                onError: failed,
-              },
-            );
+            unobserve
+              .mutateAsync({ trackId: focused.id, occurrenceId: occurrence.id })
+              .then(
+                () => setOutcome({ tone: "done", text: `Removed from the track at ${frameWord(occurrence.position)} — the object stays` }),
+                failed,
+              );
           }}
         />
+      )}
+
+      {props.readFailure !== null && (
+        <p className="px-2 text-xs text-destructive" role="alert" data-testid="track-read-stale">
+          {refusalProse(props.readFailure.error)}{" "}
+          <button type="button" className="underline underline-offset-2" onClick={props.readFailure.retry}>
+            Try again
+          </button>
+        </p>
       )}
 
       {outcome !== null && (
@@ -285,7 +290,7 @@ function FocusedTrack({
 
   return (
     <div className="flex flex-col gap-1.5 rounded-md bg-muted/50 px-2 py-2" data-testid="track-focus">
-      <p className="text-xs text-muted-foreground" data-testid="track-status">
+      <p className="text-xs text-muted-foreground" data-testid="track-status" role={status.isError ? "alert" : undefined}>
         {status.data !== undefined
           ? trackStatusLine(status.data)
           : status.isError

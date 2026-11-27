@@ -336,7 +336,8 @@ takes its own state with it.
 follows one object through the frame occurrences of one video or image-sequence source, so the
 region renders only when the frame has a source and that source has occurrences; a folder's
 frame, a scan and an upload with no source have none, and ask nothing about tracks. A read that
-fails says so in the region's place, with *Try again*. Header — the word `Tracks`, the count, and a
+fails says so in the region's place, with *Try again*; a later reread that fails says so under the
+tracks it still shows. Header — the word `Tracks`, the count, and a
 `+` that starts a track from the selected object; then one row per track of the source in creation
 order, inside a scroller capped at about four rows: swatch, the track's name (its class and its
 imported id, else `#n` in creation order — a track has no name of its own), `here` when it observes
@@ -360,8 +361,9 @@ position last stepped to is what tells the two apart.
 selected drawn object at this frame, and *Remove from track* takes the track's observation here away
 — the object stays, as the kernel keeps it. The `+` creates a track of the object's class and
 observes the object with it; a refused observe leaves the new track listed, empty, and says so.
-Each saves first, so an object drawn a moment ago is stored before a track names it, and a refused
-save stops there with its own notice. Where this frame is several positions of its source, a write
+Adding and starting save first, so an object drawn a moment ago is stored before a track names it,
+and a refused save stops there with its own notice; removing names only the occurrence and needs no
+save. What a write came to is held above the frame, so one that lands after a step is still said. Where this frame is several positions of its source, a write
 asks which (`At frame 4`). Every write is gated on the frame declaring `annotate` and is otherwise
 withheld with its reason: `Viewing only`, `Select one drawn object to add it`, `That object is
 already on car 7`, `The track already follows an object on this frame`. An object of another class

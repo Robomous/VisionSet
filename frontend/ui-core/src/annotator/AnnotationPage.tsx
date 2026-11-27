@@ -183,7 +183,7 @@ import { refusalProse } from "../data/refusals";
 import { Badge, Button, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger, HoverCard, HoverCardContent, HoverCardTrigger, Kbd, Tooltip, TooltipContent, TooltipTrigger, cn } from "@robomous/ui-core";
 import { EmptyState, ErrorState, LoadingState } from "../patterns/AsyncStates";
 import { AnnotatorPanel, type TrackMark } from "./AnnotatorPanel";
-import { TrackRegion, type TrackCandidate, type TrackFocus } from "./TrackRegion";
+import { TrackRegion, type TrackCandidate, type TrackFocus, type TrackOutcome } from "./TrackRegion";
 import { observationOf, trackName, useSourceOccurrences, useSourceTracks } from "./trackQueries";
 import { GeometryIcon } from "./GeometryIcon";
 import { keepCanvasFocus } from "./keepCanvasFocus";
@@ -644,6 +644,7 @@ function JobScreen({
    * that asked for the step is remounted with the workspace.
    */
   const [trackFocus, setTrackFocus] = useState<TrackFocus | null>(null);
+  const [trackOutcome, setTrackOutcome] = useState<TrackOutcome | null>(null);
   /**
    * Every route to a drawing class goes through here — the panel's list, the tool
    * strip, a digit hotkey and the canvas's own `activate-class`.
@@ -736,6 +737,8 @@ function JobScreen({
       onNavigate={setChosen}
       trackFocus={trackFocus}
       onTrackFocus={setTrackFocus}
+      trackOutcome={trackOutcome}
+      onTrackOutcome={setTrackOutcome}
       {...(onConfigureInference === undefined ? {} : { onConfigureInference })}
       {...(onOpenGallery === undefined
         ? {}
@@ -830,6 +833,8 @@ interface WorkspaceProps {
   /** `JobScreen`'s, so a step along a track survives the remount it causes. */
   readonly trackFocus: TrackFocus | null;
   readonly onTrackFocus: (focus: TrackFocus | null) => void;
+  readonly trackOutcome: TrackOutcome | null;
+  readonly onTrackOutcome: (outcome: TrackOutcome | null) => void;
   readonly onOpenGallery?: () => void;
   /** Where to set up a model connection, if the host has such a screen. */
   readonly onConfigureInference?: () => void;
@@ -885,6 +890,8 @@ function Workspace({
   onNavigate,
   trackFocus,
   onTrackFocus,
+  trackOutcome,
+  onTrackOutcome,
   onOpenGallery,
   onConfigureInference,
 }: WorkspaceProps): JSX.Element {
@@ -3262,6 +3269,19 @@ function Workspace({
                     focus={trackFocus}
                     onFocus={onTrackFocus}
                     colorOf={(labelClass) => classColor(classNamed(store.document, labelClass), labelClass)}
+                    outcome={trackOutcome}
+                    onOutcome={onTrackOutcome}
+                    readFailure={
+                      occurrences.isError || sourceTracks.isError
+                        ? {
+                            error: occurrences.error ?? sourceTracks.error,
+                            retry: () => {
+                              void occurrences.refetch();
+                              void sourceTracks.refetch();
+                            },
+                          }
+                        : null
+                    }
                   />
                 ),
               })}
