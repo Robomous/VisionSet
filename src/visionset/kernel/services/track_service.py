@@ -225,6 +225,7 @@ class TrackService:
             _require_external_id_free(uow, track.source_id, track.external_id)
             uow.tracks.add(track)
             seen: set[UUID] = set()
+            kind = None
             for observation in observations:
                 occurrence = self._require_occurrence(uow, track, observation.occurrence_id)
                 annotation = self._annotations.require_annotation(uow, observation.annotation_id)
@@ -248,7 +249,14 @@ class TrackService:
                         f"{track.id} is {track.label_class!r}"
                     )
                 require_trackable(uow, annotation)
-                require_track_geometry(uow, track.id, annotation.geometry.type)
+                here = track_geometry_kind(annotation.geometry.type)
+                kind = here if kind is None else kind
+                if here is not kind:
+                    raise TrackGeometryMismatch(
+                        f"track {track.id} follows {kind.value} labels, and annotation "
+                        f"{annotation.id} is a {annotation.geometry.type.value}; a track never "
+                        f"mixes geometry kinds"
+                    )
                 if occurrence.id in seen:
                     raise OccurrenceAlreadyObserved(
                         f"track {track.id} observes occurrence {occurrence.id} twice"
@@ -669,7 +677,9 @@ class TrackService:
 
 def _detail(uow: UnitOfWork, track: Track) -> TrackDetail:
     frames = []
-    for observation in uow.track_observations.list(track.id):
+    observations = uow.track_observations.list(track.id)
+    first = None if not observations else uow.annotations.get(observations[0].annotation_id)
+    for observation in observations:
         occurrence = uow.frame_occurrences.get(observation.occurrence_id)
         if occurrence is None:
             raise WorkspaceCorrupt(
@@ -686,7 +696,11 @@ def _detail(uow: UnitOfWork, track: Track) -> TrackDetail:
             )
         )
     frames.sort(key=lambda frame: frame.position)
-    return TrackDetail(track=track, observations=tuple(frames))
+    return TrackDetail(
+        track=track,
+        observations=tuple(frames),
+        geometry_kind=None if first is None else track_geometry_kind(first.geometry.type),
+    )
 
 
 def _require_same_geometry(uow: UnitOfWork, track: Track, absorbed: Track) -> None:

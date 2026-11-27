@@ -76,12 +76,17 @@ class ObservedLabel(BaseModel):
 
 
 class TrackDetail(BaseModel):
-    """A track and its observations, in source position order."""
+    """A track and its observations, in source position order.
+
+    ``geometry_kind`` is the kind every observation shares, read off the first
+    one (:func:`track_geometry_kind`), and ``None`` while it observes nothing.
+    """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     track: Track
     observations: tuple[ObservedFrame, ...]
+    geometry_kind: GeometryType | None = None
 
 
 class TrackStatus(BaseModel):

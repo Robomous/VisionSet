@@ -381,7 +381,9 @@ is otherwise withheld with its reason: `Viewing only`, the frame's own `withheld
 prose from the one vocabulary (`ASSET_NOT_JUDGED`: confirm or edit the model's labels first),
 `Select one drawn object to add it`, `That object is already on car 7`, `The track already follows
 an object on this frame`. An object of another class is listed-and-refused, as the reassignment
-menu refuses a geometry: `This track follows “car”`. What only the kernel can know — an asset
+menu refuses a geometry: `This track follows “car”`. A shape of another kind than the one the
+track reads as `geometry_kind` (a rotated box counting as a box) is refused the same way, with the
+kernel's own `TRACK_GEOMETRY_MISMATCH` wording. What only the kernel can know — an asset
 another job carries, a declaration gone stale — is its refusal, rendered under the region as prose;
 what landed is said there too (`Added at frame 4`). Merging, splitting, changing a
 track's class and deleting a track are not offered in the editor.

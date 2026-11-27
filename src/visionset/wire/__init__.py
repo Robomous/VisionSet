@@ -831,6 +831,7 @@ def track(value: TrackDetail) -> shapes.Track:
         "label_class": value.track.label_class,
         "external_id": value.track.external_id,
         "observations": [track_observation(frame) for frame in value.observations],
+        "geometry_kind": None if value.geometry_kind is None else value.geometry_kind.value,
     }
 
 

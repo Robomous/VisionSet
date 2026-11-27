@@ -8066,6 +8066,16 @@
             ],
             "title": "External Id"
           },
+          "geometry_kind": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/GeometryType"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "id": {
             "format": "uuid",
             "title": "Id",

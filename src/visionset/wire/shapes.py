@@ -488,6 +488,7 @@ class Track(TypedDict):
     label_class: str
     external_id: str | None
     observations: list[TrackObservation]
+    geometry_kind: str | None
 
 
 @closed

@@ -7909,6 +7909,7 @@ export interface components {
         TrackOut: {
             /** External Id */
             external_id: string | null;
+            geometry_kind?: components["schemas"]["GeometryType"] | null;
             /**
              * Id
              * Format: uuid

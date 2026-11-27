@@ -495,7 +495,8 @@ everything above - schema validation, provenance, progress - is untouched by tra
   Every observation of one track has the same geometry type, a rotated box counting as a box, so
   observing, editing or merging into a mix of boxes and polygons, or of anything else, is
   `TRACK_GEOMETRY_MISMATCH`; a track that mixed types before the rule is judged only on a write
-  that adds an observation or changes one's type. A cuboid is
+  that adds an observation or changes one's type. A track read says which kind it follows as
+  `geometry_kind` (`bbox` for boxes and rotated boxes alike), `null` while it observes nothing. A cuboid is
   read in its scan's own frame, the one its point-cloud directory source declares, and no
   observation carries a pose or calibration of its own. `external_id` is an imported
   identity, unique per source (`TRACK_EXTERNAL_ID_TAKEN`), and neither it nor the class may be

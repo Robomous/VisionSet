@@ -15,6 +15,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { TooltipProvider } from "@robomous/ui-core";
 import { AnnotationPage } from "./AnnotationPage";
+import { trackGeometryKind } from "./TrackRegion";
+import { REFUSAL_PROSE } from "../data/refusals";
 import { renderWithData } from "../testing/dataHarness";
 import { stubResizeObserver } from "../testing/resizeObserver.js";
 import { assetActions, assetWithheld, batchActions, jobActions } from "../testing/wire.fixtures.js";
@@ -96,7 +98,7 @@ function observationAt(occurrenceId: string, annotationId: string) {
 interface World {
   sourceId: string | null;
   occurrences: (typeof OCCURRENCES)[number][];
-  tracks: { id: string; source_id: string; label_class: string; external_id: string | null; observations: ReturnType<typeof observation>[] }[];
+  tracks: { id: string; source_id: string; label_class: string; external_id: string | null; geometry_kind?: string | null; observations: ReturnType<typeof observation>[] }[];
   readOnly: boolean;
   /** The first frame holds a model's labels nobody has judged. */
   preLabeled: boolean;
@@ -722,6 +724,22 @@ describe("writing", () => {
       { method: "POST", path: `/jobs/${JOB}/tracks/track-1/observations`, body: { occurrence_id: "occ-4", annotation_id: "ann-2" } },
     ]);
     await waitFor(() => expect(screen.getByTestId("object-track-1")).not.toBeNull());
+  });
+
+  it("withholds adding a shape of another kind than the track's, with the kernel's reason", async () => {
+    world.tracks[0] = { ...world.tracks[0]!, geometry_kind: "polygon" };
+    await open();
+    await userEvent.click(await screen.findByTestId("object-select-1"));
+    await focusTrack("track-1");
+    expect(screen.getByTestId("track-observe").getAttribute("data-reason")).toBe(REFUSAL_PROSE.TRACK_GEOMETRY_MISMATCH);
+    fireEvent.click(screen.getByTestId("track-observe"));
+    expect(writes()).toEqual([]);
+  });
+
+  it("counts a rotated box as a box when judging a track's kind", () => {
+    expect(trackGeometryKind("obb")).toBe("bbox");
+    expect(trackGeometryKind("bbox")).toBe("bbox");
+    expect(trackGeometryKind("polygon")).toBe("polygon");
   });
 
   it("withholds adding an object of another class, naming the track's", async () => {
