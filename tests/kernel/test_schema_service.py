@@ -449,7 +449,7 @@ def test_an_unsupported_geometry_is_reported_as_an_invalid_schema(tmp_path: Path
     project = projects.create("signs")
     with pytest.raises(InvalidSchema):
         schemas.create_version(
-            project.id, [LabelClass(name="road", geometries=(GeometryType.MASK,))]
+            project.id, [LabelClass(name="face", geometries=(GeometryType.KEYPOINTS,))]
         )
     workspace.close()
 

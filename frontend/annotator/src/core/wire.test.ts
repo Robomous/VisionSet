@@ -135,7 +135,7 @@ describe("the divergences this file exists to keep closed", () => {
     expect(() => parseAnnotation(flattened)).toThrow(/does not declare/);
   });
 
-  it.each(["keypoints", "mask"])(
+  it.each(["keypoints"])(
     "refuses %s as declared-but-unimplemented rather than as unknown",
     (type) => {
       // The distinction is the point: the remedy for one is to wait for a
@@ -175,7 +175,7 @@ describe("a 3D polyline, carried outside the image scene", () => {
   it("is told apart from the drawn variants", () => {
     const parsed = parseAnnotations(fixture.annotations);
     const carried = parsed.filter((one) => !isDrawnAnnotation(one));
-    expect(carried.map((one) => one.geometry.type)).toEqual(["polyline_3d", "cuboid_3d"]);
+    expect(carried.map((one) => one.geometry.type)).toEqual(["polyline_3d", "cuboid_3d", "mask"]);
   });
 });
 
@@ -197,6 +197,32 @@ describe("a 3D cuboid, carried outside the image scene", () => {
     expect(() => parseStoredGeometry(noYaw)).toThrow(/missing yaw/);
     expect(() => parseStoredGeometry({ ...BOX, yaw: "1.2" })).toThrow(/geometry\.yaw/);
     expect(() => parseStoredGeometry({ ...BOX, visibility: [2] })).toThrow(/does not declare/);
+  });
+});
+
+describe("a raster mask, carried outside the image scene", () => {
+  const MASK = { type: "mask", size: [4, 6], counts: "0>`0" };
+
+  it("parses the fixture's mask and goes back out byte for byte", () => {
+    const parsed = parseAnnotations(fixture.annotations).find((one) => one.geometry.type === "mask");
+    if (parsed === undefined) throw new Error("the fixture carries no mask");
+    expect(isDrawnAnnotation(parsed)).toBe(false);
+    const stored = fixture.annotations.find((one) => (one as { id: string }).id === parsed.id) as {
+      geometry: unknown;
+    };
+    expect(parsed.geometry).toStrictEqual(stored.geometry);
+  });
+
+  it("is refused by the scene's own parser, which draws pixels", () => {
+    expect(() => parseGeometry(MASK)).toThrow(/"mask" is carried untouched/);
+  });
+
+  it("refuses a malformed size, a missing counts and an undeclared key", () => {
+    expect(() => parseStoredGeometry({ ...MASK, size: [4] })).toThrow(/\[height, width\] pair/);
+    expect(() => parseStoredGeometry({ ...MASK, size: [0, 6] })).toThrow(/geometry\.size\[0\]/);
+    expect(() => parseStoredGeometry({ type: "mask", size: [4, 6] })).toThrow(/missing counts/);
+    expect(() => parseStoredGeometry({ ...MASK, counts: 1 })).toThrow(/geometry\.counts/);
+    expect(() => parseStoredGeometry({ ...MASK, area: 1 })).toThrow(/does not declare/);
   });
 });
 

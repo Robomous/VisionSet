@@ -25,11 +25,11 @@
  * Two vocabularies, one union — the kernel's own split, kept: `GeometryType`
  * names nine geometries, because that is what a `LabelClass` declares and what
  * the API publishes; `Geometry` has five variants, because that is what this
- * engine draws. Naming `mask` or `keypoints` is legal in a schema and refused at
+ * engine draws. Naming `keypoints` is legal in a schema and refused at
  * the annotation, by the kernel (`UNSUPPORTED_GEOMETRY`) and by `parseGeometry`
- * here. See `docs/content/schemas.md`.
+ * here. A `mask` is carried, never drawn. See `docs/content/schemas.md`.
  *
- * Two more variants, `polyline_3d` and `cuboid_3d`, never enter that scene:
+ * Three more variants, `polyline_3d`, `cuboid_3d` and `mask`, never enter that scene:
  * `StoredGeometry` admits them, `parseAnnotation` parses them, and
  * `documentFromWire` leaves them out, so a job holding one loads and the image
  * editor never sends them back changed or deleted. On an image a host draws them
@@ -76,6 +76,7 @@ export const IMPLEMENTED_GEOMETRY_TYPES = [
   "bbox",
   "classification_tag",
   "cuboid_3d",
+  "mask",
   "obb",
   "polygon",
   "polyline",
@@ -242,6 +243,17 @@ export interface Calibration {
   readonly distortion: PlumbBobDistortion | null;
 }
 
+/**
+ * A raster mask: `size` is `[height, width]` in asset pixels and `counts` the
+ * COCO compressed RLE string, kept opaque. This engine neither draws nor edits
+ * it; it is carried past the scene and sent back unchanged.
+ */
+export interface MaskGeometry {
+  readonly type: "mask";
+  readonly size: readonly [number, number];
+  readonly counts: string;
+}
+
 /** Every shape an annotation can carry, discriminated on `type`. */
 export type Geometry =
   | BboxGeometry
@@ -251,7 +263,7 @@ export type Geometry =
   | ClassificationGeometry;
 
 /** Every geometry the wire can carry, drawn or not. */
-export type StoredGeometry = Geometry | Polyline3DGeometry | Cuboid3DGeometry;
+export type StoredGeometry = Geometry | Polyline3DGeometry | Cuboid3DGeometry | MaskGeometry;
 
 /** One stored annotation as the wire sends it, whether or not the scene can hold it. */
 export type StoredAnnotation = Omit<Annotation, "geometry"> & {

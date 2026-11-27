@@ -64,6 +64,7 @@ from visionset.kernel.domain import (
     Manifest,
     ManifestAnnotation,
     ManifestAsset,
+    MaskGeometry,
     ObbGeometry,
     PolygonGeometry,
     Polyline3DGeometry,
@@ -290,6 +291,7 @@ def _annotation(
             | PolylineGeometry()
             | Polyline3DGeometry()
             | Cuboid3DGeometry()
+            | MaskGeometry()
         ):
             return None
         case _:

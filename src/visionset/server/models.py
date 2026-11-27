@@ -120,6 +120,7 @@ from visionset.kernel.domain import (
     ItemFailure,
     JobAction,
     LabelClass,
+    MaskGeometry,
     MembershipChange,
     Modality,
     ModalityCompatibility,
@@ -2358,6 +2359,34 @@ class Cuboid3DBody(BaseModel):
         )
 
 
+class MaskBody(BaseModel):
+    """A binary pixel mask over the whole asset, as COCO compressed RLE.
+
+    `size` is `[height, width]` in pixels and must equal the asset's pixel
+    dimensions (422 `ANNOTATION_GEOMETRY_OUT_OF_BOUNDS` otherwise); each side is at most
+    32768 and the area at most 100000000 pixels. `counts` is the COCO compressed
+    RLE string — runs over the pixels in column-major order, first run
+    background, `1` foreground — at most 1048576 characters, and its runs must
+    sum to exactly `height * width`. A malformed or oversized mask is 422
+    `VALIDATION_ERROR`. A stored mask is canonical, so a response may spell
+    `counts` differently from the request and still hold the same pixels. An
+    all-background mask is valid. Uncompressed run lists are not accepted here.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    type: Literal[GeometryType.MASK]
+    size: tuple[Annotated[int, Field(strict=True)], Annotated[int, Field(strict=True)]]
+    counts: str
+
+    def to_domain(self) -> MaskGeometry:
+        return MaskGeometry(size=self.size, counts=self.counts)
+
+    @classmethod
+    def of(cls, geometry: MaskGeometry) -> Self:
+        return cls(type=GeometryType.MASK, size=geometry.size, counts=geometry.counts)
+
+
 class ClassificationBody(BaseModel):
     """A whole-asset tag: a class with no coordinates."""
 
@@ -2380,6 +2409,7 @@ GeometryBody = Annotated[
     | PolylineBody
     | Polyline3DBody
     | Cuboid3DBody
+    | MaskBody
     | ClassificationBody,
     Field(discriminator="type"),
 ]
@@ -2394,6 +2424,7 @@ def geometry_of(
     | PolylineBody
     | Polyline3DBody
     | Cuboid3DBody
+    | MaskBody
     | ClassificationBody
 ):
     """The wire form of a stored geometry, matched on the same discriminator."""
@@ -2410,6 +2441,8 @@ def geometry_of(
             return Polyline3DBody.of(geometry)
         case Cuboid3DGeometry():
             return Cuboid3DBody.of(geometry)
+        case MaskGeometry():
+            return MaskBody.of(geometry)
         case ClassificationGeometry():
             return ClassificationBody.of(geometry)
         case _:

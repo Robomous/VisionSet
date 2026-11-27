@@ -163,7 +163,7 @@ def test_the_hash_is_a_sha256_hex_digest_that_moves_with_the_content() -> None:
 
 def test_every_step_declares_what_it_transforms_and_only_rot90_excludes_polylines() -> None:
     three_d = {GeometryType.CUBOID_3D, GeometryType.POLYLINE_3D}
-    assert RESIZE.supported_geometries == frozenset(GeometryType) - three_d
+    assert RESIZE.supported_geometries == frozenset(GeometryType) - three_d - {GeometryType.MASK}
     assert RESIZE.name == "resize"
     for op in AugmentOp:
         step = AugmentStep(op=op)

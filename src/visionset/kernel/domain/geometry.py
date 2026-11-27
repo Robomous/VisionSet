@@ -11,8 +11,8 @@ Adding a geometry (keypoints, mask, the 3D variants) means defining a model whos
 ``type`` is the matching ``GeometryType`` member and appending it to the
 ``Geometry`` union. Nothing about the discriminator changes shape and no existing
 payload stops parsing, because geometry rides in the annotation's JSON column and
-needs no migration. ``GeometryType`` names nine geometries; seven are implemented
-here — the rest are roadmap, and a payload naming one is rejected until its model
+needs no migration. ``GeometryType`` names nine geometries; eight are implemented
+here — ``keypoints`` is roadmap, and a payload naming it is rejected until its model
 exists.
 """
 
@@ -35,6 +35,15 @@ from pydantic import (
 from pydantic.json_schema import JsonDict
 from pydantic_core import PydanticCustomError
 
+from visionset.kernel.domain.rle import (
+    MAX_MASK_COUNTS_LENGTH,
+    MAX_MASK_SIDE,
+    MaskEncodingError,
+    decode_counts,
+    encode_counts,
+    runs_area,
+    runs_bounds,
+)
 from visionset.kernel.domain.schema import GeometryType
 
 
@@ -444,6 +453,84 @@ class Cuboid3DGeometry(BaseModel):
     yaw: float = Field(ge=-pi, le=pi)
 
 
+class MaskGeometry(BaseModel):
+    """A binary pixel mask over the whole asset, run-length encoded inline.
+
+    ``size`` is ``(height, width)`` in pixels — COCO's order — and must equal
+    the asset's pixel dimensions, so a mask has no origin or scale of its own:
+    pixel ``(x, y)`` of the mask is pixel ``(x, y)`` of the asset. Each side is
+    between 1 and :data:`~visionset.kernel.domain.rle.MAX_MASK_SIDE` and the
+    area at most :data:`~visionset.kernel.domain.rle.MAX_MASK_PIXELS`.
+
+    ``counts`` is COCO's compressed RLE string, its canonical form at most
+    :data:`~visionset.kernel.domain.rle.MAX_MASK_COUNTS_LENGTH` characters,
+    over the pixels in column-major order, first run background, ``1`` foreground; see
+    :mod:`~visionset.kernel.domain.rle`. It is validated against ``size`` on
+    construction — the runs must sum to exactly ``height * width`` — and
+    re-encoded canonically, so equal masks always carry equal ``counts`` and a
+    read may spell a mask differently from a non-canonical write. An all
+    background mask is valid, and holes and disconnected regions are simply
+    pixels: nothing about a mask's topology is lost.
+
+    One mask is one annotation of one class. A semantic class-id map becomes
+    one mask per class present; see
+    :func:`~visionset.kernel.domain.raster_mask.split_class_map`.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    type: Literal[GeometryType.MASK] = GeometryType.MASK
+    size: tuple[
+        Annotated[int, Field(strict=True, ge=1, le=MAX_MASK_SIDE)],
+        Annotated[int, Field(strict=True, ge=1, le=MAX_MASK_SIDE)],
+    ]
+    counts: str = Field(min_length=1, max_length=MAX_MASK_COUNTS_LENGTH)
+
+    @model_validator(mode="after")
+    def _canonical(self) -> MaskGeometry:
+        height, width = self.size
+        canonical = encode_counts(decode_counts(self.counts, height, width))
+        # Merging zero-length runs can lengthen the string; a stored mask must reload.
+        if len(canonical) > MAX_MASK_COUNTS_LENGTH:
+            raise MaskEncodingError(
+                f"the canonical counts of this mask are {len(canonical)} characters, over the "
+                f"{MAX_MASK_COUNTS_LENGTH}-character limit"
+            )
+        if canonical != self.counts:
+            object.__setattr__(self, "counts", canonical)
+        return self
+
+
+def mask_runs(geometry: MaskGeometry) -> tuple[int, ...]:
+    """The mask's canonical runs, column-major, first run background."""
+    height, width = geometry.size
+    return decode_counts(geometry.counts, height, width)
+
+
+def mask_area(geometry: MaskGeometry) -> int:
+    """How many foreground pixels the mask holds."""
+    return runs_area(mask_runs(geometry))
+
+
+def mask_enclosing_box(geometry: MaskGeometry) -> BboxGeometry | None:
+    """The smallest pixel-aligned box holding every foreground pixel; ``None`` when empty.
+
+    Lossy: the box says nothing about which pixels inside it are foreground.
+    """
+    bounds = runs_bounds(mask_runs(geometry), geometry.size[0])
+    if bounds is None:
+        return None
+    x0, y0, x1, y1 = bounds
+    return BboxGeometry(x=float(x0), y=float(y0), width=float(x1 - x0), height=float(y1 - y0))
+
+
+def mask_fits_asset(geometry: MaskGeometry, *, width: int | None, height: int | None) -> bool:
+    """Whether the mask's size is the asset's; an asset with no recorded size admits any."""
+    if width is None or height is None:
+        return True
+    return geometry.size == (height, width)
+
+
 class ClassificationGeometry(BaseModel):
     """A whole-asset tag: the annotation carries a class but no coordinates.
 
@@ -464,14 +551,16 @@ Geometry = Annotated[
     | PolylineGeometry
     | Polyline3DGeometry
     | Cuboid3DGeometry
+    | MaskGeometry
     | ClassificationGeometry,
     Field(discriminator="type"),
 ]
 """Every geometry an Annotation can carry.
 
 Coordinates are ALWAYS floats in the asset's native reference frame — pixels for
-a 2D variant; metres for a 3D variant, in the camera's sensor frame on an image and
-in the source's declared frame on a point-cloud scan — and are NEVER normalized.
+a 2D variant, and a mask's pixel grid is the asset's own; metres for a 3D variant,
+in the camera's sensor frame on an image and in the source's declared frame on a
+point-cloud scan — and are NEVER normalized.
 Normalization to a [0, 1] range, or to any other convention a format demands, is the
 exporter's concern and happens at the boundary, never in the domain.
 """
@@ -496,12 +585,15 @@ class _Frame:
 
 
 def geometry_intersects_asset(geometry: Geometry, *, width: int | None, height: int | None) -> bool:
+    """Whether the geometry lands on the asset's frame; a mask's size must be the frame's."""
     if width is None or height is None or not _coordinates_are_finite(geometry):
         return True
     frame = _Frame(width=float(width), height=float(height))
     match geometry:
         case ClassificationGeometry() | Polyline3DGeometry() | Cuboid3DGeometry():
             return True
+        case MaskGeometry():
+            return mask_fits_asset(geometry, width=width, height=height)
         case BboxGeometry():
             return _bbox_intersects_frame(geometry, frame)
         case ObbGeometry():
@@ -516,7 +608,7 @@ def geometry_intersects_asset(geometry: Geometry, *, width: int | None, height: 
 
 def _coordinates_are_finite(geometry: Geometry) -> bool:
     match geometry:
-        case ClassificationGeometry():
+        case ClassificationGeometry() | MaskGeometry():
             return True
         case BboxGeometry():
             return all(

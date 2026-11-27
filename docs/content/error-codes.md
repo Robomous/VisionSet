@@ -21,7 +21,7 @@ and `INTERNAL_ERROR` - are not raised by the kernel and are described in [api.md
 | Code | Status | Meaning | Remedy | Retry with |
 | --- | --- | --- | --- | --- |
 | `ANNOTATION_ALREADY_OBSERVED` | 409 | Another observation already names that annotation. |  |  |
-| `ANNOTATION_GEOMETRY_OUT_OF_BOUNDS` | 422 | A spatial annotation has no overlap with its measured asset. |  |  |
+| `ANNOTATION_GEOMETRY_OUT_OF_BOUNDS` | 422 | A spatial annotation has no overlap with its measured asset, or a mask is not its size. |  |  |
 | `ANNOTATION_NOT_AT_OCCURRENCE` | 422 | The annotation sits on an asset other than the one the occurrence decoded to. |  |  |
 | `ANNOTATION_NOT_FOUND` | 404 | No annotation with that id lives in this workspace. |  |  |
 | `ANNOTATION_NOT_FROM_MODEL` | 422 | A label without model provenance was offered to the unreviewed entry path. |  |  |

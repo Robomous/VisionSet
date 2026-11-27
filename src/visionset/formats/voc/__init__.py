@@ -55,6 +55,7 @@ from visionset.kernel.domain import (
     Manifest,
     ManifestAnnotation,
     ManifestAsset,
+    MaskGeometry,
     ObbGeometry,
     PolygonGeometry,
     Polyline3DGeometry,
@@ -287,6 +288,7 @@ def _as_box(
             | PolylineGeometry()
             | Polyline3DGeometry()
             | Cuboid3DGeometry()
+            | MaskGeometry()
         ):
             # No location to write, or one VOC's `<object>` cannot hold.
             return None

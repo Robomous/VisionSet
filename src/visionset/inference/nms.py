@@ -22,13 +22,14 @@ cannot be constructed without weights.
 
 Every shape participates, through its extent. A polygon or a polyline is compared
 by the axis-aligned box around its points — ``extent_of`` — a rotated box by the
-axis-aligned box around its corners, and a box by itself,
+axis-aligned box around its corners, a raster mask by the box around its
+foreground pixels, and a box by itself,
 so a text-prompted segmenter that answers many masks from one call is suppressed
 exactly as a detector is, and a box and a mask over one object are one answer.
 On duplicates of one instance, which is the failure mode this was measured
 against, extent IoU is the true IoU; on two thin shapes crossing it is exactly as
 wrong as box NMS already is for boxes, and no worse. A shape with no extent — a
-degenerate path, a classification tag — passes through untouched, because "I
+degenerate path, an empty mask, a classification tag — passes through untouched, because "I
 cannot compare these" must never read as "these were duplicates".
 """
 
@@ -42,11 +43,13 @@ from visionset.kernel.domain import (
     ClassificationGeometry,
     Cuboid3DGeometry,
     Geometry,
+    MaskGeometry,
     ObbGeometry,
     PolygonGeometry,
     Polyline3DGeometry,
     PolylineGeometry,
     PredictedRegion,
+    mask_enclosing_box,
     obb_enclosing_box,
 )
 
@@ -85,7 +88,7 @@ def extent_of(geometry: Geometry) -> BboxGeometry | None:
 
     A box is its own extent; a polygon or polyline is the box around its points.
     A zero-width or zero-height path — a vertical polyline — has no box
-    ``BboxGeometry`` will construct and answers ``None``, as does a
+    ``BboxGeometry`` will construct and answers ``None``, as does an empty mask, a
     classification tag, which occupies nothing, and a 3D label, which has no
     pixel extent without projecting it.
     """
@@ -94,6 +97,8 @@ def extent_of(geometry: Geometry) -> BboxGeometry | None:
             return geometry
         case ObbGeometry():
             return obb_enclosing_box(geometry)
+        case MaskGeometry():
+            return mask_enclosing_box(geometry)
         case ClassificationGeometry() | Polyline3DGeometry() | Cuboid3DGeometry():
             return None
         case PolygonGeometry() | PolylineGeometry():

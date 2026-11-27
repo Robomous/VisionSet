@@ -390,6 +390,7 @@ function GeometryGroup({
     <ToggleGroup
       type="multiple"
       variant="outline"
+      className="max-w-full flex-wrap"
       aria-label={category}
       disabled={disabled}
       value={inGroup}

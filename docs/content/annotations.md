@@ -244,6 +244,58 @@ axis-aligned one silently.
 it may hang past the edges, but one whose rectangle does not meet the frame at all is refused
 like any other label wholly off its asset, even when its enclosing box would reach in.
 
+## A mask is run-length encoded pixels over the whole asset
+
+`mask` (#1162) is a binary raster over the asset's full pixel grid, stored inline as
+[COCO](https://cocodataset.org/#format-data) compressed run-length encoding. It carries three
+fields:
+
+```json
+{ "type": "mask", "size": [height, width], "counts": "<string>" }
+```
+
+| Field | Meaning |
+| --- | --- |
+| `size` | `[height, width]` in pixels, COCO's order. It must equal the asset's pixel size; any other size is refused with `ANNOTATION_GEOMETRY_OUT_OF_BOUNDS` (422) |
+| `counts` | the compressed RLE string |
+
+**Bounds.** Each side is 1 to 32768, the area is at most 100,000,000 pixels, and `counts` is at
+most 1,048,576 characters. A mask outside them, or malformed, is refused - a 422
+`VALIDATION_ERROR` over REST, an input error over MCP.
+
+**The layout.** Pixels are read column-major: down the first column, then down the next, so pixel
+`(x, y)` is at index `x * height + y`. The string encodes alternating runs, the first counting
+background, then foreground (`1`), then background again; the first run is `0` when the mask
+starts with foreground. The runs must sum to exactly `height * width`. An all-background mask is
+valid.
+
+**Decoding is bounded by the declared size, not the string.** The string's length and each
+value's width are checked first, and a running total past `height * width` is refused the moment
+it passes it, so a short string claiming a huge area allocates nothing proportional to that area.
+
+**One mask, one spelling.** A mask is re-encoded when it is constructed, so equal masks always
+have equal `counts`, and a read may spell `counts` differently from the write that made it.
+Uncompressed run lists are never accepted on the wire; only an import adapter may read one, through
+the kernel's `canonical_runs`.
+
+**Holes and separate regions are just pixels** and survive exactly. The geometry stores runs only,
+never image bytes.
+
+**A mask is one instance of one class.** A semantic class-id map becomes one `mask` annotation per
+class present, and an index that is not a class - background, ignore, void - produces none.
+`split_class_map` does the split and `compose_class_map` the reverse; compose reports the pixels
+claimed by more than one class and keeps the lowest class id on them.
+
+**Converting it.** `rasterize_polygon` and `rasterize_rings` light the pixels whose centres fall
+inside the shape (even-odd), so sub-pixel detail is lost and a polygon wholly off the frame gives
+an empty mask. `trace_mask` goes the other way along pixel edges, on integer corners: it returns
+each 4-connected region's outer ring and its holes, and rasterizing the result gives the mask back
+exactly. A `polygon` has no holes, so keeping only the outer rings loses them.
+
+PNG class maps and COCO RLE import and export are not yet supported, and the annotator does not
+draw or edit masks yet. See [releases](releases.md#the-manifests-own-format-version) for the
+manifest and [pre-processing](preprocessing.md) for how a step treats one.
+
 ## A 3D polyline is read against a calibration
 
 `polyline_3d` is an open path of at least two `[x, y, z]` points, in order, in **metres in the
@@ -307,7 +359,7 @@ the frame's forward axis, and `yaw` turns it right-handed about up - counter-clo
 above. On `lidar_flu` that is KITTI's lidar convention, heading `(cos yaw, sin yaw, 0)`; on `lidar_rfu`
 it is `(-sin yaw, cos yaw, 0)`.
 
-A scan has no pixels, so a `bbox`, `obb`, `polygon` or `polyline` on one is refused with
+A scan has no pixels, so a `bbox`, `obb`, `polygon`, `polyline` or `mask` on one is refused with
 `INVALID_ANNOTATION` (422); a `classification_tag` is accepted.
 
 ## Provenance is the model's own rule, not the service's
@@ -537,14 +589,14 @@ job installs no Python and reads only what is committed. Regenerate with:
 uv run python scripts/export_wire_fixtures.py
 ```
 
-**Two vocabularies, one union - and the editor keeps both.** `GeometryType` names eight
+**Two vocabularies, one union - and the editor keeps both.** `GeometryType` names nine
 geometries because that is what a `LabelClass` declares (see [schemas](schemas.md)); `Geometry`
-has four variants because that is what an annotation can carry. So `parseGeometry` tells a
-`mask` apart from a typo: the first is a declared geometry with no model, refused in the
-kernel's own words (`UNSUPPORTED_GEOMETRY`), and the remedy is to wait for a variant rather than
-to fix the caller. `polyline` was the example here until #223 shipped its variant and #342 its
-tool - the remedy
-arriving, which is exactly what the split predicted would happen.
+has a variant for each the kernel implements, because that is what an annotation can carry. So
+`parseGeometry` tells `keypoints` apart from a typo: the first is a declared geometry with no
+model, refused in the kernel's own words (`UNSUPPORTED_GEOMETRY`), and the remedy is to wait for
+a variant rather than to fix the caller. `polyline` was the example here until #223 shipped its
+variant and #342 its tool, and `mask` until #1162 shipped its variant - the remedy arriving,
+which is exactly what the split predicted would happen.
 
 The parser is strict about unknown keys as well as missing ones. That is not fussiness: the editor
 hands back what it was given, so a key it silently dropped would be a field the kernel wrote and

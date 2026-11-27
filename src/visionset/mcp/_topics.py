@@ -278,6 +278,12 @@ asset's own pixels, never normalized. `type` selects the shape:
   and `yaw` in radians. Every size is above zero: `length` runs along the heading,
   `width` across it. `yaw` lies within `[-pi, pi]` and is refused outside it rather
   than wrapped. No `visibility`.
+- `mask`: a binary pixel mask over the whole asset. `size` is `[height, width]` and must
+  equal the asset's pixel size (else `ANNOTATION_GEOMETRY_OUT_OF_BOUNDS`); `counts` is
+  the COCO compressed RLE string over the pixels in column-major order, first run
+  background. The runs must sum to `height * width`; uncompressed run lists are not
+  accepted. Stored canonical, so a read may spell `counts` differently from the write.
+  One mask is one annotation of one class: a class-id map becomes one mask per class.
 - `classification_tag`: no coordinates.
 
 The 3D frame depends on the asset's modality; see the next two sections.
@@ -304,8 +310,8 @@ heading is `(-sin yaw, 0, cos yaw)`: +z at `0`, not the +x an image uses on the 
 
 A scan needs no calibration, and `set_calibration` on one is refused with
 `CALIBRATION_NOT_APPLICABLE`. A 3D label on a scan whose source declares no frame is
-`CALIBRATION_MISSING`. A scan has no pixels: `bbox`, `obb`, `polygon` and `polyline` on one
-are refused with `INVALID_ANNOTATION`; `classification_tag` is accepted.
+`CALIBRATION_MISSING`. A scan has no pixels: `bbox`, `obb`, `polygon`, `polyline` and
+`mask` on one are refused with `INVALID_ANNOTATION`; `classification_tag` is accepted.
 
 ## Polyline vertex visibility
 

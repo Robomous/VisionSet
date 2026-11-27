@@ -69,6 +69,14 @@ describe("StaticAnnotationOverlay", () => {
     expect(screen.getByTestId("preview-image").getAttribute("alt")).toBe("frame 1");
   });
 
+  it("draws nothing for a raster mask, which the engine only carries", () => {
+    const mask = annotation("mask", "vehicle", { type: "mask", size: [4, 6], counts: "0>`0" });
+    render(<StaticAnnotationOverlay width={640} height={480} src="blob:picture" alt="frame 1" annotations={[BOX, mask]} />);
+
+    expect(screen.queryByTestId("preview-shape-mask")).toBeNull();
+    expect(screen.getByTestId("preview-overlay").querySelectorAll("[data-testid^='preview-shape-']")).toHaveLength(1);
+  });
+
   it("colours a shape by the class palette: the declared colour, else the engine's derived hue", () => {
     render(
       <StaticAnnotationOverlay

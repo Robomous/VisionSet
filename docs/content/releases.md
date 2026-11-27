@@ -74,8 +74,8 @@ database's format and of the package version. A build writes the **lowest versio
 express the release**: **3** for a release of images with no 3D label, **4** for one that holds
 any, **5** for one that holds a point-cloud asset, **6** for one that holds an asset with a
 group label, **7** for one that holds an annotation a track observes, **8** for one that
-holds a rotated box (`obb`), and **9** for one that holds an asset of an image-sequence source or
-an observation whose timing is unknown.
+holds a rotated box (`obb`), **9** for one that holds an asset of an image-sequence source or
+an observation whose timing is unknown, and **10** for one that holds a `mask`.
 
 | Version | Since | What changed |
 | --- | --- | --- |
@@ -88,6 +88,7 @@ an observation whose timing is unknown.
 | 7 | #1181 | `tracks`, each with the observations of it the release holds |
 | 8 | #1160 | the `obb` geometry, a rotated pixel rectangle |
 | 9 | #1199 | `sources`, each image-sequence source with the occurrences the release holds; a `timestamp` may be `null` |
+| 10 | #1162 | the `mask` geometry, a run-length encoded raster |
 
 An older document keeps the version it was written with, so its bytes and its hash never move and
 `verify` still passes. Version 3 changes no existing bytes: a polyline with unknown visibility
@@ -152,6 +153,14 @@ task does - which is not the same document as `0`. A manifest carrying `sources`
 timestamp under a version below 9, an occurrence naming an asset it does not hold, or an
 observation that disagrees with the occurrence its source lists at that position, does not load.
 An export cuts `sources` to the assets it hands its format, as it cuts tracks.
+
+Version 10 changes no existing bytes either. It adds a geometry and no key anywhere else, so a
+release holding no `mask` keeps the version and the hash it had; a manifest holding a `mask` under
+a version below 10 does not load, and a build that predates the geometry refuses a version-10
+manifest, since it does not know the `mask` type. The mask is copied in its canonical spelling (see
+[annotations](annotations.md#a-mask-is-run-length-encoded-pixels-over-the-whole-asset)), so two
+publishes of an unchanged dataset still agree byte for byte. No exporter writes a mask: every
+export reports each one **dropped**, never degraded.
 
 Publishing content that needs a newer version than an older build wrote still produces a
 different manifest hash, because the version number is part of the document.
@@ -1022,8 +1031,8 @@ labels are all untracked is still written when its source is listed, without the
 `lossy = True`: attributes, provenance, the source's name and a confidence of exactly `0` or `1`
 have nowhere to go (`0` reads back as an ignored entry, `1` as ground truth). The release's split
 recipe is not applied, because a sequence is not cut across folds, and augmented variants observe no
-track and are not written. MOTS, whose rows are instance masks, is not written: it needs raster
-masks, which the domain does not have yet.
+track and are not written. MOTS, whose rows are instance masks, is not written: no exporter writes a
+mask yet.
 
 ### The CVAT XML formats
 

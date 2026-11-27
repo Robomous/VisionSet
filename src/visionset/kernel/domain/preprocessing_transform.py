@@ -29,6 +29,7 @@ from visionset.kernel.domain.geometry import (
     ClassificationGeometry,
     Cuboid3DGeometry,
     Geometry,
+    MaskGeometry,
     ObbGeometry,
     PolygonGeometry,
     Polyline3DGeometry,
@@ -46,6 +47,7 @@ from visionset.kernel.domain.preprocessing import (
     rot90_quarter_turns,
     variant_seed,
 )
+from visionset.kernel.domain.raster_mask import mask_mirrored, mask_resampled, mask_rotated_once
 from visionset.kernel.domain.release import (
     Manifest,
     ManifestAnnotation,
@@ -540,6 +542,8 @@ def _scaled(
             )
         case Polyline3DGeometry() | Cuboid3DGeometry():
             raise _unreachable_3d(geometry)
+        case MaskGeometry():
+            raise AssertionError("no resize step transforms a mask")
         case _:
             assert_never(geometry)
 
@@ -562,7 +566,13 @@ def _cropped(geometry: Geometry, width: float, height: float) -> tuple[Geometry 
             return _cropped_box(geometry, width, height)
         case PolygonGeometry():
             return _cropped_polygon(geometry, width, height)
-        case ObbGeometry() | PolylineGeometry() | Polyline3DGeometry() | Cuboid3DGeometry():
+        case (
+            ObbGeometry()
+            | PolylineGeometry()
+            | Polyline3DGeometry()
+            | Cuboid3DGeometry()
+            | MaskGeometry()
+        ):
             raise AssertionError(f"no cropping resize transforms a {geometry.type.value}")
         case _:
             assert_never(geometry)
@@ -770,6 +780,8 @@ def _mirrored(geometry: Geometry, width: float) -> Geometry:
             return PolygonGeometry(points=[(width - x, y) for x, y in geometry.points])
         case PolylineGeometry():
             return geometry.through([(width - x, y) for x, y in geometry.points])
+        case MaskGeometry():
+            return mask_mirrored(geometry)
         case Polyline3DGeometry() | Cuboid3DGeometry():
             raise _unreachable_3d(geometry)
         case _:
@@ -783,7 +795,8 @@ def _rotated_once(geometry: Geometry, width: float) -> Geometry:
     means, and the two must turn the same way. A box's corners rotate and the
     result is rebuilt axis-aligned, which is exact at a quarter turn. A rotated
     box's centre moves the same way and its width side turns from ``angle`` to
-    ``angle - pi/2``.
+    ``angle - pi/2``. A mask's pixels turn the same way, exactly, and its size
+    swaps.
     """
     match geometry:
         case ClassificationGeometry():
@@ -807,6 +820,8 @@ def _rotated_once(geometry: Geometry, width: float) -> Geometry:
             return PolygonGeometry(points=[(y, width - x) for x, y in geometry.points])
         case PolylineGeometry():
             return geometry.through([(y, width - x) for x, y in geometry.points])
+        case MaskGeometry():
+            return mask_rotated_once(geometry)
         case Polyline3DGeometry() | Cuboid3DGeometry():
             raise _unreachable_3d(geometry)
         case _:
@@ -901,7 +916,9 @@ def fit_within(file: TransformedFile, max_edge: int) -> TransformedFile:
     size, is returned as it is. A 3D label is in metres, not pixels, so the
     cap leaves it as it is too. A rotated box is scaled by the cap's one
     ratio on both axes, so it stays a rectangle; the rounding of the capped
-    size can leave it under half a pixel from the pixels on the short axis.
+    size can leave it under half a pixel from the pixels on the short axis. A
+    mask is resampled to the capped size nearest-neighbour, which is lossy and
+    is why no export resize carries one.
     """
     if file.width is None or file.height is None or max(file.width, file.height) <= max_edge:
         return file
@@ -916,7 +933,9 @@ def fit_within(file: TransformedFile, max_edge: int) -> TransformedFile:
                 if GeometryType(annotation.geometry.type) in THREE_D
                 else annotation.model_copy(
                     update={
-                        "geometry": _scaled(annotation.geometry, scale, scale, 0.0, 0.0)
+                        "geometry": mask_resampled(annotation.geometry, height=height, width=width)
+                        if isinstance(annotation.geometry, MaskGeometry)
+                        else _scaled(annotation.geometry, scale, scale, 0.0, 0.0)
                         if isinstance(annotation.geometry, ObbGeometry)
                         else _scaled(
                             annotation.geometry, width / file.width, height / file.height, 0.0, 0.0

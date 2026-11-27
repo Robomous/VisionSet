@@ -95,7 +95,11 @@ from visionset.kernel.domain import (
     require_calibration,
     require_scan_frame,
 )
-from visionset.kernel.domain.geometry import geometry_intersects_asset
+from visionset.kernel.domain.geometry import (
+    MaskGeometry,
+    geometry_intersects_asset,
+    mask_fits_asset,
+)
 from visionset.kernel.domain.schema_validation import validate_schema_annotation
 from visionset.kernel.errors import (
     AnnotationGeometryOutOfBounds,
@@ -797,6 +801,14 @@ def _require_geometry_on_asset(
             require_calibration(asset, source)
         else:
             require_scan_frame(asset, source)
+    if isinstance(annotation.geometry, MaskGeometry) and not mask_fits_asset(
+        annotation.geometry, width=asset.width, height=asset.height
+    ):
+        height, width = annotation.geometry.size
+        raise AnnotationGeometryOutOfBounds(
+            f"a {height} by {width} mask cannot label asset {asset.id}, whose pixel frame is "
+            f"{asset.height} by {asset.width}; a mask's size is its asset's [height, width]"
+        )
     if not geometry_intersects_asset(annotation.geometry, width=asset.width, height=asset.height):
         raise AnnotationGeometryOutOfBounds(
             f"a {annotation.geometry.type.value} annotation on asset {asset.id} has no overlap "

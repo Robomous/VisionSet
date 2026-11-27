@@ -27,6 +27,7 @@ from visionset.kernel.domain import (
     Manifest,
     ManifestAnnotation,
     ManifestAsset,
+    MaskGeometry,
     ObbGeometry,
     PolygonGeometry,
     Polyline3DGeometry,
@@ -80,7 +81,13 @@ def derive_task(manifest: Manifest, accepted: frozenset[Task]) -> Task:
                     has_box = True
                 case ClassificationGeometry():
                     has_tag = True
-                case ObbGeometry() | PolylineGeometry() | Polyline3DGeometry() | Cuboid3DGeometry():
+                case (
+                    ObbGeometry()
+                    | PolylineGeometry()
+                    | Polyline3DGeometry()
+                    | Cuboid3DGeometry()
+                    | MaskGeometry()
+                ):
                     pass
                 case _:
                     assert_never(geometry)
@@ -213,6 +220,7 @@ def _as_box(annotation: ManifestAnnotation, *, obb_as_box: bool = False) -> Bbox
             | PolylineGeometry()
             | Polyline3DGeometry()
             | Cuboid3DGeometry()
+            | MaskGeometry()
         ):
             return None
         case _:
@@ -234,6 +242,7 @@ def _as_ring(annotation: ManifestAnnotation) -> list[tuple[float, float]] | None
             | PolylineGeometry()
             | Polyline3DGeometry()
             | Cuboid3DGeometry()
+            | MaskGeometry()
         ):
             return None
         case _:

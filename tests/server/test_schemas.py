@@ -188,12 +188,12 @@ def test_versions_are_listed_oldest_first(client: TestClient, project: str) -> N
 def test_a_class_with_an_unimplemented_geometry_is_422_unsupported_geometry(
     client: TestClient, project: str
 ) -> None:
-    """`mask` is in the enum and has no implementation — a precise refusal.
+    """`keypoints` is in the enum and has no implementation — a precise refusal.
 
     The wire model keeps all eight members deliberately, so naming one gets this
     rather than "not a valid enumeration member".
     """
-    response = post_version(client, project, a_class(geometries=("mask",)))
+    response = post_version(client, project, a_class(geometries=("keypoints",)))
 
     assert response.status_code == 422
     assert response.json()["code"] == "UNSUPPORTED_GEOMETRY"

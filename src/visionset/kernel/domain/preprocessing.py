@@ -69,15 +69,18 @@ export can produce it by accident. Never written by an export.
 """
 
 
+RESIZABLE_GEOMETRIES: Final[frozenset[GeometryType]] = PIXEL_GEOMETRIES - {GeometryType.MASK}
+"""What a resize can transform at all: a mask would have to be resampled, which loses pixels."""
+
 RESIZE_GEOMETRIES: Final[Mapping[ResizeStrategy, frozenset[GeometryType]]] = {
     # Scaling the axes apart turns a rotated rectangle into a parallelogram.
-    ResizeStrategy.STRETCH: PIXEL_GEOMETRIES - {GeometryType.OBB},
-    ResizeStrategy.LETTERBOX: PIXEL_GEOMETRIES,
+    ResizeStrategy.STRETCH: RESIZABLE_GEOMETRIES - {GeometryType.OBB},
+    ResizeStrategy.LETTERBOX: RESIZABLE_GEOMETRIES,
     # A crop can cut a path into pieces, and which piece is the lane is not a
     # question the arithmetic can answer; a rotated rectangle cut by the canvas
     # edge is no longer a rectangle.
-    ResizeStrategy.FILL: PIXEL_GEOMETRIES - {GeometryType.POLYLINE, GeometryType.OBB},
-    ResizeStrategy.CENTER_CROP: PIXEL_GEOMETRIES - {GeometryType.POLYLINE, GeometryType.OBB},
+    ResizeStrategy.FILL: RESIZABLE_GEOMETRIES - {GeometryType.POLYLINE, GeometryType.OBB},
+    ResizeStrategy.CENTER_CROP: RESIZABLE_GEOMETRIES - {GeometryType.POLYLINE, GeometryType.OBB},
 }
 """Which geometries each resize strategy can transform, per :class:`ResizeStrategy`."""
 
@@ -124,6 +127,7 @@ class AugmentOp(StrEnum):
 
 
 AUGMENT_GEOMETRIES: Final[Mapping[AugmentOp, frozenset[GeometryType]]] = {
+    # A mask mirrors and turns exactly, pixel for pixel.
     AugmentOp.HFLIP: PIXEL_GEOMETRIES,
     AugmentOp.BRIGHTNESS_CONTRAST: EVERY_GEOMETRY,
     # A polyline's point order carries meaning relative to the frame's axes,

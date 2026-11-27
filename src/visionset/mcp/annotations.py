@@ -65,7 +65,9 @@ class AnnotationInput(BaseModel):
             "Its 'type' field is required and selects the variant. A polyline's "
             "optional 'visibility' is one integer per point (0 unlabeled, 1 occluded, "
             "2 visible); omit it when unknown. An obb is 'cx', 'cy' (its centre), "
-            "'width', 'height' and 'angle' in radians, and is stored canonical."
+            "'width', 'height' and 'angle' in radians, and is stored canonical. "
+            "A mask is 'size' [height, width], equal to the asset's, and 'counts', "
+            "the COCO compressed RLE string (column-major), stored canonical."
         )
     )
     attributes: dict[str, AttributeValue] = Field(
