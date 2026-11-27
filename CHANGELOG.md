@@ -24,7 +24,10 @@ nothing was being distributed. This is the first version that is.
   quadrilaterals (at most 0.131 of the shorter side on Ultralytics' DOTA8) - import as the nearest rectangle and a
   `geometry` loss; a trapezoid, a skewed parallelogram, a kite, a bow-tie, or corners enclosing no area are a
   `label` loss. `difficult` is written from a boolean
-  `difficult` attribute and, having nowhere to land on import, a `1` is an `attribute` loss. The `ultralytics`
+  `difficult` attribute and, having nowhere to land on import, a `1` is an `attribute` loss. A DOTA row cannot quote
+  a category, so each whitespace run in a class name is written as one hyphen, DOTA's own spelling
+  (`baseball diamond` as `baseball-diamond`), and a re-import names the class with the hyphen; two classes that would
+  share a category refuse the export naming both. `yolo-obb` keeps names unchanged in `data.yaml`. The `ultralytics`
   formats and targets are unchanged (#1161).
 - **Export, ingest and weight-download runs carry their own facts, and releases their lineage.** When tracking is
   on, an export run records its format, target, lossy consent, whether a recipe ran and the recipe's content hash,

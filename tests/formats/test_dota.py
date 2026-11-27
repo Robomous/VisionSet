@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from collections import Counter
 from pathlib import Path
 from typing import Any
@@ -22,7 +23,7 @@ from tests.formats.test_yolo_obb import (
 )
 
 from visionset.formats._obb import FITTED
-from visionset.formats.dota import DotaExporter, DotaImporter
+from visionset.formats.dota import DotaExporter, DotaImporter, category_tokens
 from visionset.formats.registry import exporters, importers
 from visionset.kernel import ExportSourceUnreadable, ImportSourceUnreadable
 from visionset.kernel.domain import (
@@ -133,13 +134,51 @@ def test_every_other_geometry_is_dropped_and_reported(tmp_path: Path) -> None:
     assert _dota_counts(dest) == Counter({"ship": 1})
 
 
-def test_a_class_name_with_whitespace_refuses_the_export(tmp_path: Path) -> None:
+def test_whitespace_in_a_class_name_is_written_as_one_hyphen(tmp_path: Path) -> None:
+    spaced = LabelClass(name="baseball  diamond", geometries=(GeometryType.OBB,))
+    tabbed = LabelClass(name="small \t vehicle", geometries=(GeometryType.OBB,))
+    fixture = Fixture(tmp_path, images=1, classes=(spaced, tabbed, SHIP))
+    fixture.label(
+        {
+            0: [
+                annotation("baseball  diamond", BOXES[0]),
+                annotation("small \t vehicle", BOXES[1]),
+                annotation("ship", BOXES[2]),
+            ]
+        }
+    )
+    out = _export(fixture, tmp_path / "out")
+    fixture.close()
+
+    assert sorted(row[8] for row in _rows(out)) == ["baseball-diamond", "ship", "small-vehicle"]
+    assert all(len(row) == 10 for row in _rows(out))
+
+
+def test_a_name_without_whitespace_is_its_own_category() -> None:
+    assert category_tokens(["ship", "large-vehicle", "Car_2"]) == {
+        "ship": "ship",
+        "large-vehicle": "large-vehicle",
+        "Car_2": "Car_2",
+    }
+
+
+def test_two_classes_that_would_share_a_category_refuse_the_export(tmp_path: Path) -> None:
     spaced = LabelClass(name="small vehicle", geometries=(GeometryType.OBB,))
-    fixture = Fixture(tmp_path, images=1, classes=(spaced,))
-    fixture.label({0: [annotation("small vehicle", BOXES[0])]})
-    with pytest.raises(ExportSourceUnreadable, match="small vehicle"):
+    hyphened = LabelClass(name="small-vehicle", geometries=(GeometryType.OBB,))
+    fixture = Fixture(tmp_path, images=1, classes=(spaced, hyphened))
+    fixture.label(
+        {0: [annotation("small vehicle", BOXES[0]), annotation("small-vehicle", BOXES[1])]}
+    )
+    with pytest.raises(
+        ExportSourceUnreadable, match="'small vehicle' and 'small-vehicle'.*'small-vehicle'"
+    ):
         _export(fixture, tmp_path / "out")
     fixture.close()
+
+
+def test_a_name_that_is_only_whitespace_is_refused() -> None:
+    with pytest.raises(ExportSourceUnreadable, match=re.escape(repr(" \t "))):
+        category_tokens(["ship", " \t "])
 
 
 # --- difficult ------------------------------------------------------------------

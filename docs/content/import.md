@@ -202,7 +202,9 @@ kite, a bow-tie - the row is a `label` loss, never kept as a polygon.
 no row uses is declared as an `obb` class, and the descriptor rules are the YOLO family's.
 `dota` skips `imagesource:` and `gsd:` header lines; its classes are the categories of the boxes it
 keeps, in order of first appearance, so a class nobody used and the schema's order are not
-recovered. The import has no place for an annotation attribute, so DOTA's `difficult` is not
+recovered. A category is taken as spelled: the exporter writes whitespace in a class name as a
+hyphen, because a row cannot quote a name, so a class `baseball diamond` exported to DOTA imports
+back as `baseball-diamond`. The import has no place for an annotation attribute, so DOTA's `difficult` is not
 carried: a `1` is an `attribute` loss and the box is kept, as VOC's own `difficult` is. A picture
 with no label file is imported unlabelled, an empty label file is a picture with nothing in it,
 and the split is not imported. An export imports back exact, with no loss: every corner within

@@ -762,11 +762,16 @@ One row per rotated box, the corners in pixels, then the class name as the categ
 24 18 56 10 62 34 30 42 large-vehicle 0
 ```
 
-No `imagesource:` or `gsd:` header is written. A category is one whitespace-free token, so a box
-of a class whose name holds whitespace refuses the export with `ExportSourceUnreadable`, naming the
-class, rather than being written under a name nobody chose. `difficult` is `1` for a box carrying a
-boolean attribute named `difficult` set to true and `0` otherwise. An import cannot hold it back
-(see [import.md](import.md#formats)), so it survives only the export.
+No `imagesource:` or `gsd:` header is written. A category is one whitespace-free token and a row
+cannot quote one, so each run of whitespace in a class name is written as a single hyphen, DOTA's
+own spelling: `baseball diamond` is written `baseball-diamond`. The export report does not list the
+rename, and an import of the output names the class `baseball-diamond`, because nothing in the file
+records the original spelling. Two written classes that would share a category, such as
+`small vehicle` and `small-vehicle`, refuse the export with `ExportSourceUnreadable` naming both,
+rather than merging them. `yolo-obb` keeps names as they are, since they live in `data.yaml`.
+`difficult` is `1` for a box carrying a boolean attribute named `difficult` set to true and `0`
+otherwise. An import cannot hold it back (see [import.md](import.md#formats)), so it survives only
+the export.
 
 ### The COCO format
 

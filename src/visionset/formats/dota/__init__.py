@@ -10,14 +10,18 @@ header is written.
 
 **Rotated boxes only.** Every other geometry is dropped and the export report
 says so; nothing is converted. ``difficult`` is ``1`` for a box carrying a
-boolean attribute named ``difficult`` set to true and ``0`` otherwise. A class
-name holding whitespace cannot be one category token, so a box of such a class
-refuses the export by name rather than being written under another name.
+boolean attribute named ``difficult`` set to true and ``0`` otherwise. A row
+cannot quote a category, so each run of whitespace in a class name is written as
+one hyphen, DOTA's own spelling (``baseball diamond`` as ``baseball-diamond``),
+and an import of the output names the class with the hyphen. Two written classes
+that would share a category, or a name that is only whitespace, refuse the
+export by name.
 """
 
 from __future__ import annotations
 
-from collections.abc import Iterable
+import re
+from collections.abc import Iterable, Mapping
 from pathlib import Path
 from typing import Final
 
@@ -36,7 +40,14 @@ from visionset.kernel.domain import (
 from visionset.kernel.errors import ExportSourceUnreadable
 from visionset.kernel.ports import ContentReader
 
-__all__ = ["DIFFICULT", "IMAGES_DIRNAME", "LABELS_DIRNAME", "DotaExporter", "DotaImporter"]
+__all__ = [
+    "DIFFICULT",
+    "IMAGES_DIRNAME",
+    "LABELS_DIRNAME",
+    "DotaExporter",
+    "DotaImporter",
+    "category_tokens",
+]
 
 IMAGES_DIRNAME: Final = "images"
 
@@ -45,6 +56,8 @@ DIFFICULT: Final = "difficult"
 
 #: Nine decimals of a pixel keep any box a rectangle to within the reader's tolerance.
 PRECISION: Final = 9
+
+_WHITESPACE: Final = re.compile(r"\s+")
 
 
 class DotaExporter:
@@ -73,10 +86,17 @@ class DotaExporter:
         content: ContentReader,
         assignment: SplitAssignment | None,
     ) -> None:
+        written = {
+            annotation.label_class
+            for asset in manifest.assets
+            for annotation in asset.annotations
+            if obb_of(annotation) is not None
+        }
+        tokens = category_tokens(one.name for one in manifest.classes if one.name in written)
         declared = {one.name for one in manifest.classes}
         folds = folds_of(manifest, assignment)
         for asset in manifest.assets:
-            rows = list(_rows(asset, declared))
+            rows = list(_rows(asset, declared, tokens))
             fold = dest / folds[asset.asset_id]
             write_image(asset, fold / IMAGES_DIRNAME, content)
             target = (fold / LABELS_DIRNAME / asset.content_hash).with_suffix(".txt")
@@ -84,7 +104,32 @@ class DotaExporter:
             target.write_text("".join(f"{row}\n" for row in rows), encoding="utf-8")
 
 
-def _rows(asset: ManifestAsset, declared: set[str]) -> Iterable[str]:
+def category_tokens(names: Iterable[str]) -> dict[str, str]:
+    """Each class name as DOTA's single-token category, each whitespace run a hyphen.
+
+    Raises:
+        ExportSourceUnreadable: a name is only whitespace, or two names would be
+            written as the same category.
+    """
+    tokens: dict[str, str] = {}
+    taken: dict[str, str] = {}
+    for name in names:
+        token = _WHITESPACE.sub("-", name.strip())
+        if not token:
+            raise ExportSourceUnreadable(
+                f"class {name!r} is empty once its whitespace is removed, so it cannot be "
+                "written as a DOTA category"
+            )
+        other = taken.setdefault(token, name)
+        if other != name:
+            raise ExportSourceUnreadable(
+                f"classes {other!r} and {name!r} would both be written as DOTA category {token!r}"
+            )
+        tokens[name] = token
+    return tokens
+
+
+def _rows(asset: ManifestAsset, declared: set[str], tokens: Mapping[str, str]) -> Iterable[str]:
     for annotation in asset.annotations:
         name = annotation.label_class
         if name not in declared:
@@ -95,13 +140,8 @@ def _rows(asset: ManifestAsset, declared: set[str]) -> Iterable[str]:
         geometry = obb_of(annotation)
         if geometry is None:
             continue
-        if not name or any(char.isspace() for char in name):
-            raise ExportSourceUnreadable(
-                f"class {name!r} holds whitespace, so it cannot be written as one DOTA "
-                f"category token"
-            )
         corners = " ".join(
             decimal(value, PRECISION) for corner in obb_corners(geometry) for value in corner
         )
         difficult = 1 if annotation.attributes.get(DIFFICULT) is True else 0
-        yield f"{corners} {name} {difficult}"
+        yield f"{corners} {tokens[name]} {difficult}"
