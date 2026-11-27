@@ -38,6 +38,7 @@ from pydantic_core import PydanticCustomError
 from visionset.kernel.domain.rle import (
     MAX_MASK_COUNTS_LENGTH,
     MAX_MASK_SIDE,
+    MaskEncodingError,
     decode_counts,
     encode_counts,
     runs_area,
@@ -461,8 +462,9 @@ class MaskGeometry(BaseModel):
     between 1 and :data:`~visionset.kernel.domain.rle.MAX_MASK_SIDE` and the
     area at most :data:`~visionset.kernel.domain.rle.MAX_MASK_PIXELS`.
 
-    ``counts`` is COCO's compressed RLE string over the pixels in column-major
-    order, first run background, ``1`` foreground; see
+    ``counts`` is COCO's compressed RLE string, its canonical form at most
+    :data:`~visionset.kernel.domain.rle.MAX_MASK_COUNTS_LENGTH` characters,
+    over the pixels in column-major order, first run background, ``1`` foreground; see
     :mod:`~visionset.kernel.domain.rle`. It is validated against ``size`` on
     construction — the runs must sum to exactly ``height * width`` — and
     re-encoded canonically, so equal masks always carry equal ``counts`` and a
@@ -488,6 +490,12 @@ class MaskGeometry(BaseModel):
     def _canonical(self) -> MaskGeometry:
         height, width = self.size
         canonical = encode_counts(decode_counts(self.counts, height, width))
+        # Merging zero-length runs can lengthen the string; a stored mask must reload.
+        if len(canonical) > MAX_MASK_COUNTS_LENGTH:
+            raise MaskEncodingError(
+                f"the canonical counts of this mask are {len(canonical)} characters, over the "
+                f"{MAX_MASK_COUNTS_LENGTH}-character limit"
+            )
         if canonical != self.counts:
             object.__setattr__(self, "counts", canonical)
         return self

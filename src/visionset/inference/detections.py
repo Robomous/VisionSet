@@ -49,7 +49,11 @@ from visionset.kernel.domain import (
     media_type_of,
     require_image,
 )
-from visionset.kernel.domain.geometry import geometry_intersects_asset
+from visionset.kernel.domain.geometry import (
+    MaskGeometry,
+    geometry_intersects_asset,
+    mask_enclosing_box,
+)
 from visionset.kernel.errors import GeometryNotProduced, UnsupportedPrompt
 from visionset.kernel.ports import ModelProvider
 from visionset.kernel.services import InferenceConnectionService, IngestService, WorkspaceService
@@ -99,6 +103,9 @@ class Detection:
 
 def _anchor(geometry: Geometry) -> tuple[float, float]:
     """Top, then left — the tie-break between two equally confident candidates."""
+    if isinstance(geometry, MaskGeometry):
+        box = mask_enclosing_box(geometry)
+        return (0.0, 0.0) if box is None else (box.y, box.x)
     if isinstance(geometry, BboxGeometry):
         return (geometry.y, geometry.x)
     points = [(float(point[0]), float(point[1])) for point in getattr(geometry, "points", ())]

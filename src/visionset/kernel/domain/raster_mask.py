@@ -112,9 +112,11 @@ def rasterize_rings(rings: Sequence[Sequence[Point]], *, height: int, width: int
             low, high = min(y0, y1), max(y0, y1)
             first = max(0, ceil(low - 0.5))
             last = min(height, ceil(high - 0.5))
-            slope = (x1 - x0) / (y1 - y0)
             for y in range(first, last):
-                crossings[y].append(x0 + (y + 0.5 - y0) * slope)
+                # Clamped off the frame on both sides, so an extreme slope cannot overflow.
+                t = (y + 0.5 - y0) / (y1 - y0)
+                crossing = x0 + t * (x1 - x0) if isfinite(x1 - x0) else x0 * (1 - t) + x1 * t
+                crossings[y].append(min(max(crossing, -1.0), width + 1.0))
     row_major = bytearray(height * width)
     for y, xs in enumerate(crossings):
         xs.sort()

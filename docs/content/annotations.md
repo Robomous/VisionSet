@@ -260,7 +260,7 @@ fields:
 | `counts` | the compressed RLE string |
 
 **Bounds.** Each side is 1 to 32768, the area is at most 100,000,000 pixels, and `counts` is at
-most 4,194,304 characters. A mask outside them, or malformed, is refused - a 422
+most 1,048,576 characters. A mask outside them, or malformed, is refused - a 422
 `VALIDATION_ERROR` over REST, an input error over MCP.
 
 **The layout.** Pixels are read column-major: down the first column, then down the next, so pixel

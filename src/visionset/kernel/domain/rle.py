@@ -38,7 +38,7 @@ MAX_MASK_SIDE: Final = 32_768
 MAX_MASK_PIXELS: Final = 100_000_000
 """The most pixels, ``height * width``, a mask may declare."""
 
-MAX_MASK_COUNTS_LENGTH: Final = 4 * 1024 * 1024
+MAX_MASK_COUNTS_LENGTH: Final = 1024 * 1024
 """The longest counts string accepted, in characters."""
 
 _FIRST_CHAR: Final = 48

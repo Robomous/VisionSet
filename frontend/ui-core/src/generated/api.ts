@@ -5857,7 +5857,7 @@ export interface components {
          *     dimensions (422 `ANNOTATION_GEOMETRY_OUT_OF_BOUNDS` otherwise); each side is at most
          *     32768 and the area at most 100000000 pixels. `counts` is the COCO compressed
          *     RLE string — runs over the pixels in column-major order, first run
-         *     background, `1` foreground — at most 4194304 characters, and its runs must
+         *     background, `1` foreground — at most 1048576 characters, and its runs must
          *     sum to exactly `height * width`. A malformed or oversized mask is 422
          *     `VALIDATION_ERROR`. A stored mask is canonical, so a response may spell
          *     `counts` differently from the request and still hold the same pixels. An
@@ -5887,8 +5887,9 @@ export interface components {
          *     between 1 and :data:`~visionset.kernel.domain.rle.MAX_MASK_SIDE` and the
          *     area at most :data:`~visionset.kernel.domain.rle.MAX_MASK_PIXELS`.
          *
-         *     ``counts`` is COCO's compressed RLE string over the pixels in column-major
-         *     order, first run background, ``1`` foreground; see
+         *     ``counts`` is COCO's compressed RLE string, its canonical form at most
+         *     :data:`~visionset.kernel.domain.rle.MAX_MASK_COUNTS_LENGTH` characters,
+         *     over the pixels in column-major order, first run background, ``1`` foreground; see
          *     :mod:`~visionset.kernel.domain.rle`. It is validated against ``size`` on
          *     construction — the runs must sum to exactly ``height * width`` — and
          *     re-encoded canonically, so equal masks always carry equal ``counts`` and a

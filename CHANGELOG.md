@@ -16,7 +16,7 @@ nothing was being distributed. This is the first version that is.
 - **Raster masks: the `mask` geometry.** A class may declare `mask`, a binary raster over the whole asset stored
   inline as COCO compressed run-length encoding: `size` is `[height, width]` and must equal the asset's pixel size,
   and `counts` is the string over the pixels read column-major, first run background. Each side is 1 to 32768, the
-  area at most 100,000,000 pixels and `counts` at most 4,194,304 characters; malformed or oversized input is
+  area at most 100,000,000 pixels and `counts` at most 1,048,576 characters; malformed or oversized input is
   refused, and decoding is bounded by the declared size, never by the string. A mask is re-encoded canonically on
   construction, so equal masks have equal `counts` and a read may spell them differently from the write; an
   uncompressed run list is not accepted on the wire. One mask is one instance of one class, and the kernel's

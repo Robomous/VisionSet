@@ -470,3 +470,25 @@ def test_bitmaps_and_rows_agree() -> None:
     bitmap = mask_bitmap(mask)
     assert runs_from_bitmap(bitmap) == mask_runs(mask)
     assert mask_from_bitmap(bytes(bitmap), height=3, width=5) == mask
+
+
+def test_a_spelling_whose_canonical_form_outgrows_the_limit_is_refused(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from visionset.kernel.domain import geometry
+
+    # The limit is judged on the canonical form too: merging zero-length runs can
+    # lengthen a string, and what is stored must reload. A lowered limit stands in for
+    # the multi-megabyte spelling that grows past the real one.
+    spelled = encode_counts([1, 0, 15, 0, 15])
+    canonical = encode_counts([31])
+    assert decode_counts(spelled, 31, 1) == (31,)
+    monkeypatch.setattr(geometry, "MAX_MASK_COUNTS_LENGTH", len(canonical) - 1)
+    with pytest.raises(ValidationError, match="canonical counts"):
+        MaskGeometry(size=(31, 1), counts=spelled)
+
+
+def test_an_extreme_vertex_rasterizes_without_overflowing() -> None:
+    huge = PolygonGeometry(points=[(1e308, 0.0), (-1e308, 10.0), (0.0, 5.0)])
+    mask = rasterize_polygon(huge, height=10, width=10)
+    assert mask.size == (10, 10)

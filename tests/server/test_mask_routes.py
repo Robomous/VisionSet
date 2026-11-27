@@ -130,3 +130,15 @@ def test_an_uncompressed_run_list_is_refused(client: TestClient, working: tuple[
 def test_the_geometry_listing_offers_mask(client: TestClient) -> None:
     names = {row["name"] for row in client.get("/geometries").json()["items"]}
     assert "mask" in names
+
+
+@pytest.mark.parametrize("size", [["3", "3"], [3.0, 3.0], [True, 3]])
+def test_a_size_is_two_json_integers(
+    client: TestClient, working: tuple[str, str], size: list[Any]
+) -> None:
+    batch_id, job_id = working
+    asset, _, _ = _asset(client, batch_id)
+
+    refused = client.post(f"/jobs/{job_id}/annotations", json=[_road(asset, size, "9")])
+
+    assert refused.status_code == 422, refused.text
