@@ -1466,6 +1466,23 @@ class InferenceEndpointUnavailable(VisionSetError):
     """
 
 
+class TrackingUnavailable(VisionSetError):
+    """Experiment tracking is turned on, and this installation cannot carry it out.
+
+    Raised when tracking was asked for and cannot run: the enabling flag is set to
+    something that is neither blank nor a boolean, or tracking is enabled and the
+    experiment name, the tracking URI or the installed client is unusable. With
+    tracking off — the flag unset, blank or false — nothing else is read, so nothing
+    else can raise it. A fact about the installation, on ``LocalInferenceUnavailable``'s
+    terms, so the message is the remedy — the variable to set or the command to
+    install — and never echoes the configured URI, which may name a private host.
+
+    A tracking server that is down or slow is not this error. Delivery is
+    best-effort once tracking has started, so a network failure is a warning and
+    never a refusal.
+    """
+
+
 class SchemaHasNoDetectableClass(VisionSetError):
     """The pinned schema declares no class a detection could be written as.
 

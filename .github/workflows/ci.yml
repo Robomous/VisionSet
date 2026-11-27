@@ -921,6 +921,53 @@ jobs:
             tests/jobs/test_weights_job.py \
             -rs
 
+  # The `mlflow` extra (#1174), installed from the lockfile, with the client
+  # present. Every other job runs a base install, where the tracking tests that
+  # need the client skip and the base-install guarantees run instead; this is the
+  # only place the adapter meets the real client. No server is needed: the tests
+  # run one of their own on loopback.
+  #
+  # The oldest and newest Python the extra installs on. Not 3.15: `pyyaml`, which
+  # the client requires, publishes no 3.15 wheel yet and its source build needs
+  # Cython, so the extra cannot install there; the base wheel is unaffected.
+  tracking-smoke:
+    name: tracking smoke (mlflow client, ${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.14"]
+    env:
+      VISIONSET_REQUIRE_MLFLOW: "1"
+      UV_PYTHON: ${{ matrix.python-version }}
+    needs: changes
+    if: always()
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Install uv
+        if: needs.changes.result != 'success' || needs.changes.outputs.python == 'true'
+        uses: astral-sh/setup-uv@v7
+        with:
+          version: "0.12.3"
+          enable-cache: true
+
+      - name: Sync environment with the mlflow extra
+        if: needs.changes.result != 'success' || needs.changes.outputs.python == 'true'
+        run: uv sync --locked --extra mlflow --python ${{ matrix.python-version }}
+
+      - name: The tracking adapter, with the client present
+        if: needs.changes.result != 'success' || needs.changes.outputs.python == 'true'
+        run: |
+          uv run pytest \
+            tests/tracking \
+            tests/architecture/test_optional_runtime.py \
+            tests/architecture/test_kernel_purity.py \
+            -rs
+
   # #62's and #63's second acceptance criteria: the tools the exporters exist to
   # feed actually load what they wrote. Its own job because `ultralytics` brings
   # torch — roughly two gigabytes — and putting that in front of every `uv sync`

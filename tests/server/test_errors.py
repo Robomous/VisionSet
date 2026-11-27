@@ -189,6 +189,7 @@ EXPECTED: dict[str, tuple[int, str]] = {
     "EntityAlreadyExists": (500, "ENTITY_ALREADY_EXISTS"),
     "ConstraintViolated": (500, "CONSTRAINT_VIOLATED"),
     "LocalInferenceUnavailable": (500, "LOCAL_INFERENCE_UNAVAILABLE"),
+    "TrackingUnavailable": (500, "TRACKING_UNAVAILABLE"),
     "InferenceOutOfMemory": (500, "INFERENCE_OUT_OF_MEMORY"),
     "InferenceConnectionNotRunnable": (500, "INFERENCE_CONNECTION_NOT_RUNNABLE"),
     "ExportTargetConflict": (500, "EXPORT_TARGET_CONFLICT"),
@@ -276,6 +277,9 @@ def test_message_exposure_is_opt_in_and_only_for_5xx() -> None:
         # no adapter for in the other, which is the only licence this list takes.
         "LocalInferenceUnavailable",
         "InferenceConnectionNotRunnable",
+        # Tracking turned on where it cannot run: the message names the variable
+        # to set or the extra to install, never the configured URI.
+        "TrackingUnavailable",
         # The third condition of the machine rather than of the request. Its
         # message names the device that filled up and the ways off it, which is
         # a remedy nobody can reconstruct from a generic 500.

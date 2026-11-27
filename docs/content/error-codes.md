@@ -16,7 +16,7 @@ tables the surfaces use, so it cannot drift from what they answer.
 The framework's own codes - `VALIDATION_ERROR`, `NOT_FOUND`, `METHOD_NOT_ALLOWED`, `UNAUTHORIZED`
 and `INTERNAL_ERROR` - are not raised by the kernel and are described in [api.md](api.md).
 
-124 codes, alphabetical.
+125 codes, alphabetical.
 
 | Code | Status | Meaning | Remedy | Retry with |
 | --- | --- | --- | --- | --- |
@@ -121,6 +121,7 @@ and `INTERNAL_ERROR` - are not raised by the kernel and are described in [api.md
 | `TOKEN_NAME_TAKEN` | 409 | Another token in this workspace already uses that name. |  |  |
 | `TOKEN_NOT_FOUND` | 404 | No API token with that id or name lives in this workspace. |  |  |
 | `TOO_MANY_OPEN_VIDEO_IMPORTS` | 409 | This project already holds as many open import sessions as it may. |  |  |
+| `TRACKING_UNAVAILABLE` | 500 | Experiment tracking is turned on, and this installation cannot carry it out. |  |  |
 | `TRACK_CLASS_MISMATCH` | 409 | An annotation's class, or a merge partner's, is not the track's class. |  |  |
 | `TRACK_EXTERNAL_ID_TAKEN` | 409 | Another track of the same source already carries that external id. |  |  |
 | `TRACK_MERGE_WITH_ITSELF` | 422 | A track was asked to merge with itself. |  |  |

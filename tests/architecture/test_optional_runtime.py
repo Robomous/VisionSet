@@ -33,6 +33,7 @@ import sys
 from pathlib import Path
 
 from visionset.inference import MODULES
+from visionset.tracking._mlflow import MODULES as TRACKING_MODULES
 
 #: Everything a deployment imports before it has done any work. The server's
 #: application module, the job registry, and the inference package itself —
@@ -47,6 +48,7 @@ import visionset.jobs
 import visionset.inference
 import visionset.inference.transformers_provider
 import visionset.inference.weights
+import visionset.tracking
 
 forbidden = {names}
 loaded = forbidden & set(sys.modules)
@@ -56,7 +58,7 @@ assert not loaded, f"a base import pulled in the optional runtime: {{loaded}}"
 
 def test_a_base_install_imports_none_of_the_optional_runtime() -> None:
     result = subprocess.run(
-        [sys.executable, "-c", _PROBE.format(names=set(MODULES))],
+        [sys.executable, "-c", _PROBE.format(names=set(MODULES) | set(TRACKING_MODULES))],
         capture_output=True,
         text=True,
     )
@@ -178,3 +180,48 @@ def test_the_extra_is_declared_with_exactly_the_modules_the_guard_names() -> Non
         for requirement in declared
     }
     assert names == set(MODULES)
+
+
+def test_disabled_tracking_imports_no_client_and_opens_no_connection() -> None:
+    """The default, driven through a whole run with the network unplugged.
+
+    Every way out of the process is replaced before anything is imported, so a
+    client constructed or a request sent anywhere on this path fails the probe —
+    and an ``MLFLOW_TRACKING_URI`` is set, because a URI alone is not consent.
+    """
+    probe = f"""
+import os
+import socket
+import sys
+
+attempts = []
+
+def refuse(*args, **kwargs):
+    attempts.append(args[:1])
+    raise OSError("network unplugged for this probe")
+
+socket.socket.connect = refuse
+socket.socket.connect_ex = refuse
+socket.create_connection = refuse
+socket.getaddrinfo = refuse
+
+os.environ.pop("VISIONSET_MLFLOW_ENABLED", None)
+os.environ["MLFLOW_TRACKING_URI"] = "http://tracking.invalid:5000"
+
+import visionset.server.main
+import visionset.jobs
+from visionset.tracking import RunStatus, build_tracker, load_tracking_settings
+
+tracker = build_tracker(load_tracking_settings())
+run_id = tracker.start_run("export", tags={{"k": "v"}})
+tracker.log_params(run_id, {{"a": 1}})
+tracker.log_metrics(run_id, {{"m": 1.0}})
+tracker.end_run(run_id, RunStatus.FINISHED)
+
+assert run_id is None
+assert not attempts, f"disabled tracking reached the network: {{attempts}}"
+loaded = {set(TRACKING_MODULES)} & set(sys.modules)
+assert not loaded, f"disabled tracking imported the client: {{loaded}}"
+"""
+    result = subprocess.run([sys.executable, "-c", probe], capture_output=True, text=True)
+    assert result.returncode == 0, result.stderr
