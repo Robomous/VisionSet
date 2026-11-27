@@ -137,6 +137,17 @@ class World:
         duration: float | None = None,
         ranges: tuple[TimeRange, ...] | None = None,
     ) -> Clip:
+        session = self.begin(len(seeds), duration=duration, ranges=ranges)
+        return self.finish(session, seeds, positions=positions)
+
+    def begin(
+        self,
+        frames: int,
+        *,
+        duration: float | None = None,
+        ranges: tuple[TimeRange, ...] | None = None,
+    ) -> UUID:
+        """Start a clip's import, which registers its source, and commit nothing yet."""
         self._clips += 1
         extra = {} if ranges is None else {"ranges": ranges}
         session = self.imports.start(
@@ -146,7 +157,7 @@ class World:
                 width=SIZE[0],
                 height=SIZE[1],
                 fps=30.0,
-                duration_seconds=float(len(seeds)) if duration is None else duration,
+                duration_seconds=float(frames) if duration is None else duration,
                 codec="vp9",
             ),
             extraction_fps=1.0,
@@ -154,12 +165,17 @@ class World:
             batch_name=f"clip {self._clips}",
             **extra,  # type: ignore[arg-type]
         )
+        return session.id
+
+    def finish(
+        self, session_id: UUID, seeds: Sequence[int], *, positions: Sequence[int] | None = None
+    ) -> Clip:
         ordinals = list(range(len(seeds))) if positions is None else list(positions)
         self.imports.append_frames(
-            session.id, [_frame(o, s) for o, s in zip(ordinals, seeds, strict=True)]
+            session_id, [_frame(o, s) for o, s in zip(ordinals, seeds, strict=True)]
         )
-        batch = self.imports.commit(session.id)
-        source_id = self.imports.get(session.id).source_id
+        batch = self.imports.commit(session_id)
+        source_id = self.imports.get(session_id).source_id
         return Clip(source_id, batch.id, SourceService(self.workspace).occurrences(source_id))
 
     def working(self, batch_id: UUID, *, size: int | None = None) -> list[AnnotationJob]:
@@ -257,8 +273,11 @@ def test_an_unknown_track_is_not_found(world: World) -> None:
 
 
 def test_an_asset_lists_its_occurrences_across_sources(world: World) -> None:
-    first = world.clip(seeds=(0, 1, 2))
-    second = world.clip(seeds=(1, 5, 1))
+    # The first source is registered first but its occurrences are written last,
+    # so the order is the sources', not the rows'.
+    begun_first, begun_second = world.begin(3), world.begin(3)
+    second = world.finish(begun_second, (1, 5, 1))
+    first = world.finish(begun_first, (0, 1, 2))
     shared = first.at(1).asset_id
     assert second.at(0).asset_id == shared == second.at(2).asset_id
 
