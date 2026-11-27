@@ -150,7 +150,7 @@ def test_parts_are_unioned_not_cut_into_holes(tmp_path: Path) -> None:
         ({"size": [HEIGHT, WIDTH], "counts": [3.0, WIDTH * HEIGHT - 3]}, {}, "malformed"),
         ({"size": [HEIGHT, WIDTH], "counts": 7}, {}, "malformed"),
         ({"size": [True, WIDTH], "counts": "PP"}, {}, "malformed"),
-        ([[0, 0, 9, 0, 0, 9], [1, 1, 2, 2, 3, 3]], {"width": None}, "width and height"),
+        ([[0, 0, 9, 0, 0, 9], [20, 20, 30, 20, 20, 30]], {"width": None}, "width and height"),
         ([[0, 0, 9, 0, 0, 9], [1, "x", 2, 2, 3, 3]], {}, "malformed"),
         ([[0.2, 0.2, 0.4, 0.2, 0.2, 0.4], [3, 3, 3.1, 3, 3, 3.1]], {}, "no pixel centre"),
         ([[0, 0, 4, 4, 8, 8], [1, 1]], {}, "encloses no area"),
@@ -170,6 +170,14 @@ def test_a_mask_that_cannot_be_read_loses_its_label(
     ]
     assert (kind, subject, count) == (ImportLossKind.LABEL, "road", 1)
     assert reason in why
+
+
+def test_parts_that_leave_one_drawable_ring_are_a_polygon_with_no_loss(tmp_path: Path) -> None:
+    row = {"category_id": 3, "segmentation": [[1, 1, 9, 1, 1, 9], [2, 2], [4, 4, 5, 5, 6, 6]]}
+    dataset = CocoImporter().read(_write(tmp_path, _document([row])))
+
+    assert dataset.losses == ()
+    assert _labels(tmp_path) == [("road", PolygonGeometry(points=[(1, 1), (9, 1), (1, 9)]))]
 
 
 def test_a_mask_of_the_wrong_size_for_an_unsized_entry_is_dropped_before_commit(

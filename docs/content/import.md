@@ -156,7 +156,9 @@ the uncompressed list of runs a crowd region is written with, over the pixels in
 and `size` is `[height, width]`, which must equal the image entry's `height` and `width`; a mask of
 another size, or counts that do not cover exactly that many pixels, is a `label` loss. An image entry
 with no size defers the check to the picture itself, before commit. A list of one ring is a polygon,
-as before. A list of several rings is one object drawn in parts, and VisionSet's polygon has one
+as before, and so is a list whose other rings have fewer than three points or no area. A list of
+several rings is one object drawn in parts, which needs the image entry's `width` and `height` (a
+`label` loss without them), and VisionSet's polygon has one
 ring, so each part is rasterized on its own at pixel centres (a pixel is lit when its centre is
 inside) and the parts are unioned into one mask - a part inside another is not a hole - reported as a
 `geometry` loss. Rasterization loses what is finer than a pixel, and `pycocotools` rasterizes
@@ -189,12 +191,15 @@ PNG through its own palette, or an `RGB` one, colour by colour. A mask whose PNG
 does not read is refused by name, so an indexed PNG is never read as grey levels nor the reverse.
 `classes` maps ids to names and may skip ids; `background` ids become no label unless they are listed
 as a class instead; `ignore` ids become no label either, and a mask holding them is a `label` loss,
-as KITTI's `DontCare` is. An id appears in at most one of the three, and a pixel holding an id or a
-colour none of them declares refuses the source. Each class present in a picture's mask becomes one
+as KITTI's `DontCare` is. Ids are written in plain decimal (`"7"`, never `"07"`), an id appears in
+at most one of the three, and a pixel holding an id or a colour none of them declares refuses the
+source, as do two mask files that are the mask of one picture. Each class present in a picture's mask becomes one
 `mask` label of that class; every declared class is imported, used or not. Pictures are under
 `<images>/<split>/` and masks under `<masks>/<split>/` for each split listed, or directly under the
-two directories when `splits` is empty; the split itself is not imported. A picture's mask has its
-relative path with the suffix replaced by `<mask_suffix>.png` (`mask_suffix` is optional and empty
+two directories when `splits` is empty, and neither directory may be inside the other; the split
+itself is not imported. A mask is drawn over the picture as it is shown, after any EXIF quarter
+turn, which is the frame ingest stores. A picture's mask has its relative path with the suffix
+replaced by `<mask_suffix>.png` (`mask_suffix` is optional and empty
 by default), so VOC reads with `"images": "JPEGImages", "masks": "SegmentationClass", "splits": []`
 and a `palette` listing VOC's colours - VOC's masks are indexed PNGs, and its void border is the
 `ignore` id `255`. A picture with no mask is not imported, an `image` loss; a mask with no picture,

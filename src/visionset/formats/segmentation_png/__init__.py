@@ -17,8 +17,9 @@ finer than a pixel is lost and it is declared degraded. A box, a tag and every
 other geometry are dropped: a box says where something is, not which pixels it
 covers. A class map holds one class per pixel, so several masks of one class on
 one picture are written as their union, and a pixel two classes claim takes the
-lower id; the pixels and classes each picture lost that way are recorded under
-``visionset.overlaps`` in the descriptor. Attributes, confidence and provenance
+lower id; each picture where that happened is recorded under
+``visionset.overlaps`` in the descriptor, with the contested pixels and the
+classes involved. Attributes, confidence and provenance
 have nowhere to go, so the format is lossy.
 
 COCO panoptic layouts and colour-encoded masks beyond an explicit palette are
@@ -50,6 +51,7 @@ from visionset.kernel.domain import (
     GeometryType,
     Manifest,
     ManifestAsset,
+    MaskEncodingError,
     MaskGeometry,
     PolygonGeometry,
     Release,
@@ -57,6 +59,7 @@ from visionset.kernel.domain import (
     compose_class_map,
     rasterize_polygon,
 )
+from visionset.kernel.domain.rle import check_mask_size
 from visionset.kernel.errors import ExportSourceUnreadable
 from visionset.kernel.ports import ContentReader
 
@@ -160,6 +163,12 @@ def _write_mask(
     from PIL import Image
 
     width, height = dimensions_of(asset)
+    try:
+        check_mask_size(height, width)
+    except MaskEncodingError as exc:
+        raise ExportSourceUnreadable(
+            f"asset {asset.asset_id} cannot have a class map: {exc}"
+        ) from None
     pairs: list[tuple[int, MaskGeometry]] = []
     for annotation in asset.annotations:
         name = annotation.label_class

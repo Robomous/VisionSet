@@ -869,8 +869,8 @@ holds, so what is finer than a pixel is lost. A box is dropped - a box says wher
 which pixels it covers - as are a tag and every other geometry. A class map holds one class per
 pixel, so what it cannot say is content, not geometry: several masks of one class on one picture are
 written as their union, one region on re-import, and a pixel two classes claim keeps the **lower**
-id. Each picture that lost pixels that way is listed under `visionset.overlaps` with the pixel count
-and the classes involved. Attributes, confidence and provenance have nowhere to go, so `lossy` is
+id. Each picture where classes contested pixels is listed under `visionset.overlaps` with the
+contested pixel count and the classes involved, the one that kept them included. Attributes, confidence and provenance have nowhere to go, so `lossy` is
 true. COCO panoptic layouts and RGB colour-encoded masks are not written.
 
 ### The Pascal VOC format

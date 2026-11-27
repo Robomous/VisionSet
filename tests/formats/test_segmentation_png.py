@@ -233,6 +233,10 @@ def test_no_descriptor_is_refused_with_how_to_write_one(tmp_path: Path) -> None:
         ({"classes": {"3": " "}}, "needs a name"),
         ({"classes": {"70000": "road"}}, "classes"),
         ({"masks": "images"}, "different directories"),
+        ({"masks": "images/masks"}, "neither inside the other"),
+        ({"classes": {"03": "road"}}, "plain decimal"),
+        ({"classes": {"+3": "road"}}, "plain decimal"),
+        ({"palette": {"1_0": [1, 2, 3]}, "encoding": "palette"}, "plain decimal"),
         ({"images": "../out"}, "leaves the source"),
         ({"splits": ["train/a"]}, "single directory"),
         ({"version": 2}, "version"),
@@ -267,6 +271,39 @@ def test_unmatched_pictures_and_masks_and_a_size_mismatch_are_reported(tmp_path:
     assert losses[(ImportLossKind.LABEL, "masks")] == (1, "a mask file with no picture")
     count, reason = losses[(ImportLossKind.LABEL, "masks/wide.png")]
     assert count == 1 and "8 by 6 and its picture 9 by 6" in reason
+
+
+def test_two_masks_of_one_picture_are_refused(tmp_path: Path) -> None:
+    src = _source(tmp_path)
+    _mask(src / "masks" / "a.PNG", FLAT)
+
+    with pytest.raises(ImportSourceUnreadable, match="both the mask of 'a'"):
+        SegmentationPngImporter().read(src)
+
+
+def test_a_palette_mask_of_the_wrong_size_is_a_loss_before_its_colours_are_judged(
+    tmp_path: Path,
+) -> None:
+    palette = {key: value for key, value in PALETTE["palette"].items() if key != "200"}
+    src = _source(tmp_path, {**PALETTE, "palette": palette}, mode="P")
+    write_image(src / "images" / "a.jpg", size=(WIDTH + 1, HEIGHT))
+    labels, losses = _read(src)
+
+    assert labels == {}
+    assert losses == [(ImportLossKind.LABEL, "masks/a.png", 1)]
+
+
+def test_a_mask_larger_than_a_mask_may_be_is_a_label_loss(tmp_path: Path) -> None:
+    src = tmp_path / "src"
+    _descriptor(src, INDEX)
+    write_image(src / "images" / "long.png", size=(32_769, 1))
+    _mask(src / "masks" / "long.png", [3] * 32_769, size=(32_769, 1))
+    dataset = SegmentationPngImporter().read(src)
+
+    ((image,),) = [dataset.images]
+    assert image.labels == ()
+    ((kind, reason),) = [(one.kind, one.reason) for one in dataset.losses]
+    assert kind is ImportLossKind.LABEL and "32768-pixel limit" in reason
 
 
 def test_the_size_mismatch_is_in_the_plan_before_any_commit(tmp_path: Path) -> None:
@@ -496,6 +533,14 @@ def test_a_mask_not_the_size_of_its_picture_refuses_the_export(tmp_path: Path) -
     )
     with pytest.raises(ExportSourceUnreadable, match="not the size of its picture"):
         _write_mask(asset, {"road": 1}, {"road"}, "L", tmp_path / "a.png")
+
+
+def test_a_picture_too_large_for_a_class_map_refuses_the_export(tmp_path: Path) -> None:
+    asset = ManifestAsset(
+        asset_id=uuid4(), content_hash="0" * 64, uri="/a.png", width=32_769, height=1
+    )
+    with pytest.raises(ExportSourceUnreadable, match="cannot have a class map"):
+        _write_mask(asset, {}, set(), "L", tmp_path / "a.png")
 
 
 def _decode_grey_png(data: bytes) -> tuple[tuple[int, int], list[int]]:

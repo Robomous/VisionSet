@@ -364,12 +364,12 @@ def _rle(
 
 def _parts(
     segmentation: list[Any], *, width: int | None, height: int | None
-) -> tuple[MaskGeometry | None, str, bool]:
+) -> tuple[MaskGeometry | PolygonGeometry | None, str, bool]:
     """Several rings as the union of each one rasterized alone.
 
     A COCO object drawn in several parts is their union, so one ring inside
-    another is not a hole. A ring of fewer than three points draws nothing, as
-    it does for ``pycocotools``.
+    another is not a hole. A ring of fewer than three points or no area draws
+    nothing, as it does for ``pycocotools``, so one ring left is a polygon.
     """
     rings: list[list[tuple[float, float]]] = []
     for ring in segmentation:
@@ -379,6 +379,8 @@ def _parts(
             rings.append(points)
     if not rings:
         return None, "its polygon encloses no area", False
+    if len(rings) == 1:
+        return PolygonGeometry(points=rings[0]), "", False
     if width is None or height is None:
         return None, "a polygon of several rings needs its image's width and height", False
     try:

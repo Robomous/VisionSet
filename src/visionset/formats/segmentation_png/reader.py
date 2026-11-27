@@ -19,7 +19,9 @@ Pictures live under ``<images>/<split>/`` and masks under ``<masks>/<split>/``
 for each split the descriptor lists, or directly under ``<images>/`` and
 ``<masks>/`` when it lists none, so both ``images/`` + ``masks/`` and Pascal
 VOC's ``JPEGImages/`` + ``SegmentationClass/`` read. A picture's mask has its
-relative path, the suffix replaced by ``<mask_suffix>.png``.
+relative path, the suffix replaced by ``<mask_suffix>.png``, and is drawn
+over the picture as it is shown, after any EXIF quarter turn, which is the
+frame ingest stores.
 
 Each class id present becomes one mask over the whole picture. Background ids
 become nothing; ignore ids become nothing too and the mask holding them is a
@@ -32,13 +34,22 @@ unlabelled. The split is not imported.
 from __future__ import annotations
 
 import json
+import re
 import sys
 from array import array
 from collections.abc import Sequence
+from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 from typing import Annotated, Any, Final, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    ValidationError,
+    field_validator,
+    model_validator,
+)
 
 from visionset.formats._reading import (
     IMAGE_SUFFIXES,
@@ -55,9 +66,11 @@ from visionset.kernel.domain import (
     ImportedImage,
     ImportedLabel,
     ImportLossKind,
+    MaskEncodingError,
     require_relative_path,
     split_class_map,
 )
+from visionset.kernel.domain.rle import check_mask_size
 from visionset.kernel.errors import ImportSourceUnreadable
 
 FORMAT_NAME: Final = "segmentation-png"
@@ -82,6 +95,8 @@ _EXAMPLE: Final = (
     '"images": "images", "masks": "masks", "splits": ["train", "val"]}'
 )
 
+_ID_KEY: Final = re.compile(r"0|[1-9][0-9]{0,4}", re.ASCII)
+
 ClassId = Annotated[int, Field(strict=True, ge=0, le=MAX_CLASS_ID)]
 Channel = Annotated[int, Field(strict=True, ge=0, le=255)]
 
@@ -99,17 +114,25 @@ class SegmentationDescriptor(BaseModel):
     format: Literal["segmentation-png"]
     version: Literal[1]
     encoding: Literal["index", "palette"]
-    classes: dict[Annotated[int, Field(ge=0, le=MAX_CLASS_ID)], str]
+    classes: dict[ClassId, str]
     background: tuple[ClassId, ...]
     ignore: tuple[ClassId, ...]
     images: str
     masks: str
     splits: tuple[str, ...]
-    palette: (
-        dict[Annotated[int, Field(ge=0, le=MAX_CLASS_ID)], tuple[Channel, Channel, Channel]] | None
-    ) = None
+    palette: dict[ClassId, tuple[Channel, Channel, Channel]] | None = None
     mask_suffix: str = ""
     visionset: dict[str, Any] | None = None
+
+    @field_validator("classes", "palette", mode="before")
+    @classmethod
+    def _ids_spelled_once(cls, value: object) -> object:
+        """Keys are ids in plain decimal, so ``"1"`` and ``"01"`` cannot both name one."""
+        if not isinstance(value, dict):
+            return value
+        if not all(isinstance(key, str) and _ID_KEY.fullmatch(key) for key in value):
+            raise ValueError('ids are written in plain decimal, such as "7", with no sign or zeros')
+        return {int(key): one for key, one in value.items()}
 
     @model_validator(mode="after")
     def _consistent(self) -> SegmentationDescriptor:
@@ -133,8 +156,9 @@ class SegmentationDescriptor(BaseModel):
                 raise ValueError("two palette ids share a colour")
         for directory in (self.images, self.masks):
             require_relative_path(directory)
-        if PurePosixPath(self.images) == PurePosixPath(self.masks):
-            raise ValueError("images and masks are different directories")
+        images, masks = PurePosixPath(self.images), PurePosixPath(self.masks)
+        if images.is_relative_to(masks) or masks.is_relative_to(images):
+            raise ValueError("images and masks are different directories, neither inside the other")
         if len(set(self.splits)) != len(self.splits) or not all(
             split and "/" not in split and require_relative_path(split) for split in self.splits
         ):
@@ -201,6 +225,11 @@ class SegmentationPngImporter:
             key = _mask_key(path.relative_to(mask_root), descriptor.mask_suffix)
             if key is None:
                 stray += 1
+            elif key in masks:
+                raise ImportSourceUnreadable(
+                    f"masks {relative(src, masks[key])!r} and {relative(src, path)!r} are both "
+                    f"the mask of {str(key)!r}"
+                )
             else:
                 masks[key] = path
 
@@ -244,7 +273,8 @@ class SegmentationPngImporter:
         path = PurePosixPath(relative(src, picture))
         where = relative(src, mask)
         size = measure(picture)
-        values, width, height = read_class_map(mask, descriptor, where)
+        raw = read_mask(mask, descriptor, where)
+        width, height = raw.width, raw.height
         if size is None:
             losses[
                 (
@@ -264,6 +294,12 @@ class SegmentationPngImporter:
                 )
             ] += 1
             return ImportedImage(path=path, width=size[0], height=size[1])
+        try:
+            check_mask_size(height, width)
+        except MaskEncodingError as exc:
+            losses[(ImportLossKind.LABEL, where, f"{exc}; its labels are not imported")] += 1
+            return ImportedImage(path=path, width=width, height=height)
+        values = class_ids(raw, descriptor, where)
         present = set(values)
         unknown = (
             present - set(descriptor.classes) - set(descriptor.background) - set(descriptor.ignore)
@@ -298,6 +334,17 @@ class SegmentationPngImporter:
         )
 
 
+@dataclass(frozen=True)
+class RawMask:
+    """A mask file's pixels as Pillow decoded them, before they are read as ids."""
+
+    mode: str
+    width: int
+    height: int
+    data: bytes
+    palette: list[int] | None
+
+
 def read_class_map(
     path: Path, descriptor: SegmentationDescriptor, where: str
 ) -> tuple[Sequence[int], int, int]:
@@ -307,6 +354,12 @@ def read_class_map(
         ImportSourceUnreadable: the file is not a readable PNG, its mode is not
             one the encoding reads, or a colour is not in the palette.
     """
+    raw = read_mask(path, descriptor, where)
+    return class_ids(raw, descriptor, where), raw.width, raw.height
+
+
+def read_mask(path: Path, descriptor: SegmentationDescriptor, where: str) -> RawMask:
+    """The mask file decoded, refused unless it is a PNG of a mode its encoding reads."""
     from PIL import Image
 
     try:
@@ -326,14 +379,20 @@ def read_class_map(
             f"mask {where!r} is a {mode} PNG, and {DESCRIPTOR_FILENAME} says its encoding is "
             f"{descriptor.encoding}, which reads {allowed}"
         )
-    if mode == "L":
-        return data, width, height
-    if mode == "I;16":
+    return RawMask(mode=mode, width=width, height=height, data=data, palette=palette)
+
+
+def class_ids(raw: RawMask, descriptor: SegmentationDescriptor, where: str) -> Sequence[int]:
+    """The ids of a decoded mask, row-major; a colour outside the palette refuses it."""
+    data, palette = raw.data, raw.palette
+    if raw.mode == "L":
+        return data
+    if raw.mode == "I;16":
         wide = array("H")
         wide.frombytes(data)
         if sys.byteorder == "big":
             wide.byteswap()
-        return wide, width, height
+        return wide
     assert descriptor.palette is not None
     by_colour = {bytes(colour): class_id for class_id, colour in descriptor.palette.items()}
     if palette is not None:
@@ -349,7 +408,7 @@ def read_class_map(
                 f"mask {where!r} holds palette indexes {unknown[:10]} whose colours {shown} "
                 f"are not in the {DESCRIPTOR_FILENAME} palette"
             )
-        return [table[index] for index in data], width, height
+        return [table[index] for index in data]
     pixels = [data[i : i + 3] for i in range(0, len(data), 3)]
     missing = {pixel for pixel in set(pixels) if pixel not in by_colour}
     if missing:
@@ -358,7 +417,7 @@ def read_class_map(
             f"mask {where!r} holds colours {listed} that are not in the "
             f"{DESCRIPTOR_FILENAME} palette"
         )
-    return [by_colour[pixel] for pixel in pixels], width, height
+    return [by_colour[pixel] for pixel in pixels]
 
 
 def _directory(src: Path, directory: str, split: str) -> Path:
@@ -386,8 +445,11 @@ __all__ = [
     "FORMAT_NAME",
     "MASK_SUFFIX",
     "MAX_CLASS_ID",
+    "RawMask",
     "SegmentationDescriptor",
     "SegmentationPngImporter",
+    "class_ids",
     "read_class_map",
     "read_descriptor",
+    "read_mask",
 ]
