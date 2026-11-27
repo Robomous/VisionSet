@@ -103,6 +103,13 @@ def test_an_asset_lists_its_occurrences_in_every_source(repeated: tuple[Rig, str
         404,
         "PROJECT_NOT_FOUND",
     )
+    other = rig.client.post("/projects", json={"name": "elsewhere"})
+    assert other.status_code == 201, other.text
+    _refused(
+        rig.client.get(f"/projects/{other.json()['id']}/assets/{world.assets[2]}/occurrences"),
+        404,
+        "ASSET_NOT_FOUND",
+    )
 
 
 def test_a_track_reads_with_its_observations(rig: Rig) -> None:

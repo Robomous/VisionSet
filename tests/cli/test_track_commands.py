@@ -61,9 +61,20 @@ def test_an_asset_lists_its_occurrences_in_every_source(root: Path, world: Track
         (world.source, 1),
         (second, 1),
     ]
-    text = ok(root, "track", "occurrences", "--asset", world.assets[1])
-    assert "SOURCE" in text
-    assert second in text
+    header, *rows = (
+        line.split()
+        for line in ok(root, "track", "occurrences", "--asset", world.assets[1]).splitlines()
+    )
+    assert header == ["ID", "SOURCE", "POSITION", "TIMESTAMP"]
+    assert rows == [
+        [
+            o["id"],
+            o["source_id"],
+            str(o["position"]),
+            "-" if o["timestamp"] is None else f"{o['timestamp']:g}",
+        ]
+        for o in found["items"]
+    ]
 
 
 @pytest.mark.parametrize("targets", [(), ("--source", "s", "--asset", "a")])
