@@ -115,7 +115,7 @@ docker compose -f docker/compose.yaml -f docker/compose.mlflow.yaml --profile ml
 
 | | |
 | --- | --- |
-| Image | `ghcr.io/mlflow/mlflow`, pinned to the client version VisionSet locks, and updated by Dependabot under the repository's three-day cool-down. |
+| Image | `ghcr.io/mlflow/mlflow`, pinned to the client version VisionSet locks, and updated by Dependabot under the repository's three-day cool-down; a test fails when the image and the lock disagree. |
 | Port | `127.0.0.1:5050` on the host — loopback only, and not 5000. Move it with `VISIONSET_MLFLOW_PORT` in `docker/.env`. The UI is at the same address. |
 | Storage | The `mlflow-data` named volume: a SQLite database and an artifact directory, apart from the VisionSet workspace. It survives `down`; `docker volume rm visionset_mlflow-data` deletes it. `down -v` deletes it too, along with the other profiles' volumes. |
 | Authentication | None. It is for one developer on one machine: do not publish its port beyond loopback. |

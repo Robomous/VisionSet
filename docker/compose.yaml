@@ -168,8 +168,9 @@ services:
   # docker/compose.mlflow.yaml points the api at it; see docs/content/tracking.md.
   mlflow:
     profiles: ["mlflow"]
-    # A release, never `latest`, kept at the client's version in uv.lock. The real-server
-    # test in tests/tracking starts this service, so a bump is tested before it lands.
+    # A release, never `latest`, kept at the client's version in uv.lock, which
+    # tests/tracking/test_tracking_compose_pin.py enforces. The real-server test in
+    # tests/tracking starts this service, so a bump is tested before it lands.
     image: ghcr.io/mlflow/mlflow:v3.18.0
     command:
       - mlflow
