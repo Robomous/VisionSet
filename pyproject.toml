@@ -117,6 +117,13 @@ local-inference = [
     "accelerate>=0.33",
     "huggingface-hub>=0.24",
 ]
+# Optional experiment tracking (#1174): `pip install "visionset[mlflow]"`. The skinny
+# client carries `MlflowClient` and the REST store, which is everything
+# `visionset/tracking` calls, at about a tenth of the full distribution's install;
+# the full `mlflow` package provides the same import and works in its place.
+mlflow = [
+    "mlflow-skinny>=3.18.0",
+]
 
 [project.urls]
 Homepage = "https://github.com/Robomous/VisionSet"
@@ -328,10 +335,16 @@ forbidden_modules = [
     # `PreprocessingDriver` port. Same direction as `visionset.formats`: the kernel
     # takes driver instances, and discovery stays on the other side of the line.
     "visionset.preprocessing",
+    # Optional experiment tracking (#1174). Same direction: it is where the MLflow
+    # client is reached, and the kernel records nothing about a run's telemetry.
+    "visionset.tracking",
     "fastapi",
     "typer",
     "mcp",
     "uvicorn",
+    # The optional tracking client, named directly: `visionset.tracking` reaches it
+    # only from inside a function, and the kernel never reaches it at all.
+    "mlflow",
 ]
 
 [[tool.importlinter.contracts]]
@@ -402,12 +415,40 @@ forbidden_modules = [
     "uvicorn",
 ]
 
+# Optional experiment tracking (#1174), below the surfaces and below `jobs`, which
+# instruments a run through it: the reverse would close a cycle and put the job
+# registry on the import path of every tracker. What crosses into a worker is the
+# settings object, never a client, so nothing here needs to know who spawned it.
+[[tool.importlinter.contracts]]
+name = "Tracking is below the surfaces: visionset.tracking imports no delivery package, jobs, inference or plugin"
+type = "forbidden"
+source_modules = ["visionset.tracking"]
+forbidden_modules = [
+    "visionset.server",
+    "visionset.cli",
+    "visionset.mcp",
+    "visionset.jobs",
+    "visionset.inference",
+    "visionset.formats",
+    "visionset.preprocessing",
+    "visionset.wire",
+    # It records what a run reports; it never opens a workspace to find out.
+    "visionset.kernel.services",
+    "visionset.kernel.adapters",
+    "fastapi",
+    "starlette",
+    "typer",
+    "click",
+    "mcp",
+    "uvicorn",
+]
+
 # Persistence is the kernel adapters' business. Direct imports only: these
 # packages reach the kernel, and the kernel's own adapters import sqlalchemy.
 [[tool.importlinter.contracts]]
-name = "Shared libraries never touch the database driver: wire, formats and preprocessing import no sqlalchemy"
+name = "Shared libraries never touch the database driver: wire, formats, preprocessing and tracking import no sqlalchemy"
 type = "forbidden"
-source_modules = ["visionset.wire", "visionset.formats", "visionset.preprocessing"]
+source_modules = ["visionset.wire", "visionset.formats", "visionset.preprocessing", "visionset.tracking"]
 forbidden_modules = ["sqlalchemy"]
 allow_indirect_imports = true
 

@@ -147,6 +147,7 @@ from visionset.kernel import (
     TooManyOpenVideoImports,
     TrackClassMismatch,
     TrackExternalIdTaken,
+    TrackingUnavailable,
     TrackMergeWithItself,
     TrackNotFound,
     TrackSourceMismatch,
@@ -551,6 +552,10 @@ _HTTP: Final[dict[type[VisionSetError], _Http]] = {
     # exact `pip install`, which *is* the remedy — nobody can reconstruct it
     # from "unavailable".
     LocalInferenceUnavailable: _Http(500, expose_message=True),
+    # Tracking enabled on an installation that cannot carry it out. Exposed on
+    # LOCAL_INFERENCE_UNAVAILABLE's licence: the message names the variable to set
+    # or the extra to install, and it never carries the configured URI.
+    TrackingUnavailable: _Http(500, expose_message=True),
     # The reference is wrong, not the machine: a mistyped id, a revision that does
     # not resolve, or a private repository. A 422 because the model named in the
     # request (or the connection) is what is invalid. A 4xx publishes its message,

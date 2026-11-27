@@ -32,6 +32,13 @@ nothing was being distributed. This is the first version that is.
   `letterbox`, `hflip`, `rot90` and `brightness_contrast` move it exactly; `stretch`, `fill` and `center_crop`
   refuse it. A release holding one is a version-8 manifest; every other release keeps its version and hash
   (#1160).
+- **Optional MLflow tracking adapter.** `visionset.tracking` adds a neutral `Tracker`, a no-op default and an MLflow
+  implementation that addresses runs by explicit id through `MlflowClient`, installed with
+  `pip install "visionset[mlflow]"` (`mlflow-skinny`). Off unless `VISIONSET_MLFLOW_ENABLED` is true - a
+  `MLFLOW_TRACKING_URI` alone never turns it on - and, when off, the client is not imported and nothing is sent.
+  Enabled with no URI, a URI carrying credentials or a query string, or no client installed is refused as `TRACKING_UNAVAILABLE`; a
+  server that is down is a sanitized warning with bounded timeouts, never a failure. Only the settings cross into a
+  worker. No operation is instrumented yet. See [tracking](docs/content/tracking.md) (#1174).
 - **Tracks in the annotation workspace.** On a frame of a video or image-sequence source, the side panel gains a
   Tracks region: the source's tracks with their class and frame count, the followed track's standing in this batch,
   and `‹` / `›` to its previous and next frame in the job, through the save-first path, passing over - and saying

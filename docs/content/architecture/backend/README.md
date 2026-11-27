@@ -1,7 +1,7 @@
 # The backend
 
 The Python distribution in [`src/visionset/`](../../../../src/visionset/) contains
-nine packages. They are not peers. The core defines the domain, the next layer
+ten packages. They are not peers. The core defines the domain, the next layer
 makes that domain usable by callers, and the outer layer exposes protocols.
 
 ## The stack
@@ -20,6 +20,7 @@ flowchart TB
         Inference["inference\nmodel adapters"]
         Formats["formats\nexporter plugins"]
         Preprocessing["preprocessing\npixel drivers"]
+        Tracking["tracking\nexperiment tracking"]
     end
 
     Kernel["kernel\ndomain · ports · services · adapters"]
@@ -44,6 +45,7 @@ flowchart TB
     Inference --> Kernel
     Formats --> Kernel
     Preprocessing --> Kernel
+    Tracking --> Kernel
 ```
 
 Read the diagram as a dependency graph: an arrow is "may import". Nothing points
@@ -62,21 +64,23 @@ upward, and the three surfaces do not point at each other.
 | [`wire`](../../../../src/visionset/wire/) | The JSON shapes the CLI and MCP publish. | [wire.md](wire.md) |
 | [`jobs`](../../../../src/visionset/jobs/) | Handlers for work that outlives a request. | [jobs.md](jobs.md) |
 | [`inference`](../../../../src/visionset/inference/) | Where a model connection becomes a running model, and which model families could run next. | [inference.md](inference.md) |
+| [`tracking`](../../../../src/visionset/tracking/) | Optional MLflow experiment tracking: a neutral `Tracker`, a no-op default, and an MLflow client imported only when tracking is enabled. | [tracking.md](../../tracking.md) |
 
 ## What the rules are, and where they live
 
-Seven import-linter contracts in [`pyproject.toml`](../../../../pyproject.toml) hold
+Eight import-linter contracts in [`pyproject.toml`](../../../../pyproject.toml) hold
 the graph above. They are run by `uv run lint-imports`, which
 [`scripts/check.sh`](../../../../scripts/check.sh) invokes.
 
 | Contract | What it forbids |
 | --- | --- |
-| Kernel purity | `visionset.kernel` importing `server`, `cli`, `mcp`, `formats`, `wire`, `jobs`, `inference`, `preprocessing`, or `fastapi` / `typer` / `mcp` / `uvicorn` |
+| Kernel purity | `visionset.kernel` importing `server`, `cli`, `mcp`, `formats`, `wire`, `jobs`, `inference`, `preprocessing`, `tracking`, or `fastapi` / `typer` / `mcp` / `uvicorn` / `mlflow` |
 | Delivery clients are siblings | `server`, `cli` and `mcp` importing each other |
 | Job handlers are below the surfaces | `visionset.jobs` importing any delivery package or web framework (`fastapi` / `typer` / `mcp` / `uvicorn`) |
 | Inference adapters are below the surfaces | `visionset.inference` importing any delivery package, web framework (`fastapi` / `typer` / `mcp` / `uvicorn`), or `visionset.jobs` |
+| Tracking is below the surfaces | `visionset.tracking` importing any delivery package, `jobs`, `inference`, `formats`, `preprocessing`, `wire`, `kernel.services`, `kernel.adapters`, or `fastapi` / `starlette` / `typer` / `click` / `mcp` / `uvicorn` |
 | Shared libraries are below the surfaces | `wire`, `formats` and `preprocessing` importing `server`, `cli`, `mcp`, or `fastapi` / `starlette` / `typer` / `click` / `mcp` / `uvicorn` |
-| Shared libraries never touch the database driver | `wire`, `formats` and `preprocessing` importing `sqlalchemy` directly |
+| Shared libraries never touch the database driver | `wire`, `formats`, `preprocessing` and `tracking` importing `sqlalchemy` directly |
 | Format plugins never reach a workspace | `formats` importing `visionset.kernel.services` or `visionset.kernel.adapters` directly - an importer reads a directory and returns a value |
 
 The first is the load-bearing one, and it has a second enforcement:
