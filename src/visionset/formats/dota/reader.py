@@ -42,6 +42,7 @@ from visionset.formats._reading import (
 )
 from visionset.kernel.domain import (
     Attribute,
+    AttributeValue,
     GeometryType,
     ImportedClass,
     ImportedDataset,
@@ -191,7 +192,7 @@ def _label(
         return None
     if reason:
         losses[(ImportLossKind.GEOMETRY, name, reason)] += 1
-    attributes = {}
+    attributes: dict[str, AttributeValue] = {}
     if len(tokens) == 10:
         flag = _FLAGS.get(tokens[9])
         if flag is None:
