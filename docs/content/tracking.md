@@ -398,3 +398,71 @@ The job's row is still the answer.
 
 Treat a `RUNNING` run with no live job behind it as abandoned, and read the job's state from
 VisionSet.
+
+## Command line and MCP
+
+The CLI and the MCP server never queue a job: they run the work in their own process and wait for
+it. The commands and tools below open runs too, with the names, allowlists and rules described under
+[background jobs](#background-jobs). The same operation sends the same tags, parameters, metrics and
+[release lineage](#release-lineage) wherever it ran, except as listed here.
+
+| Operation | Commands | MCP tools | Runs |
+| --- | --- | --- | --- |
+| Pre-labeling | `visionset job pre-label`, `visionset batch pre-label`, `visionset project pre-label` | `pre_label_job`, `pre_label_batch`, `pre_label_project` | One `annotation.pre_label` run for each job it labels. |
+| Export | `visionset export`, except with `--check` | `export_release` | One `export.release` run. |
+| Ingest | `visionset ingest` | `ingest` | One `ingest.resume` run. |
+| Model weight download | `visionset inference download` | `download_connection_weights` | One `inference.download_weights` run. |
+
+Nothing else a command or a tool does opens a run: reads, edits, approvals, publishing a release,
+`export --check` and `check_export`, imports, integrity checks and thumbnail backfills are not
+tracked.
+
+### How these runs differ
+
+- **`visionset.execution_source` names the surface**: `cli` for a command, `mcp` for a tool,
+  instead of `background_job`.
+- **Pre-labeling** writes a job row of its own, as it always has, so its run carries that row's id
+  as `visionset.job_id` and its `visionset.attempt` (`1`). The run opens when the row is written,
+  after every refusal has passed, so a refused call opens no run. A batch or project call labels one
+  job after another and opens one run for each.
+- **Export, ingest and weight download** write no job row, so their runs carry neither
+  `visionset.job_id` nor `visionset.attempt`. `visionset.execution_id` is new for each call. The run
+  opens once the arguments have been checked and the names resolved, so a call refused at that point
+  opens no run. A refusal the operation makes itself, such as an export's consent check or a
+  destination that is not empty, ends the run `FAILED` with the error's class and code, as any other
+  failure during the work does.
+- **An ingest's `visionset.ingest_job_id` is sent when the ingest returns**, because the ingest run
+  it names is created by the call itself. A failed ingest's run does not carry it.
+- **`duration_seconds`** is the time the work took in the calling process. For pre-labeling it
+  starts when the job row is written.
+- **A run ends `FINISHED` or `FAILED`.** The exception is a pre-labeling run stopped by a cancel
+  request on its row, which ends `KILLED` as a background one does. An interrupted command (Ctrl-C) ends its run `FAILED` with `visionset.error_class` set to
+  `KeyboardInterrupt`.
+
+### Delivery and output
+
+Delivery is the same as for a worker ([delivery never holds a job](#delivery-never-holds-a-job)):
+opening and closing a run are queued for the process's own delivery thread, so a slow or failing
+tracking server never delays the work, changes its result, its output or a command's exit code.
+
+- **A command waits for its deliveries before it exits**, for up to 10 seconds, and then exits with
+  the output and exit code it would have had anyway. A tracking server that never answers therefore
+  delays a command's exit by at most that long. The MCP server delivers as it goes, and waits the
+  same 10 seconds when it stops.
+- **Nothing is written to standard output.** Standard output is a command's output and the MCP
+  server's protocol channel; tracking warnings go to the `visionset.tracking` logger, which writes to
+  standard error unless logging is configured otherwise.
+- **With tracking off**, a command or a tool reads the flag and nothing else: no client is imported,
+  no thread is started and nothing is sent.
+- **An unreadable `VISIONSET_MLFLOW_ENABLED`** is logged once per process when the first tracked
+  operation starts, and the work runs untracked.
+
+### What is not covered
+
+- **A run left open by a process that died stays open.** No dispatcher watches a command or an MCP
+  server, and the sweeps under [runs left open](#runs-left-open) look only for `background_job`
+  runs. A command killed outright, or an MCP server that dies during a call, leaves its run
+  `RUNNING`; so does a command whose deliveries were still waiting when its 10 seconds ran out.
+- **A process 64 or more deliveries behind** does not track its next operation at all.
+- **Export, ingest and weight download have no job row**, so a run from a command or a tool cannot
+  be matched to one; `visionset.execution_id` is its only handle.
