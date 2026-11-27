@@ -60,6 +60,10 @@ def _track_row(detail: TrackDetail) -> tuple[str, ...]:
     )
 
 
+def _seconds(timestamp: float | None) -> str:
+    return _NONE if timestamp is None else f"{timestamp:g}"
+
+
 def _print_track(detail: TrackDetail, *, json_out: bool) -> None:
     if json_out:
         document(wire.track(detail))
@@ -72,7 +76,7 @@ def _print_track(detail: TrackDetail, *, json_out: bool) -> None:
             [
                 (
                     str(f.position),
-                    f"{f.timestamp:g}",
+                    _seconds(f.timestamp),
                     str(f.occurrence_id),
                     str(f.asset_id),
                     str(f.annotation_id),
@@ -94,7 +98,7 @@ def track_occurrences(
         return
     table(
         _OCCURRENCE_COLUMNS,
-        [(str(o.id), str(o.position), f"{o.timestamp:g}", str(o.asset_id)) for o in found],
+        [(str(o.id), str(o.position), _seconds(o.timestamp), str(o.asset_id)) for o in found],
     )
 
 

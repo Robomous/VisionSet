@@ -93,6 +93,23 @@ def folds_of(manifest: Manifest, assignment: SplitAssignment | None) -> dict[UUI
     return {asset.asset_id: fold_of[asset.asset_id] for asset in manifest.assets}
 
 
+def held_frames(manifest: Manifest, source_id: UUID) -> dict[int, ManifestAsset]:
+    """Each position of ``source_id`` the manifest lists, and the asset held there.
+
+    Empty for a source the manifest does not list. An augmented variant shares
+    its base's ``asset_id``; the base, whose content key is its prefix, wins.
+    """
+    by_id: dict[UUID, ManifestAsset] = {}
+    for asset in sorted(manifest.assets, key=lambda one: one.content_hash):
+        by_id.setdefault(asset.asset_id, asset)
+    return {
+        one.position: by_id[one.asset_id]
+        for source in manifest.sources
+        if source.source_id == source_id
+        for one in source.occurrences
+    }
+
+
 def image_name(asset: ManifestAsset, suffix: str) -> str:
     """What one asset's picture is called on disk.
 

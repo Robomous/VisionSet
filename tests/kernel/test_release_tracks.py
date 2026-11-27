@@ -95,7 +95,8 @@ def test_a_tracked_release_is_version_7_ordered_by_position(world: Releasing) ->
     track = _released(world, clip, [2, 0, 1])
     manifest = world.releases.manifest(world.releases.list(world.dataset_id)[0].id)
 
-    assert manifest.manifest_version == TRACKED_MANIFEST_VERSION == MANIFEST_VERSION - 1
+    assert manifest.manifest_version == TRACKED_MANIFEST_VERSION < MANIFEST_VERSION
+    assert manifest.sources == (), "a video source's occurrences are not listed"
     assert [o.position for o in track.observations] == [0, 1, 2]
     assert [o.asset_id for o in track.observations] == [o.asset_id for o in clip.occurrences]
     assert (track.source_id, track.label_class, track.external_id) == (clip.source_id, "car", None)

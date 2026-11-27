@@ -444,7 +444,7 @@ class FrameOccurrence(TypedDict):
     id: str
     source_id: str
     position: int
-    timestamp: float
+    timestamp: float | None
     asset_id: str
 
 
@@ -452,7 +452,7 @@ class FrameOccurrence(TypedDict):
 class TrackObservation(TypedDict):
     occurrence_id: str
     position: int
-    timestamp: float
+    timestamp: float | None
     asset_id: str
     annotation_id: str
 

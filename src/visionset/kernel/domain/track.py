@@ -51,7 +51,7 @@ class ObservedFrame(BaseModel):
 
     occurrence_id: UUID
     position: int
-    timestamp: float
+    timestamp: float | None
     asset_id: UUID
     annotation_id: UUID
 

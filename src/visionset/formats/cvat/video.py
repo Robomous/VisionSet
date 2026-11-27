@@ -8,7 +8,8 @@ video, from ``<start_frame>`` every ``step`` of a ``step=<n>`` ``<frame_filter>`
 the ``k``-th is position ``k`` and is ``images/frame_<frame:06d><ext>`` beside the
 document, and every frame shares one ``<ext>``. A frame the task counts but the directory does not
 hold is listed anyway, so its position stays a gap. CVAT records no frame
-timing, so every frame's timestamp is ``0`` and its order lives in its position.
+timing, so every frame's timestamp is unknown (``None``, not ``0``) and its order
+lives in its position.
 
 Each ``<track id>`` becomes a track of that sequence whose external id is the
 decimal ``id``. Each shape in it at ``outside="0"`` becomes the track's
@@ -24,9 +25,12 @@ frame>`` becomes an untracked classification tag on that frame. A document holdi
 ``<image>`` elements is CVAT for images and is refused here.
 
 **Out.** One task per source a released track observes, as ``<source-id>/``
-holding ``annotations.xml`` and the observed frames as
-``images/frame_<position:06d><ext>``, the layout the importer reads back.
-``<size>`` runs to the last observed position. A track whose imported id is a
+holding ``annotations.xml`` and every frame the release holds of that source,
+observed or not, as ``images/frame_<position:06d><ext>``, the layout the
+importer reads back. Only a position the release holds no frame for is a gap.
+A video source, and every source of a manifest older than version 9, is not
+listed, so only its observed frames are written. ``<size>`` runs to the last
+written position. A track whose imported id is a
 non-negative integer keeps it; any other is numbered after the largest such id
 in its sequence. Each observation is a shape at ``keyframe="1" outside="0"``,
 and a track that does not continue to the next frame gets an ``outside="1"``
@@ -49,7 +53,7 @@ from xml.etree import ElementTree
 
 from pydantic import ValidationError
 
-from visionset.formats._layout import dimensions_of, image_suffix, write_image_as
+from visionset.formats._layout import dimensions_of, held_frames, image_suffix, write_image_as
 from visionset.formats._reading import IMAGE_SUFFIXES, REPEATED_TAG, contained, relative
 from visionset.formats._targets import self_target
 from visionset.formats.cvat._document import (
@@ -179,7 +183,7 @@ class CvatVideoImporter:
                 sequences.append(
                     ImportedSequence(
                         name=task.name,
-                        frames=tuple(ImportedFrame(path=frame, timestamp=0.0) for frame in frames),
+                        frames=tuple(ImportedFrame(path=frame, timestamp=None) for frame in frames),
                     )
                 )
             except ValidationError as exc:
@@ -416,7 +420,7 @@ class CvatVideoExporter:
         planned = [
             plan
             for source_id, tracks in by_source.items()
-            if (plan := _plan(str(source_id), tracks, drawn, manifest, content)) is not None
+            if (plan := _plan(source_id, tracks, drawn, manifest, content)) is not None
         ]
         for name, root, frames in planned:
             for position, asset in sorted(frames.items()):
@@ -430,14 +434,15 @@ class CvatVideoExporter:
 
 
 def _plan(
-    name: str,
+    source_id: UUID,
     tracks: list[ManifestTrack],
     drawn: Mapping[UUID, tuple[ManifestAsset, ManifestAnnotation]],
     manifest: Manifest,
     content: ContentReader,
 ) -> tuple[str, ElementTree.Element, dict[int, ManifestAsset]] | None:
     """One task's document and frames, every refusal raised before anything is written."""
-    frames: dict[int, ManifestAsset] = {}
+    name = str(source_id)
+    frames = held_frames(manifest, source_id)
     written: list[tuple[ManifestTrack, list[tuple[int, ManifestAnnotation]]]] = []
     for track in tracks:
         shapes = []

@@ -77,6 +77,8 @@ from visionset.kernel.domain import (
     ManifestAnnotation,
     ManifestAsset,
     ManifestObservation,
+    ManifestOccurrence,
+    ManifestSource,
     ManifestTrack,
     ModalityCompatibility,
     RecipeSpec,
@@ -85,6 +87,7 @@ from visionset.kernel.domain import (
     ReleaseVerification,
     ResizeStep,
     ResizeStrategy,
+    SourceKind,
     SplitAssignment,
     SplitRecipe,
     Track,
@@ -94,6 +97,7 @@ from visionset.kernel.domain import (
     geometry_needs_calibration,
     geometry_needs_scan_frame,
     manifest_version_for,
+    manifest_within,
     normalize_release_tag,
     plugin_manifest,
     recipe_hash,
@@ -102,7 +106,6 @@ from visionset.kernel.domain import (
     sha256_hex,
     sha256_hex_of_stream,
     source_of_content_hash,
-    tracks_within,
     transform_manifest,
     validate_schema_annotation,
     variant_seed,
@@ -232,12 +235,16 @@ class ReleaseService:
                     )
 
                 manifest_tracks = _manifest_tracks(uow, manifest_assets)
+                manifest_sources = _manifest_sources(uow, dataset.project_id, manifest_assets)
                 manifest = Manifest(
-                    manifest_version=manifest_version_for(manifest_assets, manifest_tracks),
+                    manifest_version=manifest_version_for(
+                        manifest_assets, manifest_tracks, manifest_sources
+                    ),
                     schema_version=active.version,
                     classes=active.classes,
                     assets=manifest_assets,
                     tracks=manifest_tracks,
+                    sources=manifest_sources,
                 )
                 project_id = dataset.project_id
                 published = uow.releases.add(
@@ -1023,6 +1030,30 @@ def _manifest_tracks(
         )
         for track in tracks.values()
     )
+
+
+def _manifest_sources(
+    uow: UnitOfWork, project_id: UUID, assets: tuple[ManifestAsset, ...]
+) -> tuple[ManifestSource, ...]:
+    """Each image-sequence source of the project, with the occurrences of released assets.
+
+    A source none of whose occurrences the release holds is not listed.
+    """
+    held = {asset.asset_id for asset in assets}
+    listed = []
+    for source in uow.sources.list(project_id):
+        if source.kind is not SourceKind.IMAGE_SEQUENCE:
+            continue
+        occurrences = tuple(
+            ManifestOccurrence(
+                position=one.position, timestamp=one.timestamp, asset_id=one.asset_id
+            )
+            for one in uow.frame_occurrences.list(source.id)
+            if one.asset_id in held
+        )
+        if occurrences:
+            listed.append(ManifestSource(source_id=source.id, occurrences=occurrences))
+    return tuple(listed)
 
 
 def _release_schema_blockers(
@@ -1811,9 +1842,7 @@ def _addressed_to(manifest: Manifest, carried: frozenset[GeometryType]) -> Manif
         )
         for asset in manifest.assets
     )
-    return manifest.model_copy(
-        update={"assets": assets, "tracks": tracks_within(manifest.tracks, assets)}
-    )
+    return manifest_within(manifest, assets)
 
 
 def _status_of(

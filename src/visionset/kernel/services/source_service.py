@@ -244,7 +244,7 @@ class SourceService:
         )
 
     def add_occurrences_in(
-        self, uow: UnitOfWork, source: Source, occurrences: Sequence[tuple[int, float, UUID]]
+        self, uow: UnitOfWork, source: Source, occurrences: Sequence[tuple[int, float | None, UUID]]
     ) -> list[FrameOccurrence]:
         """Write an image sequence's ``(position, timestamp, asset_id)`` occurrences.
 
