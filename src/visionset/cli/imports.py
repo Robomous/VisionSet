@@ -137,7 +137,7 @@ def _report(plan: ImportPlan, consent: ImportConsent, *, json_out: bool) -> None
     )
     if plan.dataset.frame is None:
         items = f"{len(plan.images)} image(s)"
-        labels = sum(len(image.labels) for image in plan.images)
+        labels = sum(len(image.labels) for image in (*plan.images, *plan.repeats))
     else:
         items = f"{len(plan.scans)} scan(s) in the {plan.dataset.frame.value} frame"
         labels = sum(len(scan.labels) for scan in plan.scans)

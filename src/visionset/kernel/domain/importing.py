@@ -351,12 +351,19 @@ class ImportPlan(BaseModel):
     """What committing the same source would do, computed without writing.
 
     ``losses`` is the importer's report plus what only the workspace can tell:
-    images the source names but does not hold, images whose bytes repeat an
-    earlier listed image (the first path in sorted order wins and the later
-    ones' labels are dropped), and labels wholly outside their decoded image.
-    ``images`` is what a commit would import, those drops already applied.
-    ``scans`` and ``missing_scans`` are the same for a dataset of scans, whose
-    labels have no image to fall outside of.
+    images the source names but does not hold, images outside any sequence whose
+    bytes repeat an earlier listed image (the first in listing order wins, a
+    sequence's frames in the sequence's own order, and the later ones' labels
+    are dropped), and labels wholly outside their decoded image. ``images`` is
+    what a commit would import, those drops already applied. ``repeats`` are the
+    sequence frames whose bytes repeat an image in ``images``: each is an
+    occurrence of that image's asset, and its labels land there. ``scans`` and
+    ``missing_scans`` are the same for a dataset of scans, whose labels have no
+    image to fall outside of.
+
+    ``annotations_already_present`` counts the labels a commit would not write
+    because their asset carries an equal one already, including an untracked
+    label at a repeat whose equal an earlier occurrence of the same bytes writes.
 
     ``sequences`` counts the sequences a commit would write, those holding an
     asset it creates or labels, and ``tracks`` the tracks over them, one per
@@ -380,6 +387,7 @@ class ImportPlan(BaseModel):
     conflicts: tuple[str, ...]
     scans: tuple[ImportedScan, ...] = ()
     missing_scans: tuple[PurePosixPath, ...] = ()
+    repeats: tuple[ImportedImage, ...] = ()
     creates_schema: bool
     new_assets: int = Field(ge=0)
     new_annotations: int = Field(ge=0)

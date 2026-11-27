@@ -199,6 +199,14 @@ nothing was being distributed. This is the first version that is.
 
 ### Changed
 
+- **A repeated frame in an image sequence keeps its labels.** A sequence frame whose bytes repeat an earlier image
+  was already an occurrence of that image's asset, but its labels were dropped as an `image` loss, so a track over
+  static or duplicated frames lost those positions. Its labels now land on the shared asset: each tracked label as
+  an annotation of its own, so the track observes every occurrence, and an untracked one only when the asset does
+  not already carry an equal label. A fully static clip is one asset with one annotation per tracked label per
+  frame. A repeat outside any sequence is still an `image` loss, and re-running the same source still writes
+  nothing. A source imported before this change, whose repeated frames' labels were a consented `image` loss, now
+  has labels its held assets do not carry, so re-running it is refused with `ASSET_NOT_WRITABLE` (#1197).
 - **The annotator returns focus to its view through a handle, not a DOM lookup.** `AnnotatorView` gains `focus()`,
   and `PointCloudCanvas` takes a `viewRef` whose `PointCloudView.focus()` does the same for a scan view; each leaves
   focus alone when it is already inside the view. The object panel, the frame gallery and the suggest bar call an
