@@ -28,7 +28,8 @@ flowchart LR
 
 `ports` declares protocols and nothing else - a `MetadataStore`, a `BlobStore`, an
 `ImageProcessor`, a `PointCloudProcessor`, an `EventBus`, a `JobQueue`, an
-`AuthProvider`, a `ProgressReporter`, an `Exporter`, an `Importer`, a
+`AuthProvider`, a `ProgressReporter`, an `Exporter`, an `Importer` (with its optional
+`OpensPictures`), a
 `ModelProvider`, a `PreprocessingDriver`. There is no `VideoProcessor` port: video
 decoding happens in the browser
 ([`frontend/media`](../frontend/media.md)) and the kernel never sees a video file,

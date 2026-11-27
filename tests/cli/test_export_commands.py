@@ -137,6 +137,7 @@ def test_format_list_names_the_installed_exporters() -> None:
         ["open-images", "yes"],
         ["openlane-2d", "yes"],
         ["segmentation-png", "yes"],
+        ["tfrecord", "yes"],
         ["tusimple", "yes"],
         ["ultralytics", "yes"],
         ["voc", "yes"],
@@ -333,6 +334,14 @@ def test_format_list_json_is_the_envelope() -> None:
             "degraded_geometries": ["polygon"],
             "modalities": ["image"],
             "targets": ["segmentation-png"],
+        },
+        {
+            "name": "tfrecord",
+            "lossy": True,
+            "geometries": ["bbox"],
+            "degraded_geometries": [],
+            "modalities": ["image"],
+            "targets": ["tfrecord"],
         },
         {
             # The one lane format that does not write the vertices it was given.

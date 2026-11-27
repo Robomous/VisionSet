@@ -192,6 +192,9 @@ createml-import = "visionset.formats.createml:CreatemlImporter"
 # Open Images boxes: one normalized-corner CSV per split and a class descriptions file.
 open-images = "visionset.formats.open_images:OpenImagesExporter"
 open-images-import = "visionset.formats.open_images:OpenImagesImporter"
+# TensorFlow Object Detection: tf.train.Example boxes per split in TFRecords and a label map.
+tfrecord = "visionset.formats.tfrecord:TfrecordExporter"
+tfrecord-import = "visionset.formats.tfrecord:TfrecordImporter"
 
 # Inference driver discovery. A third-party distribution registers its own
 # provider in this same group, and pins the VisionSet it was built for in its

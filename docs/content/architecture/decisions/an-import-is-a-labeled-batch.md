@@ -21,6 +21,15 @@ relative to the source, the labels keyed by that path, and a report of everythin
 represent. It never yields `Annotation` rows, because an importer cannot know an `asset_id`
 before the assets exist.
 
+**Amended for [#1168](https://github.com/Robomous/VisionSet/issues/1168) on 2026-11-27.** A
+TensorFlow Object Detection TFRecord holds its pictures inside its records, not beside them, so
+an image path can name no file at all. An importer may also satisfy the optional
+[`OpensPictures`](../../../../src/visionset/kernel/ports/importer.py) port: `open(src, path)`
+answers a stream of the picture at a path the source holds no file for. `ImportService` asks it
+only for such a path, in inspect and in commit alike, and an `OSError` from it is the `image` loss
+a missing file is. The importer still touches no workspace, and nothing is written into the
+source. An importer without `open` behaves exactly as before.
+
 ## Fidelity is computed per dataset
 
 Whether an import is lossy depends on the file in hand, not on the format: a COCO file with

@@ -20,7 +20,7 @@ from visionset.kernel.ports.image_processor import (
     THUMBNAIL_FORMAT,
     ImageProcessor,
 )
-from visionset.kernel.ports.importer import Importer
+from visionset.kernel.ports.importer import Importer, OpensPictures
 from visionset.kernel.ports.job_queue import JobQueue
 from visionset.kernel.ports.metadata_store import (
     UNINITIALIZED,
@@ -53,6 +53,7 @@ __all__ = [
     "Importer",
     "JobQueue",
     "MetadataStore",
+    "OpensPictures",
     "ModelProvider",
     "MAX_POINT_CLOUD_BYTES",
     "MAX_POINT_CLOUD_POINTS",

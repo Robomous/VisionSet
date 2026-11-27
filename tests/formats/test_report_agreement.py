@@ -31,6 +31,7 @@ from uuid import UUID, uuid4
 import pytest
 from PIL import Image
 from tests.formats.test_kitti_export import Released
+from tests.formats.test_tfrecord import _parse_example, _parse_records
 from tests.formats.test_ultralytics import CLASSES, Fixture, _box
 
 from visionset.formats.classification import LABELS_FILENAME as CLASSIFICATION_LABELS
@@ -270,6 +271,16 @@ def _open_images_counts(root: Path) -> Counter[str]:
     return found
 
 
+def _tfrecord_counts(root: Path) -> Counter[str]:
+    """Every box of every split's records, by its ``image/object/class/text``."""
+    found: Counter[str] = Counter()
+    for path in sorted(root.glob("*.tfrecord")):
+        for record in _parse_records(path.read_bytes()):
+            _, texts = _parse_example(record)["image/object/class/text"]
+            found.update(text.decode("utf-8") for text in texts)
+    return found
+
+
 def _segmentation_png_counts(root: Path) -> Counter[str]:
     """Every class present in a mask, once per mask, by the name the descriptor gives its id.
 
@@ -306,6 +317,7 @@ COUNTERS: dict[str, Callable[[Path], Counter[str]]] = {
     "labelme": _labelme_counts,
     "createml": _createml_counts,
     "open-images": _open_images_counts,
+    "tfrecord": _tfrecord_counts,
 }
 
 #: Formats whose layout depends on what the release holds, and are therefore

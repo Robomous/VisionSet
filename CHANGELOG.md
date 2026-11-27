@@ -13,6 +13,19 @@ nothing was being distributed. This is the first version that is.
 
 ### Added
 
+- **TensorFlow Object Detection TFRecord import and export as `tfrecord`.** The Object Detection API's `tf.train.Example`
+  dataset schema, not an arbitrary TFRecord, read and written without TensorFlow or protobuf: the record framing with
+  its masked CRC32C and the protobuf wire format are implemented in the format package. The exporter writes a
+  `label_map.pbtxt` with ids `1` upward in class-name order and one uncompressed `<split>.tfrecord` per split, each record
+  a picture's bytes, size, filename, normalized float32 boxes clamped into the picture, class text and id, and the
+  `difficult`, `truncated` and `is_crowd` flags from boolean attributes of those names. The importer also reads
+  GZIP-compressed and sharded record files, resolves each class by its text checked against its id through the label
+  map, and reads a box back exactly when its corners carry at most three decimals of a pixel on a picture up to 16,384
+  pixels. An example with no picture is an `image` loss; masks, keypoints, `area` and other features are reported lost;
+  a wrong feature type, a malformed label map, a class text and id that disagree, an invalid coordinate and corrupt
+  framing refuse the source. Masks and keypoints are deliberately not written. An importer may now also implement the
+  optional `OpensPictures` port, which `ImportService` asks for a picture the source holds inside its files rather than
+  as one, so nothing is unpacked into the source (#1168).
 - **Open Images box CSV import and export as `open-images`.** Only the box annotations of Open Images V4 to V7:
   `<split>-annotations-bbox.csv` rows of `ImageID`, `LabelName`, normalized `XMin`/`XMax`/`YMin`/`YMax`,
   `Confidence` and the `IsOccluded`, `IsTruncated`, `IsGroupOf`, `IsDepiction` and `IsInside` flags, beside a

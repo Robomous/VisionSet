@@ -6,7 +6,9 @@ See ``docs/content/architecture/decisions/an-import-is-a-labeled-batch.md``.
 from __future__ import annotations
 
 from collections.abc import Iterator
-from pathlib import Path
+from io import BytesIO
+from pathlib import Path, PurePosixPath
+from typing import BinaryIO
 from uuid import UUID, uuid4
 
 import pytest
@@ -47,6 +49,7 @@ from visionset.kernel.domain import (
     LabelClass,
     PolygonGeometry,
 )
+from visionset.kernel.ports import OpensPictures
 from visionset.kernel.services import (
     AnnotationService,
     BatchService,
@@ -693,8 +696,9 @@ def test_a_link_swapped_out_of_the_source_after_planning_is_refused_when_stored(
     secret = write_image(tmp_path / "outside" / "a.png", size=SIZE, seed=0)
     real_probe = ImportService._probe
 
-    def probe_then_swap(self: ImportService, path: Path, image: ImportedImage) -> object:
-        probed = real_probe(self, path, image)
+    def probe_then_swap(self: ImportService, source: BinaryIO, image: ImportedImage) -> object:
+        probed = real_probe(self, source, image)
+        path = world.src / image.path
         path.unlink()
         path.symlink_to(secret)
         return probed
@@ -704,6 +708,129 @@ def test_a_link_swapped_out_of_the_source_after_planning_is_refused_when_stored(
 
     with pytest.raises(ImportSourceUnreadable, match="outside the source"):
         world.imports.commit(world.project.id, FakeImporter(dataset), world.src)
+    assert world.nothing_written()
+
+
+class EmbeddingImporter(FakeImporter):
+    """Serves pictures held inside its source's files, as a TFRecord importer does."""
+
+    def __init__(
+        self, dataset: ImportedDataset, pictures: dict[str, bytes], refusal: Exception | None = None
+    ) -> None:
+        super().__init__(dataset)
+        self.pictures = pictures
+        self.refusal = refusal
+        self.opened: list[tuple[Path, PurePosixPath]] = []
+
+    def open(self, src: Path, path: PurePosixPath) -> BinaryIO:
+        self.opened.append((src, path))
+        if self.refusal is not None:
+            raise self.refusal
+        if str(path) not in self.pictures:
+            raise FileNotFoundError(str(path))
+        return BytesIO(self.pictures[str(path)])
+
+
+def _tree(root: Path) -> list[tuple[str, bytes]]:
+    return sorted(
+        (path.relative_to(root).as_posix(), path.read_bytes())
+        for path in root.rglob("*")
+        if path.is_file()
+    )
+
+
+def _embedded(world: World, tmp_path: Path) -> tuple[EmbeddingImporter, bytes]:
+    picture = write_image(tmp_path / "elsewhere" / "inside.png", size=SIZE, seed=7).read_bytes()
+    (world.src / "train.tfrecord").write_bytes(b"records")
+    dataset = _dataset(
+        ImportedImage(
+            path=PurePosixPath("train.tfrecord/0-inside.png"),
+            labels=(ImportedLabel(class_name="car", geometry=BOX),),
+        ),
+        _image("a.png"),
+    )
+    return EmbeddingImporter(dataset, {"train.tfrecord/0-inside.png": picture}), picture
+
+
+def test_a_plain_importer_does_not_open_pictures() -> None:
+    assert not isinstance(FakeImporter(_labeled()), OpensPictures)
+    assert isinstance(EmbeddingImporter(_labeled(), {}), OpensPictures)
+
+
+def test_an_opened_picture_is_imported_byte_for_byte_and_nothing_is_written_to_the_source(
+    world: World, tmp_path: Path
+) -> None:
+    importer, picture = _embedded(world, tmp_path)
+    before = _tree(world.src)
+
+    plan = world.imports.inspect(world.project.id, importer, world.src)
+    assert plan.missing_images == ()
+    assert {str(image.path) for image in plan.images} == {
+        "train.tfrecord/0-inside.png",
+        "images/a.png",
+    }
+    run = world.imports.commit(world.project.id, importer, world.src)
+
+    assert _tree(world.src) == before
+    served = PurePosixPath("train.tfrecord/0-inside.png")
+    assert [path for _, path in importer.opened] == [served] * 3
+    assert {src for src, _ in importer.opened} == {world.src.resolve()}
+    assert run.annotations_written == 1
+    (asset,) = [
+        one for one in world.ingest.assets(world.project.id) if one.uri.endswith("0-inside.png")
+    ]
+    assert (asset.width, asset.height) == SIZE
+    with world.workspace.blob_store.get(asset.content_hash) as stored:
+        assert stored.read() == picture
+    (label,) = world.workspace_annotations(asset.id)
+    assert label.geometry == BOX
+
+
+def test_a_file_in_the_source_is_read_without_asking_the_importer(world: World) -> None:
+    importer = EmbeddingImporter(_dataset(_image("a.png")), {})
+    world.imports.commit(world.project.id, importer, world.src)
+    assert importer.opened == []
+    assert len(world.ingest.assets(world.project.id)) == 1
+
+
+def test_a_picture_the_importer_does_not_hold_is_an_image_loss_as_a_missing_file_is(
+    world: World,
+) -> None:
+    dataset = _dataset(_image("gone.png", ImportedLabel(class_name="car", geometry=BOX)))
+    for importer in (FakeImporter(dataset), EmbeddingImporter(dataset, {})):
+        plan = world.imports.inspect(world.project.id, importer, world.src)
+        assert [str(path) for path in plan.missing_images] == ["images/gone.png"]
+        assert [(loss.kind, loss.reason) for loss in plan.losses] == [
+            (ImportLossKind.IMAGE, "the source holds no such file; its 1 label(s) would be lost")
+        ]
+    assert world.nothing_written()
+
+
+def test_a_picture_the_importer_cannot_read_refuses_the_source(
+    world: World, tmp_path: Path
+) -> None:
+    importer, _ = _embedded(world, tmp_path)
+    importer.refusal = ImportSourceUnreadable("record 0 is corrupt")
+    with pytest.raises(ImportSourceUnreadable, match="record 0 is corrupt"):
+        world.imports.commit(world.project.id, importer, world.src)
+    assert world.nothing_written()
+
+
+def test_a_picture_gone_from_the_importer_after_planning_is_refused_when_stored(
+    world: World, tmp_path: Path
+) -> None:
+    importer, _ = _embedded(world, tmp_path)
+    real_probe = ImportService._probe
+
+    def probe_then_forget(self: ImportService, source: BinaryIO, image: ImportedImage) -> object:
+        probed = real_probe(self, source, image)
+        importer.pictures.clear()
+        return probed
+
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr(ImportService, "_probe", probe_then_forget)
+        with pytest.raises(ImportSourceUnreadable, match="changed while it was being imported"):
+            world.imports.commit(world.project.id, importer, world.src)
     assert world.nothing_written()
 
 
