@@ -113,6 +113,7 @@ import {
   createClipboard,
   defaultRegistry,
   annotationsInDrawOrder,
+  classNamed,
   hasPending,
   isParked,
   isTagAnnotation,
@@ -181,7 +182,9 @@ import { asApiError } from "../data/errors";
 import { refusalProse } from "../data/refusals";
 import { Badge, Button, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger, HoverCard, HoverCardContent, HoverCardTrigger, Kbd, Tooltip, TooltipContent, TooltipTrigger, cn } from "@robomous/ui-core";
 import { EmptyState, ErrorState, LoadingState } from "../patterns/AsyncStates";
-import { AnnotatorPanel } from "./AnnotatorPanel";
+import { AnnotatorPanel, type TrackMark } from "./AnnotatorPanel";
+import { TrackRegion, type TrackCandidate, type TrackFocus } from "./TrackRegion";
+import { observationOf, trackName, useSourceOccurrences, useSourceTracks } from "./trackQueries";
 import { GeometryIcon } from "./GeometryIcon";
 import { keepCanvasFocus } from "./keepCanvasFocus";
 import { Withheld } from "./Withheld";
@@ -636,6 +639,12 @@ function JobScreen({
    */
   const [tolerance, setTolerance] = useState<number>(DEFAULT_ADJUSTMENTS.tolerance);
   /**
+   * The track the Tracks region is following, held here for `activeClass`'s
+   * reason: stepping along a track moves to another frame, and the region
+   * that asked for the step is remounted with the workspace.
+   */
+  const [trackFocus, setTrackFocus] = useState<TrackFocus | null>(null);
+  /**
    * Every route to a drawing class goes through here — the panel's list, the tool
    * strip, a digit hotkey and the canvas's own `activate-class`.
    *
@@ -725,6 +734,8 @@ function JobScreen({
       onActivateClass={activateClass}
       onActivateTool={setActiveTool}
       onNavigate={setChosen}
+      trackFocus={trackFocus}
+      onTrackFocus={setTrackFocus}
       {...(onConfigureInference === undefined ? {} : { onConfigureInference })}
       {...(onOpenGallery === undefined
         ? {}
@@ -816,6 +827,9 @@ interface WorkspaceProps {
   readonly onActivateClass: (labelClass: string | null) => void;
   readonly onActivateTool: (tool: Tool | null) => void;
   readonly onNavigate: (index: number) => void;
+  /** `JobScreen`'s, so a step along a track survives the remount it causes. */
+  readonly trackFocus: TrackFocus | null;
+  readonly onTrackFocus: (focus: TrackFocus | null) => void;
   readonly onOpenGallery?: () => void;
   /** Where to set up a model connection, if the host has such a screen. */
   readonly onConfigureInference?: () => void;
@@ -869,6 +883,8 @@ function Workspace({
   onActivateClass: armClass,
   onActivateTool,
   onNavigate,
+  trackFocus,
+  onTrackFocus,
   onOpenGallery,
   onConfigureInference,
 }: WorkspaceProps): JSX.Element {
@@ -1805,6 +1821,15 @@ function Workspace({
     goTo(Math.min(Math.max(assetIndex + delta, 0), assetCount - 1));
   }
 
+  /** `goTo` for a step along a track, which can land on this very frame when its bytes repeat. */
+  function openTrackStep(next: number, then: () => void): void {
+    if (next < 0 || next >= assetCount) return;
+    attempt(() => {
+      then();
+      if (next !== assetIndex) onNavigate(next);
+    });
+  }
+
   /**
    * A tile press: close, then switch.
    *
@@ -1888,6 +1913,40 @@ function Workspace({
    */
   const canAnnotate = declares(asset, ASSET_ACTION.annotate);
   const readOnly = !canAnnotate;
+
+  // Tracks are 2D and follow a sequence source's occurrences; a scan has none.
+  const trackSource = isScan ? null : asset.source_id;
+  const jobAssetIds = useMemo(() => assets.map((one) => one.id), [assets]);
+  const occurrences = useSourceOccurrences(trackSource);
+  const sourceTracks = useSourceTracks(trackSource);
+  const tracks = sourceTracks.data;
+  const serverIdOf = useCallback(
+    (localId: string): string | null => {
+      const { server, minted } = frameSession.getSnapshot();
+      const id = minted.get(localId) ?? localId;
+      return server.some((one) => one.id === id) ? id : null;
+    },
+    [frameSession],
+  );
+  const trackMarks = useMemo(() => {
+    const marks = new Map<string, TrackMark>();
+    if (tracks === undefined) return marks;
+    for (const annotation of snapshot.document.annotations.values()) {
+      const on = observationOf(tracks, frame.minted.get(annotation.id) ?? annotation.id);
+      if (on === null) continue;
+      marks.set(annotation.id, {
+        label: `${trackName(on.track, tracks)} at frame ${on.observation.position}`,
+        onShow: () => onTrackFocus({ trackId: on.track.id, position: on.observation.position, passed: 0 }),
+      });
+    }
+    return marks;
+  }, [tracks, snapshot.document, frame.minted, onTrackFocus]);
+  const trackCandidate: TrackCandidate | null = useMemo(() => {
+    if (snapshot.selection.size !== 1) return null;
+    const [id] = snapshot.selection;
+    const one = id === undefined ? undefined : snapshot.document.annotations.get(id);
+    return one === undefined || isTagAnnotation(one) ? null : { localId: one.id, labelClass: one.label_class };
+  }, [snapshot.selection, snapshot.document]);
   const detect =
     activeTarget.kind === "server" && !readOnly ? { blocker: detectBlocker, onDetect: detectAll } : undefined;
 
@@ -3163,6 +3222,49 @@ function Workspace({
             setNewClassName(name);
             setAddingClass(true);
           }}
+          trackMarks={trackMarks}
+          {...(trackSource === null || occurrences.data === undefined || occurrences.data.length === 0 || tracks === undefined
+            ? sourceTracks.isError || occurrences.isError
+              ? {
+                  tracks: (
+                    <p className="px-2 text-xs text-destructive" role="alert" data-testid="track-read-failed">
+                      {refusalProse(occurrences.error ?? sourceTracks.error)}{" "}
+                      <button
+                        type="button"
+                        className="underline underline-offset-2"
+                        onClick={() => {
+                          void occurrences.refetch();
+                          void sourceTracks.refetch();
+                        }}
+                      >
+                        Try again
+                      </button>
+                    </p>
+                  ),
+                }
+              : {}
+            : {
+                tracks: (
+                  <TrackRegion
+                    jobId={jobId}
+                    batchId={batchId}
+                    sourceId={trackSource}
+                    assetId={asset.id}
+                    occurrences={occurrences.data}
+                    tracks={tracks}
+                    jobAssetIds={jobAssetIds}
+                    withheld={readOnly ? "Viewing only" : null}
+                    selectionCount={snapshot.selection.size}
+                    candidate={trackCandidate}
+                    serverIdOf={serverIdOf}
+                    saveThen={attempt}
+                    openAsset={openTrackStep}
+                    focus={trackFocus}
+                    onFocus={onTrackFocus}
+                    colorOf={(labelClass) => classColor(classNamed(store.document, labelClass), labelClass)}
+                  />
+                ),
+              })}
         />
 
       </aside>
