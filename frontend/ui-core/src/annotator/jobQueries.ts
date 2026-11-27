@@ -196,7 +196,7 @@ export function useJobAssets(
 ): UseQueryResult<BatchAsset[], Error> {
   const client = useApiClient();
   return useQuery({
-    queryKey: [...batchKeys.assets(batchId ?? "none"), "job", jobId] as const,
+    queryKey: batchKeys.jobAssets(batchId ?? "none", jobId),
     enabled: batchId !== undefined,
     queryFn: async () => {
       // One window, deliberately large: a *job* is a partition of a batch and is

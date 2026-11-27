@@ -103,7 +103,7 @@ import { AttributeControls, NeedsValueDot } from "./AttributeControls";
 import { missingRequired, rowSummary, withAttribute } from "./attributes";
 import { ClassRegion } from "./ClassRegion";
 import { keepCanvasFocus } from "./keepCanvasFocus";
-import { ReassignMenu } from "./ReassignMenu";
+import { ReassignMenu, type ClassLock } from "./ReassignMenu";
 import { VertexRegion } from "./VertexRegion";
 import type { WireAnnotation } from "./jobQueries";
 
@@ -177,6 +177,8 @@ export interface AnnotatorPanelProps {
   readonly tracks?: ReactNode;
   /** For each drawn object a track observes, by its id in the document: what to call the track, and how to show it. */
   readonly trackMarks?: ReadonlyMap<string, TrackMark>;
+  /** For each drawn object a track observes, by its id in the document: the class it keeps. */
+  readonly classLocks?: ReadonlyMap<string, ClassLock>;
 }
 
 /** That an object is on a track — the track's name and where, and the way to open it in the Tracks region. */
@@ -186,6 +188,7 @@ export interface TrackMark {
 }
 
 const NO_TRACK_MARKS: ReadonlyMap<string, TrackMark> = new Map();
+const NO_CLASS_LOCKS: ReadonlyMap<string, ClassLock> = new Map();
 
 export function AnnotatorPanel({
   store,
@@ -204,6 +207,7 @@ export function AnnotatorPanel({
   onReturnFocus,
   tracks,
   trackMarks = NO_TRACK_MARKS,
+  classLocks = NO_CLASS_LOCKS,
 }: AnnotatorPanelProps): JSX.Element {
   const snapshot = useAnnotatorSnapshot(store);
   const scanSnapshot = useAnnotatorSnapshot(scan?.store ?? null);
@@ -399,6 +403,7 @@ export function AnnotatorPanel({
                 selected={snapshot.selection.has(annotation.id)}
                 hidden={hiddenIds.has(annotation.id)}
                 trackMark={trackMarks.get(annotation.id)}
+                classLock={classLocks.get(annotation.id)}
                 onSelect={() => {
                   store.select(selectOnly(annotation.id));
                   onReturnFocus?.();
@@ -665,6 +670,7 @@ interface ObjectRowProps {
   readonly selected: boolean;
   readonly hidden: boolean;
   readonly trackMark: TrackMark | undefined;
+  readonly classLock: ClassLock | undefined;
   readonly onSelect: () => void;
   readonly onToggleVisible: () => void;
   /** Absent in read-only: there is no delete to offer, so no button is drawn. */
@@ -693,6 +699,7 @@ function ObjectRow({
   selected,
   hidden,
   trackMark,
+  classLock,
   onSelect,
   onToggleVisible,
   onRemove,
@@ -757,6 +764,7 @@ function ObjectRow({
             annotation={annotation}
             schema={schema}
             swatch={swatch}
+            lock={classLock}
             onReassign={onReassign}
           />
         )}
@@ -932,12 +940,14 @@ function RowReassign({
   annotation,
   schema,
   swatch,
+  lock,
   onReassign,
 }: {
   readonly index: number;
   readonly annotation: Annotation;
   readonly schema: AnnotationSchema;
   readonly swatch: string;
+  readonly lock: ClassLock | undefined;
   readonly onReassign: (labelClass: string) => void;
 }): JSX.Element {
   const [open, setOpen] = useState(false);
@@ -973,6 +983,7 @@ function RowReassign({
         onReassign={onReassign}
         onClose={() => setOpen(false)}
         align="start"
+        lock={lock}
       />
     </DropdownMenu>
   );

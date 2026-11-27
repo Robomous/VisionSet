@@ -138,13 +138,12 @@ test("a newly drawn object is saved first, then starts a track", async ({ page }
   await expect(page.getByTestId("object-track-1")).toBeVisible();
 
   const writes = trackWrites(sent);
-  expect(writes.slice(-3)).toEqual([
+  expect(writes.slice(-2)).toEqual([
     "POST /jobs/33333333-3333-4333-8333-333333333333/annotations",
-    `POST /sources/${SOURCE}/tracks`,
-    "POST /jobs/33333333-3333-4333-8333-333333333333/tracks/track-2/observations",
+    "POST /jobs/33333333-3333-4333-8333-333333333333/tracks",
   ]);
-  const observe = sent.filter((one) => one.url().endsWith("/tracks/track-2/observations")).at(-1)!;
-  expect(JSON.parse(observe.postData() ?? "{}")).toEqual({ occurrence_id: "occ-3", annotation_id: expect.stringMatching(/^server-/) });
+  const start = sent.filter((one) => one.url().endsWith("/jobs/33333333-3333-4333-8333-333333333333/tracks")).at(-1)!;
+  expect(JSON.parse(start.postData() ?? "{}")).toEqual({ occurrence_id: "occ-3", annotation_id: expect.stringMatching(/^server-/) });
 });
 
 test("a pasted copy of an observed object is on no track", async ({ page }) => {

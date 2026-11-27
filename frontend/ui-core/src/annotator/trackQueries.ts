@@ -17,15 +17,16 @@ import { useMutation, useQuery, useQueryClient, type UseQueryResult } from "@tan
 import { useApiClient } from "../data/VisionSetDataProvider";
 import { unwrap } from "../data/errors";
 import {
-  checkCreateTrack,
   checkGetTrackStatus,
   checkListFrameOccurrences,
   checkListTracks,
   checkObserveTrack,
+  checkStartTrack,
   checkUnobserveTrack,
 } from "../generated/checks";
 import type { components } from "../generated/api";
 import { outstandingWork } from "../screens/batchState";
+import { batchKeys } from "../screens/queries";
 
 export type Track = components["schemas"]["TrackOut"];
 export type TrackObservation = components["schemas"]["TrackObservationOut"];
@@ -92,7 +93,7 @@ export interface ObserveInput {
  * nothing else: no annotation, no progress and no declaration moves, so the
  * tracks are all that is invalidated.
  */
-export function useObserveTrack(jobId: string) {
+export function useObserveTrack(jobId: string, batchId: string) {
   const client = useApiClient();
   const queries = useQueryClient();
   return useMutation({
@@ -106,13 +107,14 @@ export function useObserveTrack(jobId: string) {
       ),
     onSettled: () => {
       void queries.invalidateQueries({ queryKey: trackKeys.all });
-      // A refused observe can mean the frame's declaration moved under it.
-      void queries.invalidateQueries({ queryKey: ["batches"] });
+      // A refused observe can mean the frame's declaration moved under it, and a
+      // landed one changes which class the frame's `observed` keeps the object to.
+      void queries.invalidateQueries({ queryKey: batchKeys.jobAssets(batchId, jobId) });
     },
   });
 }
 
-export function useUnobserveTrack(jobId: string) {
+export function useUnobserveTrack(jobId: string, batchId: string) {
   const client = useApiClient();
   const queries = useQueryClient();
   return useMutation({
@@ -126,59 +128,37 @@ export function useUnobserveTrack(jobId: string) {
     },
     onSettled: () => {
       void queries.invalidateQueries({ queryKey: trackKeys.all });
+      void queries.invalidateQueries({ queryKey: batchKeys.jobAssets(batchId, jobId) });
     },
   });
 }
 
 export interface NewTrackInput {
-  readonly sourceId: string;
-  readonly labelClass: string;
   readonly occurrenceId: string;
   readonly annotationId: string;
 }
 
-/** What starting a track from an object answered: the track, and the refusal of its first observation, if any. */
-export interface NewTrackResult {
-  readonly track: Track;
-  readonly observeError: unknown;
-}
-
 /**
- * Start a track of the object's class and observe the object with it.
+ * Start a track of the object's class on its source, observing the object there.
  *
- * Two calls, because the kernel creates a track empty and observing is a job's
- * write. A refused observe does not undo the create: the empty track is real,
- * it is listed, and the refusal is handed back beside it rather than thrown,
- * so the caller can say both what exists and why it is empty.
+ * One write: the kernel creates the track and its first observation together,
+ * so a refusal leaves no empty track behind.
  */
-export function useStartTrack(jobId: string) {
+export function useStartTrack(jobId: string, batchId: string) {
   const client = useApiClient();
   const queries = useQueryClient();
   return useMutation({
-    mutationFn: async (input: NewTrackInput): Promise<NewTrackResult> => {
-      const track = unwrap(
-        await client.POST("/sources/{source_id}/tracks", {
-          params: { path: { source_id: input.sourceId } },
-          body: { label_class: input.labelClass },
+    mutationFn: async (input: NewTrackInput): Promise<Track> =>
+      unwrap(
+        await client.POST("/jobs/{job_id}/tracks", {
+          params: { path: { job_id: jobId } },
+          body: { occurrence_id: input.occurrenceId, annotation_id: input.annotationId },
         }),
-        checkCreateTrack,
-      );
-      try {
-        const observed = unwrap(
-          await client.POST("/jobs/{job_id}/tracks/{track_id}/observations", {
-            params: { path: { job_id: jobId, track_id: track.id } },
-            body: { occurrence_id: input.occurrenceId, annotation_id: input.annotationId },
-          }),
-          checkObserveTrack,
-        );
-        return { track: observed, observeError: null };
-      } catch (error) {
-        return { track, observeError: error };
-      }
-    },
+        checkStartTrack,
+      ),
     onSettled: () => {
       void queries.invalidateQueries({ queryKey: trackKeys.all });
-      void queries.invalidateQueries({ queryKey: ["batches"] });
+      void queries.invalidateQueries({ queryKey: batchKeys.jobAssets(batchId, jobId) });
     },
   });
 }

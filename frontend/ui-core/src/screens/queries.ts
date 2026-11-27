@@ -1168,6 +1168,8 @@ export interface AssetView {
 export const batchKeys = {
   batch: (batchId: string) => ["batches", batchId] as const,
   assets: (batchId: string) => ["batches", batchId, "assets"] as const,
+  /** One job's frames, as the annotation page reads them: each frame's declarations ride on it. */
+  jobAssets: (batchId: string, jobId: string) => ["batches", batchId, "assets", "job", jobId] as const,
   /** One window's identity: the segment, the job and the order are part of what was asked. */
   assetsView: (batchId: string, view: AssetView) =>
     ["batches", batchId, "assets", view.job ?? "any", view.progress ?? "all", view.sort] as const,

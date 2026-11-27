@@ -49,7 +49,6 @@ export interface TrackCandidate {
 export interface TrackRegionProps {
   readonly jobId: string;
   readonly batchId: string;
-  readonly sourceId: string;
   readonly assetId: string;
   readonly occurrences: readonly FrameOccurrence[];
   readonly tracks: readonly Track[];
@@ -85,10 +84,10 @@ function frameWord(position: number): string {
 }
 
 export function TrackRegion(props: TrackRegionProps): JSX.Element {
-  const { jobId, sourceId, assetId, occurrences, tracks, candidate, focus, onFocus } = props;
-  const observe = useObserveTrack(jobId);
-  const unobserve = useUnobserveTrack(jobId);
-  const start = useStartTrack(jobId);
+  const { jobId, assetId, occurrences, tracks, candidate, focus, onFocus } = props;
+  const observe = useObserveTrack(jobId, props.batchId);
+  const unobserve = useUnobserveTrack(jobId, props.batchId);
+  const start = useStartTrack(jobId, props.batchId);
   const { outcome, onOutcome: setOutcome } = props;
   const busy = observe.isPending || unobserve.isPending || start.isPending;
 
@@ -120,10 +119,9 @@ export function TrackRegion(props: TrackRegionProps): JSX.Element {
       // `mutateAsync` and a handler pair rather than per-call callbacks: the
       // region remounts with the frame, and a per-call callback does not run
       // once its component is gone. Both setters are the page's.
-      start.mutateAsync({ sourceId, labelClass: candidate.labelClass, occurrenceId: occurrence.id, annotationId }).then((result) => {
-        onFocus({ trackId: result.track.id, position: occurrence.position, passed: 0 });
-        if (result.observeError === null) setOutcome({ tone: "done", text: `Started a track at ${frameWord(occurrence.position)}` });
-        else setOutcome({ tone: "error", text: `Started an empty track. ${refusalProse(result.observeError)}` });
+      start.mutateAsync({ occurrenceId: occurrence.id, annotationId }).then((track) => {
+        onFocus({ trackId: track.id, position: occurrence.position, passed: 0 });
+        setOutcome({ tone: "done", text: `Started a track at ${frameWord(occurrence.position)}` });
       }, failed),
     );
   }

@@ -73,6 +73,10 @@ export interface StoreSnapshot<D = AnnotationDocument> {
   readonly canRedo: boolean;
   readonly undoLabel: string | null;
   readonly redoLabel: string | null;
+  /** Why the history guard refuses the next undo, or `null` when it does not. */
+  readonly undoRefusal: string | null;
+  /** Why the history guard refuses the next redo, or `null` when it does not. */
+  readonly redoRefusal: string | null;
 }
 
 /** One vertex of one annotation, by position. */
@@ -85,6 +89,15 @@ export interface VertexRef {
 export type Projection<D = AnnotationDocument> = (document: D) => D;
 
 /**
+ * Why a step through the history may not move the document `from` one state `to`
+ * another, or `null` when it may. A refused step is not offered: `canUndo`/`canRedo`
+ * read false, the refusal is on the snapshot, and `undo()`/`redo()` return `false`
+ * without moving. The log is linear, so a refused step also holds back every step
+ * behind it.
+ */
+export type HistoryGuard<D = AnnotationDocument> = (from: D, to: D) => string | null;
+
+/**
  * The engine's state container. One per open asset. Generic over the document
  * like `CommandLog`, so the scan editor stages and commits through it unchanged.
  */
@@ -95,6 +108,7 @@ export class AnnotatorStore<D = AnnotationDocument> {
   private picked: Selection;
   private highlighted: VertexRef | null = null;
   private snapshot: StoreSnapshot<D> | null = null;
+  private guard: HistoryGuard<D> | null = null;
 
   constructor(document: D, selection: Selection = EMPTY_SELECTION) {
     this.log = new CommandLog<D>(document);
@@ -113,10 +127,12 @@ export class AnnotatorStore<D = AnnotationDocument> {
         rendered: this.staged ?? document,
         selection: this.picked,
         highlightedVertex: this.highlighted,
-        canUndo: this.log.canUndo,
-        canRedo: this.log.canRedo,
-        undoLabel: this.log.undoLabel,
-        redoLabel: this.log.redoLabel,
+        canUndo: this.allows(this.log.undoTarget),
+        canRedo: this.allows(this.log.redoTarget),
+        undoLabel: this.allows(this.log.undoTarget) ? this.log.undoLabel : null,
+        redoLabel: this.allows(this.log.redoTarget) ? this.log.redoLabel : null,
+        undoRefusal: this.refusal(this.log.undoTarget),
+        redoRefusal: this.refusal(this.log.redoTarget),
       };
     }
     return this.snapshot;
@@ -179,14 +195,28 @@ export class AnnotatorStore<D = AnnotationDocument> {
     if (after !== before || had) this.changed();
   }
 
-  /** Step back one command. `false` if there was nothing to undo. */
+  /** Step back one command. `false` if there was nothing to undo, or the guard refused it. */
   undo(): boolean {
+    if (!this.allows(this.log.undoTarget)) return false;
     return this.travel(() => this.log.undo());
   }
 
-  /** Step forward one command. `false` if there was nothing to redo. */
+  /** Step forward one command. `false` if there was nothing to redo, or the guard refused it. */
   redo(): boolean {
+    if (!this.allows(this.log.redoTarget)) return false;
     return this.travel(() => this.log.redo());
+  }
+
+  /** Set, replace or clear the rule a step through the history must pass. Notifies. */
+  guardHistory(guard: HistoryGuard<D> | null): void {
+    if (guard === this.guard) return;
+    this.guard = guard;
+    this.changed();
+  }
+
+  /** Ask the installed guard again, for a guard whose answer has changed. Notifies. */
+  recheckHistory(): void {
+    if (this.guard !== null) this.changed();
   }
 
   /**
@@ -251,6 +281,14 @@ export class AnnotatorStore<D = AnnotationDocument> {
     this.staged = null;
     this.changed();
     return true;
+  }
+
+  private allows(to: D | null): boolean {
+    return to !== null && this.refusal(to) === null;
+  }
+
+  private refusal(to: D | null): string | null {
+    return to === null || this.guard === null ? null : this.guard(this.log.document, to);
   }
 
   private travel(move: () => boolean): boolean {

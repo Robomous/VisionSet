@@ -60,7 +60,7 @@ import { Tag } from "lucide-react";
 import type { JSX } from "react";
 
 import { Button, DropdownMenu, DropdownMenuTrigger } from "@robomous/ui-core";
-import { ReassignMenu } from "./ReassignMenu";
+import { ReassignMenu, type ClassLock } from "./ReassignMenu";
 
 /**
  * The trigger's own size, in screen pixels — Nova's `icon-xs`, which is 24px
@@ -91,6 +91,8 @@ export interface CanvasReassignProps {
   readonly openFor: string | null;
   readonly onOpenChange: (annotationId: string | null) => void;
   readonly readOnly?: boolean;
+  /** For each object a track observes, by its id in the document: the class it keeps. */
+  readonly classLocks?: ReadonlyMap<string, ClassLock>;
 }
 
 export function CanvasReassign({
@@ -99,6 +101,7 @@ export function CanvasReassign({
   openFor,
   onOpenChange,
   readOnly = false,
+  classLocks,
 }: CanvasReassignProps): JSX.Element | null {
   const snapshot = useAnnotatorSnapshot(store);
 
@@ -139,6 +142,7 @@ export function CanvasReassign({
           schema={snapshot.document.schema}
           idPrefix="canvas-reclass"
           align="start"
+          lock={classLocks?.get(subject.id)}
           onClose={() => onOpenChange(null)}
           onReassign={(labelClass) => {
             // Same class is the identity, and an identity command still goes
