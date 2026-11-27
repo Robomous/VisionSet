@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import random
 import time
+from uuid import uuid4
 
 import pytest
 from pydantic import TypeAdapter, ValidationError
@@ -12,6 +13,7 @@ from visionset.kernel.domain import (
     MAX_MASK_COUNTS_LENGTH,
     MAX_MASK_PIXELS,
     MAX_MASK_SIDE,
+    Annotation,
     Geometry,
     MaskEncodingError,
     MaskGeometry,
@@ -37,6 +39,7 @@ from visionset.kernel.domain import (
     split_class_map,
     trace_mask,
 )
+from visionset.kernel.domain import geometry as geometry_module
 from visionset.kernel.domain.geometry import geometry_intersects_asset
 from visionset.kernel.domain.rle import bitmap_from_runs, runs_from_bitmap
 
@@ -124,6 +127,57 @@ def test_equal_masks_have_equal_counts_whatever_spelling_wrote_them() -> None:
         assert respelled == canonical
         assert respelled.counts == canonical.counts
         assert bitmap_from_runs(mask_runs(canonical)) == bytearray(bitmap)
+
+
+def _counting_decodes(monkeypatch: pytest.MonkeyPatch) -> list[str]:
+    calls: list[str] = []
+
+    def counted(counts: str, height: int, width: int) -> tuple[int, ...]:
+        calls.append(counts)
+        return decode_counts(counts, height, width)
+
+    monkeypatch.setattr(geometry_module, "decode_counts", counted)
+    return calls
+
+
+def test_wrapping_a_mask_in_an_annotation_does_not_decode_it_again(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    decodes = _counting_decodes(monkeypatch)
+    mask = MaskGeometry(size=(5, 1), counts="302")
+    annotation = Annotation(
+        asset_id=uuid4(), label_class="road", schema_version=1, geometry=mask, provenance="human"
+    )
+    Annotation.model_validate(annotation.model_dump())
+
+    assert annotation.geometry is mask
+    assert decodes == ["302", "5"]
+
+
+def test_a_copied_mask_is_judged_again_once_its_size_or_counts_change(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    decodes = _counting_decodes(monkeypatch)
+    mask = MaskGeometry(size=(5, 1), counts="5")
+
+    respelled = Annotation(
+        asset_id=uuid4(),
+        label_class="road",
+        schema_version=1,
+        geometry=mask.model_copy(update={"counts": "302"}),
+        provenance="human",
+    )
+    with pytest.raises(ValidationError, match="cover more than the 4 pixels"):
+        Annotation(
+            asset_id=uuid4(),
+            label_class="road",
+            schema_version=1,
+            geometry=mask.model_copy(update={"size": (4, 1)}),
+            provenance="human",
+        )
+
+    assert respelled.geometry.counts == "5"
+    assert decodes == ["5", "302", "5"]
 
 
 def test_canonical_runs_accepts_an_import_adapters_uncompressed_list() -> None:

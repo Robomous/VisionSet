@@ -12,7 +12,8 @@ from tests.server._api import api_client
 from tests.server._flow import SIGN, open_job
 from tests.server._jobs import InlineDispatcher
 
-from visionset.kernel.domain import encode_counts
+from visionset.kernel.domain import decode_counts, encode_counts
+from visionset.kernel.domain import geometry as geometry_module
 
 ROAD: Final[dict[str, Any]] = {"name": "road", "geometries": ["mask"]}
 
@@ -70,6 +71,37 @@ def test_a_mask_is_stored_and_read_back_canonical(
             "counts": encode_counts([0, height, total - height]),
         }
     ]
+
+
+def test_a_mask_is_decoded_once_per_write_and_not_again_on_read(
+    client: TestClient, working: tuple[str, str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    batch_id, job_id = working
+    asset, height, width = _asset(client, batch_id)
+    total = height * width
+    first = encode_counts([0, height, total - height])
+    second = encode_counts([height, height, total - 2 * height])
+    decodes: list[str] = []
+
+    def counted(counts: str, height: int, width: int) -> tuple[int, ...]:
+        decodes.append(counts)
+        return decode_counts(counts, height, width)
+
+    monkeypatch.setattr(geometry_module, "decode_counts", counted)
+
+    for counts in (first, second):
+        written = client.post(
+            f"/jobs/{job_id}/annotations", json=[_road(asset, [height, width], counts)]
+        )
+        assert written.status_code == 201, written.text
+    # The second write lands beside a stored mask, and the write path reads the asset's
+    # labels back: the stored one must not be decoded again for it.
+    assert decodes == [first, second]
+
+    read = client.get(f"/jobs/{job_id}/assets/{asset}/annotations")
+    assert read.status_code == 200, read.text
+    assert [one["geometry"]["counts"] for one in read.json()["items"]] == [first, second]
+    assert decodes == [first, second]
 
 
 def test_an_empty_mask_is_a_valid_label(client: TestClient, working: tuple[str, str]) -> None:

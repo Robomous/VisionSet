@@ -30,6 +30,7 @@ from pydantic import (
     ConfigDict,
     Field,
     ValidationError,
+    ValidationInfo,
     model_validator,
 )
 from pydantic.json_schema import JsonDict
@@ -487,18 +488,37 @@ class MaskGeometry(BaseModel):
     counts: str = Field(min_length=1, max_length=MAX_MASK_COUNTS_LENGTH)
 
     @model_validator(mode="after")
-    def _canonical(self) -> MaskGeometry:
-        height, width = self.size
-        canonical = encode_counts(decode_counts(self.counts, height, width))
-        # Merging zero-length runs can lengthen the string; a stored mask must reload.
-        if len(canonical) > MAX_MASK_COUNTS_LENGTH:
-            raise MaskEncodingError(
-                f"the canonical counts of this mask are {len(canonical)} characters, over the "
-                f"{MAX_MASK_COUNTS_LENGTH}-character limit"
-            )
-        if canonical != self.counts:
-            object.__setattr__(self, "counts", canonical)
+    def _canonical(self, info: ValidationInfo) -> MaskGeometry:
+        # An after-validator reruns on an instance passed to another model's
+        # field, so a mask remembers the size and counts it already proved
+        # canonical. The key lives in ``__dict__`` outside the fields: equality,
+        # hashing and dumps never see it.
+        proved = self.__dict__.get(_PROVED_CANONICAL)
+        if proved is not None and proved[0] == self.size and proved[1] is self.counts:
+            return self
+        if not (info.context and info.context.get(STORED_CANONICAL)):
+            height, width = self.size
+            canonical = encode_counts(decode_counts(self.counts, height, width))
+            # Merging zero-length runs can lengthen the string; a stored mask must reload.
+            if len(canonical) > MAX_MASK_COUNTS_LENGTH:
+                raise MaskEncodingError(
+                    f"the canonical counts of this mask are {len(canonical)} characters, over "
+                    f"the {MAX_MASK_COUNTS_LENGTH}-character limit"
+                )
+            if canonical != self.counts:
+                object.__setattr__(self, "counts", canonical)
+        self.__dict__[_PROVED_CANONICAL] = (self.size, self.counts)
         return self
+
+
+_PROVED_CANONICAL: Final = "__visionset_proved_canonical__"
+
+STORED_CANONICAL: Final = "visionset.stored_canonical"
+"""Validation-context key for geometry read back from the kernel's own store.
+
+Only the store adapter passes it: every mask it holds was canonicalised on the
+way in, so the read skips the decode and keeps the field checks.
+"""
 
 
 def mask_runs(geometry: MaskGeometry) -> tuple[int, ...]:

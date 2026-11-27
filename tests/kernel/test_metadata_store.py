@@ -46,6 +46,7 @@ from visionset.kernel.domain import (
     IngestJob,
     IngestState,
     LabelClass,
+    MaskGeometry,
     PolygonGeometry,
     PolylineGeometry,
     Project,
@@ -58,8 +59,10 @@ from visionset.kernel.domain import (
     VideoMetadata,
     VideoProvenance,
     Workspace,
+    decode_counts,
     hash_secret,
 )
+from visionset.kernel.domain import geometry as geometry_module
 from visionset.kernel.ports import UNINITIALIZED, UnitOfWork
 
 
@@ -318,6 +321,40 @@ def test_annotation_round_trips_every_geometry_variant(tmp_path: Path) -> None:
             assert type(read.geometry) is type(geometry)
             assert isinstance(read.geometry.type, GeometryType)
     store.close()
+
+
+def test_a_mask_read_back_from_the_store_is_not_decoded_again(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    store = _store(tmp_path)
+    with store.unit_of_work() as uow:
+        asset_id = _seed(uow)[4][1]
+        written = uow.annotations.add(
+            Annotation(
+                asset_id=asset_id,
+                label_class="car",
+                schema_version=1,
+                geometry=MaskGeometry(size=(5, 1), counts="302"),
+                provenance="human",
+            )
+        )
+    store.close()
+    decodes: list[str] = []
+
+    def counted(counts: str, height: int, width: int) -> tuple[int, ...]:
+        decodes.append(counts)
+        return decode_counts(counts, height, width)
+
+    monkeypatch.setattr(geometry_module, "decode_counts", counted)
+    reopened = _store(tmp_path)
+    with reopened.unit_of_work() as uow:
+        read = uow.annotations.get(written.id)
+        listed = [one for one in uow.annotations.list(asset_id) if one.id == written.id]
+    reopened.close()
+
+    assert read == written
+    assert listed == [written]
+    assert decodes == []
 
 
 def test_a_polyline_row_written_before_visibility_existed_still_reads(tmp_path: Path) -> None:

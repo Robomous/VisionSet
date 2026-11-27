@@ -83,6 +83,7 @@ from visionset.kernel.domain import (
     VideoProvenance,
     Workspace,
 )
+from visionset.kernel.domain.geometry import STORED_CANONICAL
 
 _geometry_adapter: TypeAdapter[Geometry] = TypeAdapter(Geometry)
 
@@ -332,7 +333,7 @@ def _annotation_to_domain(_: Session, row: Any) -> Annotation:
         asset_id=row.asset_id,
         label_class=row.label_class,
         schema_version=row.schema_version,
-        geometry=_geometry_adapter.validate_python(row.geometry),
+        geometry=_geometry_adapter.validate_python(row.geometry, context={STORED_CANONICAL: True}),
         attributes=row.attributes,
         provenance=row.provenance,
         model_ref=row.model_ref,
