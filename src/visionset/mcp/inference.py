@@ -55,6 +55,8 @@ from visionset.inference import (
     fetch_weights,
     registered,
 )
+from visionset.jobs import weights as weights_job
+from visionset.jobs.inline import Surface, tracked_run
 from visionset.kernel import ConfirmationRequired
 from visionset.kernel.domain import ConnectionType, Precision
 from visionset.kernel.services import (
@@ -270,7 +272,11 @@ def download_connection_weights(
     """
     with opened_workspace() as workspace, reporting(ctx) as report:
         found = InferenceConnectionService(workspace).resolve(connection)
-        ready = fetch_weights(workspace, found.id, on_bytes=_bytes_to(report))
+        with tracked_run(
+            Surface.MCP, weights_job.JOB_TYPE, weights_job.payload_for(found.id)
+        ) as run:
+            ready = fetch_weights(workspace, found.id, on_bytes=run.on_bytes(_bytes_to(report)))
+            run.downloaded(ready, workspace)
     return wire.connection(ready)
 
 

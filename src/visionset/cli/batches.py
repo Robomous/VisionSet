@@ -58,6 +58,7 @@ from visionset.inference import (
     pre_label_recorded,
     shapes_prose,
 )
+from visionset.jobs.inline import Surface, pre_label_observer
 from visionset.kernel import VisionSetError
 from visionset.kernel.domain import (
     IMPLEMENTED_GEOMETRIES,
@@ -406,6 +407,7 @@ def batch_pre_label(
         BatchService(service).require_pre_labelable(batch)
         geometries = geometry_selection(geometry)
         items: list[tuple[UUID, PreLabelOutcome]] = []
+        observer = pre_label_observer(Surface.CLI)
         for job in open_jobs_of(service, batch):
             note(f"Job {job.id}:")
             outcome = pre_label_recorded(
@@ -417,6 +419,7 @@ def batch_pre_label(
                 geometries=geometries,
                 on_plan=announce_plan if not items else None,
                 on_progress=lambda done, total: note(f"Pre-labeling {done}/{total} asset(s)."),
+                observer=observer,
             )
             items.append((job.id, outcome))
     if not items:
