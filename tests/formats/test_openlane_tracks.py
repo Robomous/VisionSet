@@ -242,31 +242,33 @@ def test_track_ids_land_as_tracks_over_a_new_image_sequence(imported: Imported) 
 
 
 def test_duplicate_content_frames_are_two_occurrences_of_one_asset(imported: Imported) -> None:
-    run = imported.run(
-        _segment(imported.root / "src", "segment-1", _three(seeds=(1, 1, 3))),
-        ImportLossKind.IMAGE,
-    )
+    run = imported.run(_segment(imported.root / "src", "segment-1", _three(seeds=(1, 1, 3))))
 
+    assert run.losses == ()
     (source_id,) = run.source_ids
     first, second, third = imported.sources.occurrences(source_id)
     assert first.asset_id == second.asset_id != third.asset_id
-    assert [_positions(d) for d in imported.tracked(source_id).values()] == [[0, 2], [0, 2]]
-    (duplicate,) = run.losses
-    assert duplicate.kind is ImportLossKind.IMAGE
-    assert duplicate.subject.endswith(f"/{TICK}.png")
+    tracks = imported.tracked(source_id).values()
+    assert [_positions(d) for d in tracks] == [[0, 1, 2], [0, 1, 2]]
+    on_shared = [f.annotation_id for d in tracks for f in d.observations if f.position < 2]
+    assert len(set(on_shared)) == 4
+    assert {imported.annotations.get(one).asset_id for one in on_shared} == {first.asset_id}
 
 
 def test_a_repeated_frame_is_judged_in_frame_order_not_path_order(imported: Imported) -> None:
     early, late = 9 * TICK, 10 * TICK
     frames: list[Frame] = [(early, 1, [_lane(7)]), (late, 1, [_lane(7)]), (11 * TICK, 2, [])]
-    run = imported.run(_segment(imported.root / "src", "segment-1", frames), ImportLossKind.IMAGE)
+    run = imported.run(_segment(imported.root / "src", "segment-1", frames))
 
-    (duplicate,) = run.losses
-    assert duplicate.subject.endswith(f"/{late}.png")
+    assert run.losses == ()
     (source_id,) = run.source_ids
     first, second, _ = imported.sources.occurrences(source_id)
     assert first.asset_id == second.asset_id
-    assert _positions(imported.tracked(source_id)["7"]) == [0]
+    with imported.workspace.unit_of_work() as uow:
+        asset = uow.assets.get(first.asset_id)
+    assert asset is not None
+    assert asset.uri.endswith(f"/{early}.png")
+    assert _positions(imported.tracked(source_id)["7"]) == [0, 1]
 
 
 def test_a_missing_frame_is_a_gap_the_tracks_reappear_after(imported: Imported) -> None:

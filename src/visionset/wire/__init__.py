@@ -1195,7 +1195,7 @@ def import_plan(value: ImportPlan) -> shapes.ImportPlan:
         "source_scans": len(value.dataset.scans),
         "scans": len(value.scans),
         "frame": None if value.dataset.frame is None else value.dataset.frame.value,
-        "labels": sum(len(image.labels) for image in value.images)
+        "labels": sum(len(image.labels) for image in (*value.images, *value.repeats))
         + sum(len(scan.labels) for scan in value.scans),
         "missing_images": [str(path) for path in value.missing_images],
         "missing_scans": [str(path) for path in value.missing_scans],

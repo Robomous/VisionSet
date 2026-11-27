@@ -488,6 +488,37 @@ def test_import_release_export_reimport_keeps_every_track_where_it_was(world: Wo
     assert {loss.kind for loss in again.losses} == {ImportLossKind.IMAGE}
 
 
+def test_a_static_sequence_keeps_every_track_through_a_round_trip(world: World) -> None:
+    src = _sequence(
+        world.root / "src",
+        "still",
+        [
+            "1,7,1,2,10,8,1,2,-1",
+            "2,7,1,2,10,8,1,2,-1",
+            "3,7,3,2,10,8,1,2,-1",
+            "1,4,20,4,8,12,1,1,-1",
+        ],
+    )
+    pictures = sorted((src / "still" / "img1").iterdir())
+    for later in pictures[1:]:
+        later.write_bytes(pictures[0].read_bytes())
+    project_id, run = world.run("still", src)
+
+    assert run.losses == ()
+    assert len(run.created_asset_ids) == 1
+    before = world.sequences(run)
+    assert {key: [seen[0] for seen in one] for key, one in before["still"].items()} == {
+        "7": [0, 1, 2],
+        "4": [0],
+    }
+
+    dest = world.root / "out"
+    world.releases.export(world.release(project_id, run), MotExporter(), dest, allow_lossy=True)
+    _, again = world.run("again", dest)
+    (source_id,) = run.source_ids
+    assert world.sequences(again) == {str(source_id): before["still"]}
+
+
 def test_a_release_with_no_track_writes_nothing_and_drops_every_box(world: World) -> None:
     src = _sequence(world.root / "src", "walk", ["1,-1,1,1,4,4,1,1,-1"])
     project_id, run = world.run("mot", src, ImportLossKind.ATTRIBUTE)
