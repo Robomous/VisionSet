@@ -22,6 +22,7 @@ import {
   observationOf,
   sequenceTrackLabel,
   trackAnchor,
+  trackGeometryKind,
   trackName,
   trackStatusLine,
   trackStep,
@@ -51,11 +52,6 @@ export interface TrackCandidate {
   readonly labelClass: string;
   /** The object's geometry type, as the wire spells it. */
   readonly geometry: string;
-}
-
-/** The kind of shape a track follows: its geometry type, a rotated box counted as a box. */
-export function trackGeometryKind(geometry: string): string {
-  return geometry === "obb" ? "bbox" : geometry;
 }
 
 export interface TrackRegionProps {

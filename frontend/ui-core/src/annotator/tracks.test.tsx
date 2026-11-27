@@ -15,7 +15,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { TooltipProvider } from "@robomous/ui-core";
 import { AnnotationPage } from "./AnnotationPage";
-import { trackGeometryKind } from "./TrackRegion";
+import { trackGeometryKind } from "./trackQueries";
 import { REFUSAL_PROSE } from "../data/refusals";
 import { renderWithData } from "../testing/dataHarness";
 import { stubResizeObserver } from "../testing/resizeObserver.js";
