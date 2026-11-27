@@ -28,7 +28,9 @@ frame>`` becomes an untracked classification tag on that frame. A document holdi
 holding ``annotations.xml`` and every frame the release holds of that source,
 observed or not, as ``images/frame_<position:06d><ext>``, the layout the
 importer reads back. Only a position the release holds no frame for is a gap.
-``<size>`` runs to the last held position. A track whose imported id is a
+A video source, and every source of a manifest older than version 9, is not
+listed, so only its observed frames are written. ``<size>`` runs to the last
+written position. A track whose imported id is a
 non-negative integer keeps it; any other is numbered after the largest such id
 in its sequence. Each observation is a shape at ``keyframe="1" outside="0"``,
 and a track that does not continue to the next frame gets an ``outside="1"``

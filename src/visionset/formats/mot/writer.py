@@ -4,10 +4,12 @@ Each source becomes ``<source-id>/``, holding ``seqinfo.ini``, every frame the
 release holds of it as ``img1/<frame:06d><ext>``, observed or not, and
 ``gt/gt.txt`` with ``gt/labels.txt``, the layout the importer reads back. Frame
 ``n`` is the occurrence at position ``n - 1``, so only a position the release
-holds no frame for is a gap in ``img1``, and ``seqLength`` runs to the last held
-position. ``frameRate`` is the last written position over its timestamp; timing
-that was not uniform keeps its frame numbers and loses its spacing. Timing the
-source never recorded is refused, and so is timing all at the first frame.
+holds no frame for is a gap in ``img1``, and ``seqLength`` runs to the last
+written position. A video source, and every source of a manifest older than
+version 9, is not listed, so only its observed frames are written. ``frameRate``
+is the last written position over its timestamp; timing that was not uniform
+keeps its frame numbers and loses its spacing. Timing the source never recorded
+is refused, and so is timing all at the first frame.
 
 A row is one observation of a box: ``frame``, the track's id, the box, ``conf``
 ``1`` for a label with no confidence and the confidence otherwise, the class's
@@ -30,7 +32,7 @@ from pathlib import Path
 from typing import Final
 from uuid import UUID
 
-from visionset.formats._layout import dimensions_of, held_frames, write_image_as
+from visionset.formats._layout import dimensions_of, held_frames, image_suffix, write_image_as
 from visionset.formats._targets import self_target
 from visionset.formats.mot.reader import (
     FRAME_DIGITS,
@@ -93,21 +95,36 @@ class MotExporter:
         by_source: dict[UUID, list[ManifestTrack]] = {}
         for track in manifest.tracks:
             by_source.setdefault(track.source_id, []).append(track)
-        for source_id, tracks in by_source.items():
-            _write_sequence(
-                dest / str(source_id), source_id, tracks, drawn, class_ids, manifest, content
+        planned = [
+            plan
+            for source_id, tracks in by_source.items()
+            if (plan := _plan(source_id, tracks, drawn, class_ids, manifest, content)) is not None
+        ]
+        for name, frames, rows, seqinfo in planned:
+            into = dest / name
+            for position, asset in sorted(frames.items()):
+                write_image_as(
+                    asset, into / IMAGES_DIRNAME, f"{position + 1:0{FRAME_DIGITS}d}", content
+                )
+            (into / GT_DIRNAME).mkdir(parents=True, exist_ok=True)
+            (into / GT_DIRNAME / GT_FILENAME).write_text(
+                "".join(f"{row}\n" for _, _, row in sorted(rows)), encoding="utf-8"
             )
+            (into / GT_DIRNAME / LABELS_FILENAME).write_text(
+                "".join(f"{one.name}\n" for one in manifest.classes), encoding="utf-8"
+            )
+            (into / SEQINFO_FILENAME).write_text(seqinfo, encoding="utf-8")
 
 
-def _write_sequence(
-    into: Path,
+def _plan(
     source_id: UUID,
     tracks: list[ManifestTrack],
     drawn: Mapping[UUID, tuple[ManifestAsset, ManifestAnnotation]],
     class_ids: Mapping[str, int],
     manifest: Manifest,
     content: ContentReader,
-) -> None:
+) -> tuple[str, dict[int, ManifestAsset], list[tuple[int, int, str]], str] | None:
+    """One sequence's frames, rows and seqinfo.ini; every refusal is raised before any write."""
     name = str(source_id)
     identities = _identities(tracks)
     frames = held_frames(manifest, source_id)
@@ -135,7 +152,7 @@ def _write_sequence(
             identity = identities[track.id]
             rows.append((frame, identity, _row(frame, identity, annotation, box, class_ids)))
     if not rows:
-        return
+        return None
     sizes = {dimensions_of(asset) for asset in frames.values()}
     if len(sizes) > 1:
         listed = ", ".join(f"{width}x{height}" for width, height in sorted(sizes))
@@ -144,26 +161,14 @@ def _write_sequence(
         )
     ((width, height),) = sizes
     rate = _frame_rate(name, timing)
-    suffixes = {
-        write_image_as(
-            asset, into / IMAGES_DIRNAME, f"{position + 1:0{FRAME_DIGITS}d}", content
-        ).rpartition(".")[2]
-        for position, asset in sorted(frames.items())
-    }
+    suffixes = {image_suffix(asset, content) for asset in frames.values()}
     if len(suffixes) > 1:
         raise ExportSourceUnreadable(
             f"sequence {name} holds frames of {len(suffixes)} image types "
             f"({', '.join(sorted(suffixes))}); a MOT sequence has one imExt"
         )
     (suffix,) = suffixes
-    (into / GT_DIRNAME).mkdir(parents=True, exist_ok=True)
-    (into / GT_DIRNAME / GT_FILENAME).write_text(
-        "".join(f"{row}\n" for _, _, row in sorted(rows)), encoding="utf-8"
-    )
-    (into / GT_DIRNAME / LABELS_FILENAME).write_text(
-        "".join(f"{one.name}\n" for one in manifest.classes), encoding="utf-8"
-    )
-    (into / SEQINFO_FILENAME).write_text(
+    seqinfo = (
         f"[{SEQINFO_SECTION}]\n"
         f"name={name}\n"
         f"imDir={IMAGES_DIRNAME}\n"
@@ -171,9 +176,9 @@ def _write_sequence(
         f"seqLength={max(frames) + 1}\n"
         f"imWidth={width}\n"
         f"imHeight={height}\n"
-        f"imExt=.{suffix}\n",
-        encoding="utf-8",
+        f"imExt={suffix}\n"
     )
+    return name, frames, rows, seqinfo
 
 
 def _identities(tracks: Iterable[ManifestTrack]) -> dict[UUID, int]:

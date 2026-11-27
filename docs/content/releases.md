@@ -924,8 +924,9 @@ observed or not, as `<source-id>/img1/<frame:06d><ext>`, and `<source-id>/gt/gt.
 `<source-id>/gt/labels.txt`, the layout the [`mot` importer](import.md#formats) reads back. Frame
 `n` is the occurrence at position `n - 1`, so only a position the release holds no frame for is a
 gap in `img1/`, and the frames after it keep their numbers; `seqLength` runs to the last held
-position. A video source is not listed in the manifest, so of a clip only the observed frames are
-written. A row is
+position. A video source is not listed in the manifest, and a release published before version 9
+lists no source at all, so for a clip, or any sequence of such a release, only the observed frames
+are written. A row is
 `frame,id,bb_left,bb_top,bb_width,bb_height,conf,class,visibility`: the box in pixels as stored,
 `conf` `1` for a label with no confidence and its confidence otherwise, `class` the class's 1-based
 position in the release's schema, which `labels.txt` lists in that order, and visibility `-1`
@@ -979,7 +980,8 @@ export, checked for every task before any is written. Only a position the releas
 for is missing - one the source never held, or whose asset the dataset does not contain. The
 importer, which keys frames by name, reads such a task back, but CVAT, which numbers a task's
 pictures in sorted order, would shift every frame after that gap; a source released whole has
-none. A video source is not listed in the manifest, so of a clip only the observed frames are
+none. A video source is not listed in the manifest, and a release published before version 9 lists
+no source at all, so for a clip, or any sequence of such a release, only the observed frames are
 written. Attribute definitions are written
 `mutable="True"`, because a value may change from frame to frame. A track whose imported id is a non-negative integer written without leading zeros keeps
 it, and every other is numbered after the largest such id in its task. Each observation is a shape

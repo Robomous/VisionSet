@@ -611,30 +611,35 @@ def _allow_unknown_frame_timing(connection: Connection) -> None:
 
     SQLite cannot relax ``NOT NULL`` in place, so the table is rebuilt from
     ``_tables``. Dropping it would cascade to ``track_observation`` silently, so
-    both tables are read out in rowid order, dropped child first, recreated and
-    written back. Every value is kept as it was: a ``0`` an earlier CVAT import
-    wrote for unrecorded timing cannot be told from a recorded ``0``, so it stays
-    a ``0``. Idempotent: a nullable column is left alone.
+    both tables are copied into temporary tables in rowid order, dropped child
+    first, recreated and filled back, all inside the migration transaction.
+    Every value is kept as it was: a ``0`` an earlier CVAT import wrote for
+    unrecorded timing cannot be told from a recorded ``0``, so it stays a ``0``.
+    Idempotent: a nullable column is left alone.
     """
     columns = inspect(connection).get_columns("frame_occurrence")
     if next(column for column in columns if column["name"] == "timestamp")["nullable"]:
         return
     tables = [Base.metadata.tables[name] for name in ("frame_occurrence", "track_observation")]
-    rows = [
-        [
-            dict(row)
-            for row in connection.execute(
-                select(table).order_by(literal_column("rowid"))
-            ).mappings()
-        ]
-        for table in tables
-    ]
+    for table in tables:
+        connection.execute(
+            text(
+                f"CREATE TEMP TABLE kept_{table.name} AS SELECT * FROM {table.name} ORDER BY rowid"
+            )
+        )
     for table in reversed(tables):
         table.drop(connection)
-    for table, kept in zip(tables, rows, strict=True):
+    for table in tables:
         table.create(connection)
-        if kept:
-            connection.execute(table.insert(), kept)
+        _restore(connection, table.name)
+
+
+def _restore(connection: Connection, name: str) -> None:
+    listed = ", ".join(Base.metadata.tables[name].columns.keys())
+    connection.execute(
+        text(f"INSERT INTO {name} ({listed}) SELECT {listed} FROM kept_{name} ORDER BY rowid")
+    )
+    connection.execute(text(f"DROP TABLE kept_{name}"))
 
 
 MIGRATIONS: list[Migration] = [

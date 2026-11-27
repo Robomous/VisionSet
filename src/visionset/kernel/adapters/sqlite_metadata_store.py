@@ -964,6 +964,10 @@ class SqliteMetadataStore:
                     f"generations were numbered differently, which no build will open"
                 )
             pending = [mig for mig in MIGRATIONS if stored is None or mig.version > stored]
+            if pending:
+                # pysqlite opens a transaction only before DML, so DDL would run in
+                # autocommit and a failed migration could not roll its schema back.
+                connection.exec_driver_sql("BEGIN")
             for migration in pending:
                 migration.upgrade(connection)
             if pending:

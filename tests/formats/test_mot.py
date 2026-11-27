@@ -669,8 +669,26 @@ def test_a_frame_rate_nothing_observed_can_give_is_refused(
         _export(manifest, blobs, tmp_path)
 
 
-def test_unknown_timing_is_refused_apart_from_timing_at_zero(tmp_path: Path) -> None:
-    manifest, blobs = _manifest([("1", [(0, None), (1, None)])])
+def test_unknown_timing_in_one_sequence_refuses_before_any_is_written(tmp_path: Path) -> None:
+    timed, timed_blobs = _manifest([("1", [(0, 0.0), (1, 0.1)])])
+    untimed, untimed_blobs = _manifest([("2", [(0, None), (1, None)])])
+    (first,) = timed.tracks
+    (second,) = untimed.tracks
+    renamed = tuple(
+        asset.model_copy(update={"content_hash": "f" + asset.content_hash[1:]})
+        for asset in untimed.assets
+    )
+    manifest = Manifest(
+        manifest_version=SEQUENCED_MANIFEST_VERSION,
+        schema_version=1,
+        classes=timed.classes,
+        assets=timed.assets + renamed,
+        tracks=(
+            first.model_copy(update={"source_id": UUID(int=1)}),
+            second.model_copy(update={"source_id": UUID(int=2)}),
+        ),
+    )
+    blobs = timed_blobs | {"f" + key[1:]: value for key, value in untimed_blobs.items()}
     with pytest.raises(ExportSourceUnreadable, match="timing of frame 1 is unknown"):
         _export(manifest, blobs, tmp_path)
     assert not any(tmp_path.iterdir())

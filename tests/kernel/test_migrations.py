@@ -23,7 +23,7 @@ import pytest
 from sqlalchemy import Connection, inspect, text
 from sqlalchemy.exc import IntegrityError
 
-from visionset.kernel.adapters import SqliteMetadataStore
+from visionset.kernel.adapters import SqliteMetadataStore, migrations
 from visionset.kernel.adapters._tables import META_TABLE, Base
 from visionset.kernel.adapters.migrations import FORMAT_VERSION, MIGRATIONS
 from visionset.kernel.domain import (
@@ -1464,3 +1464,63 @@ def test_a_generation_25_file_allows_unknown_timing_and_keeps_every_row(tmp_path
         assert timing == {0: 0.0, 1: None, 2: 0.98}
         assert uow.track_observations.list(track.id) == [observation]
     migrated.close()
+
+
+def test_migration_26_failing_after_its_drops_rolls_back_whole(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    clip, asset = uuid4(), uuid4()
+    store = _at_generation_twenty_five(tmp_path / "old.db")
+    with store.engine.begin() as connection:
+        connection.execute(text("insert into workspace (id, name) values ('w', 'ws')"))
+        connection.execute(
+            text("insert into project (id, workspace_id, name) values ('p', 'w', 'clips')")
+        )
+        _insert_source(connection, clip.hex, "image_sequence", "image-sequence-import:x")
+        _insert_asset(connection, asset.hex, clip.hex, "/seq/a.png", None)
+    with store.unit_of_work() as uow:
+        occurrence = uow.frame_occurrences.add(
+            FrameOccurrence(source_id=clip, position=0, timestamp=0.5, asset_id=asset)
+        )
+        track = uow.tracks.add(Track(source_id=clip, label_class="car"))
+        annotation = uow.annotations.add(
+            Annotation(
+                asset_id=asset,
+                label_class="car",
+                schema_version=1,
+                geometry=BboxGeometry(x=1, y=1, width=2, height=2),
+                provenance="human",
+            )
+        )
+        observation = uow.track_observations.add(
+            TrackObservation(
+                track_id=track.id, occurrence_id=occurrence.id, annotation_id=annotation.id
+            )
+        )
+    store.close()
+    before = _schema(SqliteMetadataStore(tmp_path / "old.db"))
+
+    def failing(connection: Connection, name: str) -> None:
+        raise RuntimeError(f"simulated failure restoring {name}")
+
+    monkeypatch.setattr(migrations, "_restore", failing)
+    with pytest.raises(RuntimeError, match="simulated failure"):
+        SqliteMetadataStore(tmp_path / "old.db").initialize()
+    monkeypatch.undo()
+
+    with SqliteMetadataStore(tmp_path / "old.db").engine.connect() as connection:
+        stamped = connection.execute(text(f"select format_version from {META_TABLE}")).scalar_one()
+        counted = [
+            connection.execute(text(f"select count(*) from {name}")).scalar_one()
+            for name in ("frame_occurrence", "track_observation")
+        ]
+    assert (stamped, counted) == (25, [1, 1])
+    assert _schema(SqliteMetadataStore(tmp_path / "old.db")) == before
+
+    retried = SqliteMetadataStore(tmp_path / "old.db")
+    retried.initialize()
+    assert retried.format_version == FORMAT_VERSION
+    with retried.unit_of_work() as uow:
+        assert [o.timestamp for o in uow.frame_occurrences.list(clip)] == [0.5]
+        assert uow.track_observations.list(track.id) == [observation]
+    retried.close()

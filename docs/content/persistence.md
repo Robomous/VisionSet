@@ -261,9 +261,11 @@ before it. Every key of an observation cascades - from its track, its occurrence
 so `annotation` and `frame_occurrence` join `asset` as tables a later migration may not rebuild
 without counting those rows first - see [annotations.md](annotations.md#a-track-observes-annotations-an-annotation-knows-nothing-of-tracks).
 Migration 26 lets `frame_occurrence.timestamp` be NULL, timing a source never recorded. SQLite
-cannot relax `NOT NULL` in place, so it reads every `frame_occurrence` and `track_observation` row
-out, drops and recreates both tables from `_tables.py`, and writes the rows back, so the rebuild
-cascades nothing. It rewrites no value: a `0` an earlier CVAT import gave a frame cannot be told
+cannot relax `NOT NULL` in place, so it copies every `frame_occurrence` and `track_observation` row
+into temporary tables, drops and recreates both tables from `_tables.py`, and copies the rows back,
+so the rebuild cascades nothing. Pending migrations run inside an explicit `BEGIN`, because pysqlite
+opens a transaction only before DML: without it a failure after the drops would have left the file
+without its tables, and now it rolls the whole generation back. It rewrites no value: a `0` an earlier CVAT import gave a frame cannot be told
 from a recorded one, so it stays `0`.
 
 **There are no downgrade paths, deliberately.** Nothing walks a file backwards and the
