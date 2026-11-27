@@ -14,8 +14,10 @@
  */
 
 import { useMutation, useQueries, useQuery, useQueryClient, type UseQueryResult } from "@tanstack/react-query";
+import { useCallback } from "react";
 
 import { useApiClient } from "../data/VisionSetDataProvider";
+import type { VisionSetDataClient } from "../data/port";
 import { unwrap } from "../data/errors";
 import {
   checkGetTrackStatus,
@@ -42,6 +44,19 @@ export const trackKeys = {
   status: (trackId: string, batchId: string) => ["tracks", "status", trackId, batchId] as const,
 };
 
+function assetOccurrencesQuery(client: VisionSetDataClient, projectId: string, assetId: string) {
+  return {
+    queryKey: trackKeys.occurrencesOf(assetId),
+    queryFn: async (): Promise<readonly FrameOccurrence[]> =>
+      unwrap(
+        await client.GET("/projects/{project_id}/assets/{asset_id}/occurrences", {
+          params: { path: { project_id: projectId, asset_id: assetId } },
+        }),
+        checkListAssetOccurrences,
+      ).items,
+  };
+}
+
 /**
  * The asset's occurrences in every sequence source it sits in. `null` is "no
  * asset to ask about": a scan, which no track follows.
@@ -51,17 +66,23 @@ export function useAssetOccurrences(
   assetId: string | null,
 ): UseQueryResult<readonly FrameOccurrence[], Error> {
   const client = useApiClient();
-  return useQuery({
-    queryKey: trackKeys.occurrencesOf(assetId ?? "none"),
-    enabled: assetId !== null,
-    queryFn: async () =>
-      unwrap(
-        await client.GET("/projects/{project_id}/assets/{asset_id}/occurrences", {
-          params: { path: { project_id: projectId, asset_id: assetId ?? "" } },
-        }),
-        checkListAssetOccurrences,
-      ).items,
-  });
+  return useQuery({ ...assetOccurrencesQuery(client, projectId, assetId ?? "none"), enabled: assetId !== null });
+}
+
+/**
+ * Read ahead the occurrences of frames a step may open next. The read is keyed
+ * per asset, so without it every step would take the Tracks region off screen
+ * until the new frame's answer arrived.
+ */
+export function usePrefetchAssetOccurrences(projectId: string): (assetIds: readonly string[]) => void {
+  const client = useApiClient();
+  const queries = useQueryClient();
+  return useCallback(
+    (assetIds) => {
+      for (const assetId of assetIds) void queries.prefetchQuery(assetOccurrencesQuery(client, projectId, assetId));
+    },
+    [client, queries, projectId],
+  );
 }
 
 /** Each source's tracks, as far as the reads have answered. */

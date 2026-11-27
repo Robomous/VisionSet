@@ -186,7 +186,7 @@ import { Badge, Button, DropdownMenu, DropdownMenuContent, DropdownMenuItem, Dro
 import { EmptyState, ErrorState, LoadingState } from "../patterns/AsyncStates";
 import { AnnotatorPanel, type TrackMark } from "./AnnotatorPanel";
 import { TrackRegion, sequenceTrackLabel, type TrackCandidate, type TrackFocus, type TrackOutcome, type TrackSequence } from "./TrackRegion";
-import { observationOf, sequencesOf, useAssetOccurrences, useSourcesTracks } from "./trackQueries";
+import { observationOf, sequencesOf, useAssetOccurrences, usePrefetchAssetOccurrences, useSourcesTracks } from "./trackQueries";
 import { GeometryIcon } from "./GeometryIcon";
 import { keepCanvasFocus } from "./keepCanvasFocus";
 import { Withheld } from "./Withheld";
@@ -1939,6 +1939,15 @@ function Workspace({
   const jobAssetIds = useMemo(() => assets.map((one) => one.id), [assets]);
   const occurrences = useAssetOccurrences(projectId, isScan ? null : asset.id);
   const sequences = useMemo(() => sequencesOf(occurrences.data ?? []), [occurrences.data]);
+  const prefetchOccurrences = usePrefetchAssetOccurrences(projectId);
+  const previousAsset = assets[assetIndex - 1];
+  const nextAsset = assets[assetIndex + 1];
+  useEffect(() => {
+    if (sequences.length === 0) return;
+    prefetchOccurrences(
+      [previousAsset, nextAsset].flatMap((one) => (one === undefined || one.modality === "point_cloud" ? [] : [one.id])),
+    );
+  }, [sequences.length, previousAsset, nextAsset, prefetchOccurrences]);
   const sourceIds = useMemo(() => sequences.map((one) => one.sourceId), [sequences]);
   const trackReads = useSourcesTracks(sourceIds);
   const sourceNames = useSources(projectId, sourceIds.length > 1);
@@ -3346,6 +3355,7 @@ function Workspace({
                     serverIdOf={serverIdOf}
                     saveThen={attempt}
                     openAsset={openTrackStep}
+                    prefetch={prefetchOccurrences}
                     focus={trackFocus}
                     onFocus={onTrackFocus}
                     colorOf={(labelClass) => classColor(classNamed(store.document, labelClass), labelClass)}

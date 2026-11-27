@@ -14,7 +14,7 @@
 
 import { Button, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, cn } from "@robomous/ui-core";
 import { ChevronLeft, ChevronRight, Plus } from "lucide-react";
-import type { JSX } from "react";
+import { useEffect, type JSX } from "react";
 
 import { refusalProse } from "../data/refusals";
 import { Withheld } from "./Withheld";
@@ -74,6 +74,8 @@ export interface TrackRegionProps {
   readonly serverIdOf: (localId: string) => string | null;
   /** Save first, then run `then` — only if the save stored everything. */
   readonly saveThen: (then: () => void) => void;
+  /** Read ahead what the frames these assets would show, before a step opens one. */
+  readonly prefetch: (assetIds: readonly string[]) => void;
   /** Open the job's asset at that position, saving first, then run `then`. */
   readonly openAsset: (index: number, then: () => void) => void;
   readonly focus: TrackFocus | null;
@@ -304,6 +306,7 @@ function FocusedTrack({
   onFocus,
   jobAssetIds,
   openAsset,
+  prefetch,
   withheld,
   observeWithheld,
   candidate,
@@ -330,6 +333,11 @@ function FocusedTrack({
   const anchor = trackAnchor(track, here, last);
   const previous = trackStep(track, anchor ?? Number.POSITIVE_INFINITY, -1, inJob);
   const next = trackStep(track, anchor ?? Number.NEGATIVE_INFINITY, 1, inJob);
+  const previousAsset = previous.target?.asset_id;
+  const nextAsset = next.target?.asset_id;
+  useEffect(() => {
+    prefetch([previousAsset, nextAsset].filter((one) => one !== undefined));
+  }, [prefetch, previousAsset, nextAsset]);
   const observedIds = new Set(track.observations.map((one) => one.occurrence_id));
   const observedHere = here.filter((one) => observedIds.has(one.id));
   const free = here.filter((one) => !observedIds.has(one.id));

@@ -384,6 +384,12 @@ describe("reading tracks", () => {
     expect(sent.some((one) => one.path === "/tracks/track-1/status")).toBe(true);
   });
 
+  it("reads ahead the next frame's occurrences, so a step keeps the region on screen", async () => {
+    await open();
+    await region();
+    await waitFor(() => expect(sent.some((one) => one.path === `/projects/${PROJECT}/assets/${A2}/occurrences`)).toBe(true));
+  });
+
   it("renders no region for a frame of a source with no occurrences", async () => {
     world.occurrences = [];
     await open();
@@ -502,6 +508,8 @@ describe("a frame in two sequences", () => {
 
   it("unlocks at once when the second source's track lets the object go", async () => {
     inTwoSequences("ann-3");
+    // The declaration stays stale, so only the fresh read of the second source can unlock.
+    world.staleObserved = [{ annotation_id: "ann-3", track_id: "track-b1", label_class: "pedestrian" }];
     await open();
     await region();
     const focused = await focusTrack("track-b1");
