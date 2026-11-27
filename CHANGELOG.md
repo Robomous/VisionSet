@@ -35,6 +35,17 @@ nothing was being distributed. This is the first version that is.
   and hatched, labelled `left out`), `Accept N` writes only the chosen ones with their own scores in one undo step,
   and with none chosen Accept is disabled and `↵` writes nothing. A point suggestion still proposes at most one
   shape (#548).
+- **CVAT XML 1.1, in and out, as two named dialects.** `cvat-images` reads and writes CVAT for images 1.1
+  (`annotations.xml` with `<image>` elements and pictures under `images/`): boxes, polygons, polylines and
+  image-level tags, with label attribute definitions and values written on export. `cvat-video` reads and writes
+  CVAT for video 1.1: each task becomes an image-sequence source over `images/frame_<frame:06d><ext>` and each
+  `<track id>` a track with that id, frames numbered from the task's `start_frame` every `frame_filter` step;
+  `outside="1"` is a gap, interpolation is not expanded (the frames CVAT would draw and the `keyframe="0"` mark are
+  declared losses), and the exporter closes every run of observations with an `outside="1"` keyframe and declares
+  `tracked_only`. Project exports read each subset from `images/<subset>/`, and an empty label is a `label` loss. Points, ellipses, cuboids, masks, skeletons and rotated boxes
+  are `label` losses; attribute values, `occluded`, `z_order`, `group_id` and a non-default `subset` are
+  `attribute` losses. Documents are parsed with the standard library, a `DOCTYPE` or entity declaration is refused,
+  and malformed input is refused by file and line (#1171).
 - **MOTChallenge sequences, in and out.** A `mot` importer reads MOT16/17/20 sequences - every directory with a
   `seqinfo.ini`, its frames `<imDir>/<frame:06d><imExt>`, `gt/gt.txt` boxes and an optional `gt/labels.txt`
   class table - as image sequences whose positive ids become tracks scoped to their sequence. A missing frame stays

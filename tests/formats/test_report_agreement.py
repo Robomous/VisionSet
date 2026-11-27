@@ -178,6 +178,29 @@ def _mot_counts(root: Path) -> Counter[str]:
     return found
 
 
+def _cvat_images_counts(root: Path) -> Counter[str]:
+    """Every shape and tag under an ``<image>``, by its ``label``."""
+    found: Counter[str] = Counter()
+    for image in ElementTree.parse(root / "annotations.xml").getroot().findall("image"):
+        for shape in image:
+            found[shape.attrib["label"]] += 1
+    return found
+
+
+def _cvat_video_counts(root: Path) -> Counter[str]:
+    """Every shape a track holds inside its object, by the track's ``label``.
+
+    ``DRAWING`` holds no track, so this one finds nothing, as for ``mot``.
+    """
+    found: Counter[str] = Counter()
+    for path in sorted(root.glob("*/annotations.xml")):
+        for track in ElementTree.parse(path).getroot().findall("track"):
+            found[track.attrib["label"]] += sum(
+                1 for shape in track if shape.attrib.get("outside") == "0"
+            )
+    return found
+
+
 #: How to count what each format actually wrote, keyed by ``format_name``.
 COUNTERS: dict[str, Callable[[Path], Counter[str]]] = {
     "ultralytics": _yolo_counts,
@@ -187,6 +210,8 @@ COUNTERS: dict[str, Callable[[Path], Counter[str]]] = {
     "coco": _coco_counts,
     "classification": _classification_counts,
     "mot": _mot_counts,
+    "cvat-images": _cvat_images_counts,
+    "cvat-video": _cvat_video_counts,
 }
 
 #: Formats whose layout depends on what the release holds, and are therefore

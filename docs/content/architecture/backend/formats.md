@@ -27,11 +27,11 @@ target - never through a dict, so a typo answers a `VisionSetError` rather than 
 
 ## What ships
 
-Twenty-three plugins in [`pyproject.toml`](../../../../pyproject.toml)'s
-`[project.entry-points."visionset.formats"]`: the thirteen exporters below and ten importers,
+Twenty-seven plugins in [`pyproject.toml`](../../../../pyproject.toml)'s
+`[project.entry-points."visionset.formats"]`: the fifteen exporters below and twelve importers,
 `ultralytics-import`, `yolov5-yaml-import`, `darknet-import`, `coco-import`, `voc-import`,
-`classification-import`, `openlane-2d-import`, `kitti-import`, `mot-import` and `nuscenes-import`
-(see [Importers](#importers)).
+`classification-import`, `openlane-2d-import`, `kitti-import`, `mot-import`, `cvat-images-import`,
+`cvat-video-import` and `nuscenes-import` (see [Importers](#importers)).
 
 | Name | Module |
 | --- | --- |
@@ -43,6 +43,7 @@ Twenty-three plugins in [`pyproject.toml`](../../../../pyproject.toml)'s
 | `classification` | [`classification/`](../../../../src/visionset/formats/classification/) - `labels.csv`, one row per (image, tag) |
 | `tusimple`, `curvelanes`, `bdd100k-lane`, `culane`, `openlane-2d` | [`lanes/`](../../../../src/visionset/formats/lanes/) - five plugins over one shared core |
 | `mot` | [`mot/writer.py`](../../../../src/visionset/formats/mot/writer.py) - one MOTChallenge sequence per source a released track observes; declares `tracked_only`, so an untracked box is reported dropped |
+| `cvat-images`, `cvat-video` | [`cvat/`](../../../../src/visionset/formats/cvat/) - CVAT XML 1.1 as two named dialects over a shared [`_document.py`](../../../../src/visionset/formats/cvat/_document.py), shapes per picture and tracks per task; `cvat-video` declares `tracked_only` |
 | `kitti` | [`kitti/writer.py`](../../../../src/visionset/formats/kitti/writer.py) - scans only: a `.bin` from the stored PCD ([`kitti/pcd.py`](../../../../src/visionset/formats/kitti/pcd.py)) and each `cuboid_3d` in a canonical calibration |
 
 ## Importers
@@ -56,7 +57,7 @@ and labels in the one `ScanFrame` the dataset declares; `ImportService` stores e
 of the same bytes under a point-cloud source declaring that frame. `registry.importers()` filters the scan by that
 port, and `registry.pick_importer(installed, name)` resolves a name with the same aliases,
 refusing with `ImportFormatNotFound`. `ImportService` takes the instance, as `ReleaseService.export`
-takes an exporter. The built-ins are ten, nine of them answering to their exporter's `format_name`:
+takes an exporter. The built-ins are twelve, eleven of them answering to their exporter's `format_name`:
 [`ultralytics-import`](../../../../src/visionset/formats/ultralytics/reader.py),
 [`yolov5-yaml-import`](../../../../src/visionset/formats/yolov5_yaml/reader.py) and
 [`darknet-import`](../../../../src/visionset/formats/darknet/reader.py), which share
@@ -66,8 +67,10 @@ takes an exporter. The built-ins are ten, nine of them answering to their export
 [`voc-import`](../../../../src/visionset/formats/voc/reader.py),
 [`classification-import`](../../../../src/visionset/formats/classification/reader.py) and
 [`openlane-2d-import`](../../../../src/visionset/formats/lanes/reader.py), which with
-[`mot-import`](../../../../src/visionset/formats/mot/reader.py) is one of the two that order images
-into sequences and name tracks;
+[`mot-import`](../../../../src/visionset/formats/mot/reader.py) and
+[`cvat-video-import`](../../../../src/visionset/formats/cvat/video.py) is one of the three that
+order images into sequences and name tracks;
+[`cvat-images-import`](../../../../src/visionset/formats/cvat/images.py);
 [`kitti-import`](../../../../src/visionset/formats/kitti/reader.py), which converts KITTI's
 camera-frame boxes into the lidar frame in
 [`kitti/frames.py`](../../../../src/visionset/formats/kitti/frames.py), where the exporter's
@@ -94,7 +97,7 @@ part:
 
 The last two are disjoint, and a geometry in neither is not written at all. An optional
 `tracked_only` says the format writes a label only as an observation of a released track, as `mot`
-does, so the report counts every other label dropped. Three
+and `cvat-video` do, so the report counts every other label dropped. Three
 states rather than two, because a boolean answers "is this written?" and "is this
 written intact?" with one word - and a caller consenting to lose three annotations
 would receive two of them back as boxes.

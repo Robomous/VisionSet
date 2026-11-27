@@ -435,7 +435,8 @@ writes nothing else, so it reports a release's images dropped by count and every
 reports its scans dropped.
 
 **A tracked-only format drops what no track observes.** A format may declare `tracked_only`, as
-[`mot`](#the-motchallenge-format) does, because a MOT row is one observation of one track. A label
+[`mot`](#the-motchallenge-format) and [`cvat-video`](#the-cvat-xml-formats) do, because a MOT row or a
+CVAT track shape is one observation of one track. A label
 that format would otherwise write and no track in the release observes leaves its row for a
 `dropped` row of its own, with its own counts and a reason saying no track observes it, so an
 untracked box is counted in `excluded_annotations` and asks for consent like any other loss.
@@ -501,6 +502,8 @@ The catalog this build ships, generated from the declarations by
 | `coco` | coco | `other` | `coco` | — | bbox, polygon | — | — |
 | `culane` | culane | `other` | `culane` | — | polyline | — | — |
 | `curvelanes` | curvelanes | `other` | `curvelanes` | — | polyline | — | — |
+| `cvat-images` | cvat-images | `other` | `cvat-images` | — | bbox, classification_tag, polygon, polyline | — | — |
+| `cvat-video` | cvat-video | `other` | `cvat-video` | — | bbox, polygon, polyline | — | — |
 | `kitti` | kitti | `other` | `kitti` | — | cuboid_3d | — | — |
 | `mot` | mot | `other` | `mot` | — | bbox | — | — |
 | `openlane-2d` | openlane-2d | `other` | `openlane-2d` | — | polyline | — | — |
@@ -918,6 +921,44 @@ have nowhere to go (`0` reads back as an ignored entry, `1` as ground truth). Th
 recipe is not applied, because a sequence is not cut across folds, and augmented variants observe no
 track and are not written. MOTS, whose rows are instance masks, is not written: it needs raster
 masks, which the domain does not have yet.
+
+### The CVAT XML formats
+
+Two formats write CVAT's XML 1.1, one per dialect, and the [`cvat-images` and `cvat-video`
+importers](import.md#formats) read each back. Neither is a generic "CVAT XML": each writes only its
+own dialect. Both write coordinates in pixels as stored, at full precision rather than CVAT's two
+decimals, a box as `xtl = x`, `xbr = x + width`, and polygon and polyline `points` as
+`x,y;x,y;...`. `<meta><task>` names the release's classes in schema order, each label's `<type>` the
+CVAT name of its one geometry (`rectangle`, `polygon`, `polyline`, `tag`) or `any` when it declares
+several, and its attribute definitions: a `string` attribute as `text`, `number` as `number` with no
+range, `boolean` as `checkbox` and `select` as `select` with its options. A shape's attribute values
+are written as `<attribute name>` children, a boolean as `true` or `false`. Provenance survives only
+as CVAT's `source`: `human` as `manual`, `model` as `auto` and `import` as `file`. Every shape is
+`occluded="0"` and `z_order="0"`. A name or value holding a control character XML 1.0 cannot carry
+refuses the export with `ExportSourceUnreadable` before anything is written. Both declare `lossy = True`: confidence, a polyline's per-vertex
+visibility and the model behind a label have nowhere to go.
+
+`cvat-images` writes `annotations.xml` and the pictures under `images/`, named by content hash, as
+CVAT for images 1.1: one `<image>` per asset with its `id` in manifest order, its `name`, `width`
+and `height`, and a `subset` that is its fold under the release's split recipe or `default` without
+one. It writes boxes, polygons, polylines and classification tags (`<tag>`) whole, so its
+`supported_geometries` are those four and nothing is degraded.
+
+`cvat-video` writes CVAT for video 1.1, one task per source a released track observes:
+`<source-id>/annotations.xml` and the observed frames as `<source-id>/images/frame_<position:06d><ext>`.
+`<size>` runs to the last observed position, so a position no released track observes is a missing
+frame, and `<original_size>` is the frames' one size; frames of two sizes or two image types refuse
+the export, checked for every task before any is written. The manifest holds only the frames a
+track observes, so a task with such a gap is read back by the importer, which keys frames by name,
+but CVAT, which numbers a task's pictures in sorted order, would shift every frame after the gap:
+such a task is not loadable into CVAT as it stands. Attribute definitions are written
+`mutable="True"`, because a value may change from frame to frame. A track whose imported id is a non-negative integer written without leading zeros keeps
+it, and every other is numbered after the largest such id in its task. Each observation is a shape
+at `keyframe="1" outside="0"`; where a track does not continue to the next frame, an
+`outside="1"` keyframe follows, because CVAT otherwise carries a track across a gap and to the
+task's end. A CVAT track holds one shape type, so a track observing two refuses the export. It
+declares `{bbox, polygon, polyline}` and `tracked_only`, so a label no track observes, and every tag,
+is reported dropped. The split recipe is not applied, and augmented variants observe no track.
 
 ### The destination is the caller's
 

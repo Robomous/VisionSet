@@ -136,8 +136,9 @@ src/visionset/          Single Python distribution (one wheel, one import namesp
   cli/                  Typer CLI (`visionset` console script)
   mcp/                  MCP server (stdio) — 66 agent tools over the same SDK, four more on request
   formats/              Exporter plugins: ultralytics, yolov5-yaml, darknet, coco, voc, classification,
-                        the five lane formats and mot; importer plugins for most of them, plus the kitti
-                        and nuscenes scan importers (entry-point group `visionset.formats`)
+                        the five lane formats, mot, cvat-images and cvat-video; importer plugins for
+                        most of them, plus the kitti and nuscenes scan importers (entry-point group
+                        `visionset.formats`)
   preprocessing/        Pre-processing drivers: Pillow resize and augmentation behind the
                         `PreprocessingDriver` port (entry-point group `visionset.preprocessing`)
   jobs/                 Handlers for work that outlives a request: ingest, export, weights

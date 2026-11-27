@@ -28,7 +28,7 @@ upload variant yet. [surfaces.md](surfaces.md) shows what each surface can do.
    `annotated`. Nothing is completed or promoted.
 
 A dataset of images may also order some of its images into **sequences**, such as OpenLane's
-segments or MOTChallenge sequences, and name the object each label draws within one - its **track id**. Each sequence holding
+segments, MOTChallenge sequences or CVAT video tasks, and name the object each label draws within one - its **track id**. Each sequence holding
 an asset the run creates or labels becomes a new `image_sequence` source, with one frame occurrence
 per position it holds, and every track id in it becomes a track of that source with the id as its
 `external_id`, observing the labels the run writes; the rules are
@@ -72,12 +72,12 @@ computed from the content, and a commit that would drop something is refused wit
 
 | Kind | What is dropped |
 | --- | --- |
-| `class` | A class the project's schema does not declare and no label uses. |
+| `class` | A class the project's schema does not declare and no label uses; a CVAT label that names no geometry the domain holds. |
 | `geometry` | Part of a shape the kernel has no type for, such as YOLO keypoints, VOC parts, 3D lane points or an unusable per-vertex visibility, while the shape itself is kept. |
-| `label` | A whole label: an RLE or crowd mask, a polygon of several rings, a label outside its image, a MOT row whose `conf` marks it ignored. |
+| `label` | A whole label: an RLE or crowd mask, a polygon of several rings, a label outside its image, a MOT row whose `conf` marks it ignored, a CVAT shape the domain has no geometry for (points, ellipse, cuboid, mask, skeleton, a rotated box). |
 | `image` | An image the source names but does not hold, or one whose bytes repeat an earlier image; its labels go with it. A nuScenes camera frame, which is not read. |
 | `scan` | A scan whose points repeat an earlier scan's, or one gone from the source; its labels go with it. A nuScenes sweep or radar frame, which is not read. |
-| `attribute` | Extras the importer does not carry, such as COCO attributes, VOC difficult or pose flags, an OpenLane camera calibration, a track id outside a sequence or one a track cannot hold, a MOT box's visibility ratio or the absence of an identity (an `id` that is not positive), KITTI truncation, occlusion, alpha and calibration, nuScenes attributes, visibility, instance tokens, point counts, poses and a scene's fields other than its name. |
+| `attribute` | Extras the importer does not carry, such as COCO attributes, VOC difficult or pose flags, an OpenLane camera calibration, a track id outside a sequence or one a track cannot hold, a MOT box's visibility ratio or the absence of an identity (an `id` that is not positive), CVAT attribute values, `occluded`, `z_order`, `group_id`, a `subset` and the interpolation CVAT would expand, KITTI truncation, occlusion, alpha and calibration, nuScenes attributes, visibility, instance tokens, point counts, poses and a scene's fields other than its name. |
 
 The refusal carries the full report in its `detail.losses`. Inspecting the source first returns
 the same report and writes nothing; its `loss_kinds` is exactly what the commit has to consent to,
@@ -118,6 +118,8 @@ naming the kinds to accept. See [mcp-tools.md](mcp-tools.md).
 | `classification` | `labels.csv` (`image`, `class`) and `classes.txt` beside `images/`; one tag per row | A row naming a class `classes.txt` does not declare, a second row of one class on one picture, a malformed row, a row with no picture or class |
 | `kitti` | A 3D object detection split: `velodyne/*.bin` scans, `label_2/*.txt` and `calib/*.txt`, at the top or in `training/` and `testing/` (or the `train/`, `val/`, `test/` the exporter writes); boxes as `cuboid_3d` in the `lidar_flu` frame | `DontCare` regions, each box's 2D image `bbox`, truncation, occlusion and alpha, the calibration itself, a score outside 0 to 1, a label with no scan, no usable calibration, a malformed line or a dimension that is not positive |
 | `mot` | MOTChallenge (MOT16/17/20) sequences: every directory holding a `seqinfo.ini`, its frames `<imDir>/<frame:06d><imExt>` for frames 1 to `seqLength`, and `gt/gt.txt` boxes with `gt/labels.txt` as the class table; each sequence as an image sequence and its ids as tracks | A row whose `conf` is `0` (ignored), each box's `visibility`, the identity of a row whose `id` is not positive (the box is kept untracked), frames the sequence names but does not hold; `det/det.txt` is not read. A malformed row or `seqinfo.ini` refuses the source |
+| `cvat-images` | CVAT for images 1.1: every `annotations.xml` holding `<image>` elements, its pictures under `images/` beside it; boxes, polygons, polylines and image-level tags | Points, ellipses, cuboids, masks, skeletons and rotated boxes, attribute values, `occluded`, a non-zero `z_order`, a `group_id`, a `subset` other than `default`, a second tag of one class on a picture. A malformed document refuses the source by file and line |
+| `cvat-video` | CVAT for video 1.1: every `annotations.xml` holding `<track>` elements, its frames `images/frame_<frame:06d><ext>` beside it; each task as an image sequence and its tracks' ids as tracks, with boxes, polygons and polylines per frame and `<tag frame>` as untracked tags | Tracks of shapes the domain has no geometry for, attribute values, `occluded`, `z_order`, `group_id`, the `keyframe="0"` mark of an interpolated frame, the frames CVAT interpolates between stored shapes or carries to the task's end, frames the task counts but does not hold. A malformed document refuses the source by file and line |
 | `nuscenes` | A data root: a version folder (`v1.0-mini`, `v1.0-trainval`, ...) of JSON tables beside `samples/LIDAR_TOP/*.pcd.bin`; the LIDAR_TOP keyframes, boxes as `cuboid_3d` in the `lidar_rfu` frame, and each keyframe's scene name as its group label | Attributes, visibility, instance tokens (tracking identity, because a track follows 2D labels only), `num_lidar_pts` and `num_radar_pts`, a scene's description, log and map, the ego pose and calibration themselves, a box leaning more than 6 degrees, a malformed box or a dimension that is not positive, an annotation whose sample has no LIDAR_TOP keyframe, the sweeps, and every other sensor's data |
 
 **YOLO family** (`ultralytics`, `yolov5-yaml`, `darknet`). A picture is any file under an `images/`
@@ -209,6 +211,68 @@ outside 0 to 1, a visibility neither `-1` nor within 0 to 1, a class that is not
 or not in the table, and a `seqinfo.ini` missing a field or giving one that is not a positive
 number. The image size `seqinfo.ini` gives must be the size of every frame it holds. MOTS, whose
 rows are instance masks, is not read: it needs raster masks, which the domain does not have yet.
+
+**CVAT XML.** Two dialects of CVAT's XML 1.1 are read, each by its own importer, and neither reads
+the other's documents: `cvat-images` refuses a `<track>` and `cvat-video` refuses an `<image>`.
+Every `annotations.xml` under the source is one task, the layout CVAT writes when a task is exported
+with its images. The document must have an `<annotations>` root with `<version>1.1</version>`; a
+`DOCTYPE` or entity declaration refuses it before anything expands. Labels are matched by name: a
+shape whose `label` the document's `<meta>` labels do not declare refuses the source, and a declared
+label no shape uses becomes a class when its `<type>` names a geometry the domain holds
+(`rectangle`, `polygon`, `polyline` or `tag`, not `any`); a label left with no geometry, such as one
+of type `any` nothing draws or one only points or skeletons use, is a `class` loss. A skeleton's
+sub-labels, declared with a `<parent>`, are not classes of their own. Coordinates are pixels from the picture's
+top-left corner as CVAT writes them, so a box is `x = xtl`, `width = xbr - xtl`, and polygon and
+polyline `points` are `x,y;x,y;...`. Every label is written with `import` provenance, whatever its
+`source`. Attribute values are reported as `attribute` losses per class and attribute name: the
+import wire carries no attribute values for any format yet.
+
+| CVAT 1.1 | `cvat-images` | `cvat-video` |
+| --- | --- | --- |
+| `<box>` | bbox | bbox, tracked |
+| `<box rotation>` other than 0 | `label` loss | `label` loss |
+| `<polygon>`, `<polyline>` | polygon, polyline | polygon, polyline, tracked |
+| `<points>`, `<ellipse>`, `<cuboid>`, `<mask>`, `<skeleton>` | `label` loss | `label` loss per stored shape |
+| `<tag>` | classification tag | `<tag frame>`: an untracked classification tag on that frame |
+| `<attribute>` values | `attribute` loss | `attribute` loss |
+| `occluded="1"`, non-zero `z_order`, `group_id` | `attribute` loss, shape kept | `attribute` loss, shape kept |
+| `subset` | `attribute` loss unless `default` | - |
+| `<track id>` | refused | the track's external id, scoped to its task |
+| `outside="1"` | - | a gap: no observation that frame |
+| `keyframe="0"` | - | imported as an ordinary label; the mark is an `attribute` loss |
+| frames between stored shapes, or after a track's last one | - | not expanded; counted as an `attribute` loss |
+
+**CVAT for images.** Each `<image>` names its picture by a relative `name` under `images/` beside
+the document (`../` and absolute names refuse the source), with an `id` that is a non-negative
+integer and a positive `width` and `height`. A project export, whose `<meta>` holds a `<project>`,
+keeps each subset's pictures under `images/<subset>/` and numbers them per subset, so its pictures
+are read from there and an `id` is unique within its subset; a task export's are unique in the
+document. A picture listed twice, in one document or two, refuses the source. A shape whose `label`
+is empty, as Datumaro writes an unlabelled one, is a `label` loss on `unlabelled`. Only
+`annotations.xml`, the name CVAT writes, is read: Datumaro's `<subset>.xml` naming is not.
+
+**CVAT for video.** The task's `<meta>` must hold a `<task>` or `<job>` with a positive `<size>`,
+the frame count. CVAT numbers a task's frames in its source video: the task's `<start_frame>`
+(default `0`), then every `step` of a `<frame_filter>` `step=<n>` (default `1`), so a task starting
+at 10 with `step=3` holds frames 10, 13, 16 and so on. The `k`-th of them is position `k`, and is
+`images/frame_<frame:06d><ext>` beside the document, named by the source frame number; every frame
+shares one `<ext>`. A shape or file at a frame that is not one of the task's refuses the source, as
+does a `<frame_filter>` other than `step=<n>`, a `<size>` above 1,000,000 frames, and a `<job>`
+export whose `<start_frame>` is not 0 (export its task instead). A video export of a task made from
+images names its frames by their pictures rather than `frame_<frame:06d>`, so it is not read. Every
+frame of the task is listed whether the directory holds it or not, so a
+missing frame is an `image` loss whose position stays a gap. `<original_size>`, when given, is
+every frame's size. The task is one image sequence named by its `<name>`, or by its directory when
+it has none; two tasks naming one sequence refuse the source. CVAT records no frame timing, so
+every frame's timestamp is `0` and its order lives in its position. Frames whose pictures are byte-identical share one asset, and the labels on a repeat are an `image` loss, so a task whose frames are all identical keeps only the first frame's tracks (#1197). Each `<track id>` is a track of
+that sequence whose external id is the decimal `id`, and each of its shapes at `outside="0"` an
+observation at its `frame`; a shape at `outside="1"` says the object is absent, so that frame is a
+gap and nothing is written. Interpolation is not expanded: a stored shape at `keyframe="0"` is kept
+as an ordinary label, and every frame CVAT would draw between two stored shapes, or carry from a
+track's last stored shape to the task's end, is counted once in an `attribute` loss. A `<track>`
+field other than `id`, `label`, `source` and `group_id` is an `attribute` loss, the track kept. A track's
+shapes share one type, a track id or a frame within a track given twice refuses the source, as does
+a `frame`, `outside`, `keyframe` or `occluded` that is not what CVAT writes.
 
 **KITTI.** Each `velodyne/<id>.bin` is one scan of float32 `x, y, z, reflectance` records, kept
 byte for byte with reflectance as `intensity`; a file that is not a whole number of 16-byte
