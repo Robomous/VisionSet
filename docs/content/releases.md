@@ -434,6 +434,12 @@ than breaking the export. `kitti` is the one installed format that writes a poin
 writes nothing else, so it reports a release's images dropped by count and every other format
 reports its scans dropped.
 
+**A tracked-only format drops what no track observes.** A format may declare `tracked_only`, as
+[`mot`](#the-motchallenge-format) does, because a MOT row is one observation of one track. A label
+that format would otherwise write and no track in the release observes leaves its row for a
+`dropped` row of its own, with its own counts and a reason saying no track observes it, so an
+untracked box is counted in `excluded_annotations` and asks for consent like any other loss.
+
 ### Consent is required if *either* says so
 
 `export` refuses with `LossyExportNotConsented` when the format declares itself lossy **or** when
@@ -496,6 +502,7 @@ The catalog this build ships, generated from the declarations by
 | `culane` | culane | `other` | `culane` | — | polyline | — | — |
 | `curvelanes` | curvelanes | `other` | `curvelanes` | — | polyline | — | — |
 | `kitti` | kitti | `other` | `kitti` | — | cuboid_3d | — | — |
+| `mot` | mot | `other` | `mot` | — | bbox | — | — |
 | `openlane-2d` | openlane-2d | `other` | `openlane-2d` | — | polyline | — | — |
 | `tusimple` | tusimple | `other` | `tusimple` | — | polyline | — | — |
 | `voc` | voc | `other` | `voc` | — | bbox | — | — |
@@ -881,6 +888,36 @@ A class name is KITTI's first token, so whitespace inside one is written as `_`;
 that would become one token refuse the export, and so does a class written `DontCare`, which KITTI
 readers treat as a region to ignore and the importer drops. A pre-processing recipe is refused for this format,
 because it transforms images.
+
+### The MOTChallenge format
+
+`mot` writes a release's tracked boxes as MOTChallenge (MOT16/17/20) sequences, one per source a
+released track observes: `<source-id>/seqinfo.ini`, the frames as `<source-id>/img1/<frame:06d><ext>`,
+and `<source-id>/gt/gt.txt` with `<source-id>/gt/labels.txt`, the layout the
+[`mot` importer](import.md#formats) reads back. Frame `n` is the occurrence at position `n - 1`, so
+a position no released track observes is a gap in `img1/` and the frames after it keep their
+numbers; `seqLength` runs to the last observed position. A row is
+`frame,id,bb_left,bb_top,bb_width,bb_height,conf,class,visibility`: the box in pixels as stored,
+`conf` `1` for a label with no confidence and its confidence otherwise, `class` the class's 1-based
+position in the release's schema, which `labels.txt` lists in that order, and visibility `-1`
+(unknown). A track whose imported id is a positive integer written without leading zeros keeps it;
+every other track is numbered after the largest such id in its sequence, in manifest order, so no
+two tracks of a sequence share an id and ids never cross sequences.
+
+The manifest carries no sequence name and no frame rate, so a sequence is named by its source id
+and `frameRate` is the last observed position over its timestamp, rounded to six decimals: an
+imported MOT sequence or a clip gives its own rate back, and timing that was not uniform keeps its
+frame numbers and loses its spacing. A sequence whose observations are all at its first frame, or
+whose frames differ in pixel size or image type, is refused with `ExportSourceUnreadable`, because
+`seqinfo.ini` has one of each. It declares `supported_geometries` `{bbox}` and `tracked_only`, so a
+box no track observes is reported dropped (see
+[dropped is not degraded](#dropped-is-not-degraded-and-one-word-for-both-was-a-lie)); a frame whose
+labels are all untracked is not written, because nothing in the manifest places it in a sequence.
+`lossy = True`: attributes, provenance, the source's name and a confidence of exactly `0` or `1`
+have nowhere to go (`0` reads back as an ignored entry, `1` as ground truth). The release's split
+recipe is not applied, because a sequence is not cut across folds, and augmented variants observe no
+track and are not written. MOTS, whose rows are instance masks, is not written: it needs raster
+masks, which the domain does not have yet.
 
 ### The destination is the caller's
 

@@ -23,6 +23,15 @@ nothing was being distributed. This is the first version that is.
   and hatched, labelled `left out`), `Accept N` writes only the chosen ones with their own scores in one undo step,
   and with none chosen Accept is disabled and `↵` writes nothing. A point suggestion still proposes at most one
   shape (#548).
+- **MOTChallenge sequences, in and out.** A `mot` importer reads MOT16/17/20 sequences - every directory with a
+  `seqinfo.ini`, its frames `<imDir>/<frame:06d><imExt>`, `gt/gt.txt` boxes and an optional `gt/labels.txt`
+  class table - as image sequences whose positive ids become tracks scoped to their sequence. A missing frame stays
+  a gap, `conf` `0` rows and box visibility are declared losses, a non-positive id keeps its box untracked, a
+  fractional `conf` becomes the box's confidence, and a malformed row or `seqinfo.ini` refuses the source by file
+  and line. A `mot` exporter writes each source a released track observes as `<source-id>/seqinfo.ini`, `img1/`
+  and `gt/`, frame numbers from positions and ids from the imported ones, and reports every box no track observes
+  dropped through a new optional `tracked_only` exporter declaration. MOTS is not supported until raster masks
+  exist (#1170).
 - **OpenLane track ids import as tracks.** An import may order its images into sequences; each one holding an
   asset the run creates or labels becomes a new `image_sequence` source with its frame occurrences, and each track
   id in it a track of that source with the id as `external_id`, written in the import's transaction. The

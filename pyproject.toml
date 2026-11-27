@@ -153,6 +153,9 @@ openlane-2d-import = "visionset.formats.lanes:OpenLane2dImporter"
 # Scans and their 3D boxes, read into the lidar frame and written with a canonical calibration.
 kitti = "visionset.formats.kitti:KittiExporter"
 kitti-import = "visionset.formats.kitti:KittiImporter"
+# MOTChallenge sequences: frames as image-sequence sources, ground-truth ids as tracks.
+mot = "visionset.formats.mot:MotExporter"
+mot-import = "visionset.formats.mot:MotImporter"
 # LIDAR_TOP keyframes and their global boxes (#1056), read into the sensor frame.
 nuscenes-import = "visionset.formats.nuscenes:NuScenesImporter"
 

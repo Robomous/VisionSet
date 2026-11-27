@@ -142,6 +142,10 @@ class Exporter(Protocol):
     # written only when the export carries no other geometry. The compatibility
     # report counts them dropped whenever anything else is written.
 
+    # Optional, read with ``getattr``: ``tracked_only: bool`` says the format
+    # writes a label only as an observation of a released track, as a MOT
+    # sequence does. The compatibility report counts every other label dropped.
+
     # Optional, read through :func:`supported_modalities_of`:
     # ``supported_modalities: frozenset[str]`` names the asset modalities this
     # format can write. A plain ``str`` set, matching ``Asset.modality``: a

@@ -27,11 +27,11 @@ target - never through a dict, so a typo answers a `VisionSetError` rather than 
 
 ## What ships
 
-Twenty-one plugins in [`pyproject.toml`](../../../../pyproject.toml)'s
-`[project.entry-points."visionset.formats"]`: the twelve exporters below and nine importers,
+Twenty-three plugins in [`pyproject.toml`](../../../../pyproject.toml)'s
+`[project.entry-points."visionset.formats"]`: the thirteen exporters below and ten importers,
 `ultralytics-import`, `yolov5-yaml-import`, `darknet-import`, `coco-import`, `voc-import`,
-`classification-import`, `openlane-2d-import`, `kitti-import` and `nuscenes-import` (see
-[Importers](#importers)).
+`classification-import`, `openlane-2d-import`, `kitti-import`, `mot-import` and `nuscenes-import`
+(see [Importers](#importers)).
 
 | Name | Module |
 | --- | --- |
@@ -42,6 +42,7 @@ Twenty-one plugins in [`pyproject.toml`](../../../../pyproject.toml)'s
 | `voc` | [`voc/`](../../../../src/visionset/formats/voc/) |
 | `classification` | [`classification/`](../../../../src/visionset/formats/classification/) - `labels.csv`, one row per (image, tag) |
 | `tusimple`, `curvelanes`, `bdd100k-lane`, `culane`, `openlane-2d` | [`lanes/`](../../../../src/visionset/formats/lanes/) - five plugins over one shared core |
+| `mot` | [`mot/writer.py`](../../../../src/visionset/formats/mot/writer.py) - one MOTChallenge sequence per source a released track observes; declares `tracked_only`, so an untracked box is reported dropped |
 | `kitti` | [`kitti/writer.py`](../../../../src/visionset/formats/kitti/writer.py) - scans only: a `.bin` from the stored PCD ([`kitti/pcd.py`](../../../../src/visionset/formats/kitti/pcd.py)) and each `cuboid_3d` in a canonical calibration |
 
 ## Importers
@@ -55,7 +56,7 @@ and labels in the one `ScanFrame` the dataset declares; `ImportService` stores e
 of the same bytes under a point-cloud source declaring that frame. `registry.importers()` filters the scan by that
 port, and `registry.pick_importer(installed, name)` resolves a name with the same aliases,
 refusing with `ImportFormatNotFound`. `ImportService` takes the instance, as `ReleaseService.export`
-takes an exporter. The built-ins are nine, eight of them answering to their exporter's `format_name`:
+takes an exporter. The built-ins are ten, nine of them answering to their exporter's `format_name`:
 [`ultralytics-import`](../../../../src/visionset/formats/ultralytics/reader.py),
 [`yolov5-yaml-import`](../../../../src/visionset/formats/yolov5_yaml/reader.py) and
 [`darknet-import`](../../../../src/visionset/formats/darknet/reader.py), which share
@@ -64,7 +65,9 @@ takes an exporter. The built-ins are nine, eight of them answering to their expo
 [`coco-import`](../../../../src/visionset/formats/coco/reader.py),
 [`voc-import`](../../../../src/visionset/formats/voc/reader.py),
 [`classification-import`](../../../../src/visionset/formats/classification/reader.py) and
-[`openlane-2d-import`](../../../../src/visionset/formats/lanes/reader.py);
+[`openlane-2d-import`](../../../../src/visionset/formats/lanes/reader.py), which with
+[`mot-import`](../../../../src/visionset/formats/mot/reader.py) is one of the two that order images
+into sequences and name tracks;
 [`kitti-import`](../../../../src/visionset/formats/kitti/reader.py), which converts KITTI's
 camera-frame boxes into the lidar frame in
 [`kitti/frames.py`](../../../../src/visionset/formats/kitti/frames.py), where the exporter's
@@ -89,7 +92,9 @@ part:
 - `degraded_geometries` - what it writes **having lost something**, such as a
   polygon arriving as its axis-aligned bounding box.
 
-The last two are disjoint, and a geometry in neither is not written at all. Three
+The last two are disjoint, and a geometry in neither is not written at all. An optional
+`tracked_only` says the format writes a label only as an observation of a released track, as `mot`
+does, so the report counts every other label dropped. Three
 states rather than two, because a boolean answers "is this written?" and "is this
 written intact?" with one word - and a caller consenting to lose three annotations
 would receive two of them back as boxes.

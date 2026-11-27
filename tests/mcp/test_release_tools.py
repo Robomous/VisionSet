@@ -290,6 +290,14 @@ def test_the_installed_exporters_declare_what_they_can_carry() -> None:
                 "targets": ["kitti"],
             },
             {
+                "name": "mot",
+                "lossy": True,
+                "geometries": ["bbox"],
+                "degraded_geometries": [],
+                "modalities": ["image"],
+                "targets": ["mot"],
+            },
+            {
                 "name": "openlane-2d",
                 "lossy": True,
                 "geometries": ["polyline"],
@@ -347,7 +355,7 @@ def test_the_installed_exporters_declare_what_they_can_carry() -> None:
                 "targets": ["yolov7"],
             },
         ],
-        "total": 13,
+        "total": 14,
     }
 
 
