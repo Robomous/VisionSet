@@ -60,6 +60,8 @@ from visionset.cli.batches import (
     second_step,
     start_after_approval,
 )
+from visionset.jobs import ingest as ingest_job
+from visionset.jobs.inline import Surface, tracked_run
 from visionset.kernel.domain import BatchState, IngestResult, ScanFrame
 from visionset.kernel.services import (
     BatchService,
@@ -177,7 +179,9 @@ def ingest(
             else sources.register_point_clouds(resolved.id, source, frame=point_clouds)
         )
         note(f"Reading {registered.kind.value.replace('_', ' ')} {source}…")
-        result = IngestService(service).ingest(registered.id, batch_name=batch_name)
+        with tracked_run(Surface.CLI, ingest_job.JOB_TYPE) as run:
+            result = IngestService(service).ingest(registered.id, batch_name=batch_name)
+            run.ingested(result, service)
         batch_id = result.batch_id
         if start and batch_id is None:
             note("No batch to start.")

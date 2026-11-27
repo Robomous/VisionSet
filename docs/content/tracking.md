@@ -6,8 +6,9 @@ database stays the record of what happened; a tracking server receives a copy of
 below, on a best-effort basis.
 
 This page covers the adapter, its configuration, and what it records today: one run for each time
-a [background job](background-jobs.md) is executed. Nothing else opens a run. Clicks and edits in
-the UI, and work the CLI or MCP runs in its own process, are not tracked.
+a [background job](background-jobs.md) is executed, and one for each pre-label, export, ingest or
+weight download the CLI or MCP runs in its own process ([see below](#command-line-and-mcp)).
+Nothing else opens a run. Clicks and edits in the UI are not tracked.
 
 ## Turning it on
 
@@ -33,15 +34,108 @@ server is an `http://` or `https://` URI. The skinny client cannot open a `sqlit
 database store; install the full `mlflow` package if you point VisionSet at one. A `file://` store
 (a local directory) is refused by MLflow itself unless `MLFLOW_ALLOW_FILE_STORE=true` is set.
 
+Settings are read once, when a process starts: set them before `visionset server` (or any other
+command) starts, and restart it after changing one. Background-job workers inherit them from the
+server.
+
+### Turning it off
+
+Unset `VISIONSET_MLFLOW_ENABLED`, or set it to `false`, and restart the process. Nothing else is
+needed: with tracking off, VisionSet ignores `MLFLOW_TRACKING_URI` and every other `MLFLOW_*`
+variable, never imports the client, and opens no connection, so the variables can stay set for other
+tools. Uninstalling the client (`pip uninstall mlflow-skinny`) is optional. What a server already
+holds stays there: VisionSet never deletes runs.
+
 ### Authentication and TLS
 
-VisionSet passes MLflow's own variables through untouched: `MLFLOW_TRACKING_USERNAME` and
-`MLFLOW_TRACKING_PASSWORD`, `MLFLOW_TRACKING_TOKEN`, `MLFLOW_TRACKING_INSECURE_TLS`,
-`MLFLOW_TRACKING_SERVER_CERT_PATH`, `MLFLOW_TRACKING_CLIENT_CERT_PATH`, and the rest the MLflow
-documentation lists. Set them in the environment of the process that runs VisionSet.
+A remote server is an `https://` URI. VisionSet hands authentication and certificates to the MLflow
+client and passes its own variables through untouched; set them in the environment of the process
+that runs VisionSet:
+
+| Variable | Use |
+| --- | --- |
+| `MLFLOW_TRACKING_USERNAME`, `MLFLOW_TRACKING_PASSWORD` | HTTP basic authentication, as MLflow's built-in authentication app expects. Both must be set. |
+| `MLFLOW_TRACKING_TOKEN` | A bearer token (`Authorization: Bearer …`), as most reverse proxies and hosted servers expect. Ignored when a username and password are both set. |
+| `MLFLOW_TRACKING_SERVER_CERT_PATH` | A PEM file of the certificate authorities to trust, for a server whose certificate a public authority did not issue — a company CA, for instance. Without it, only the public authorities `requests` trusts by default (the `certifi` bundle) are. |
+| `MLFLOW_TRACKING_CLIENT_CERT_PATH` | A PEM file holding a client certificate and its private key, for a server that requires mutual TLS. |
+
+```bash
+export VISIONSET_MLFLOW_ENABLED=true
+export MLFLOW_TRACKING_URI=https://mlflow.example.com
+export MLFLOW_TRACKING_SERVER_CERT_PATH=/etc/ssl/certs/company-ca.pem
+read -rs MLFLOW_TRACKING_TOKEN && export MLFLOW_TRACKING_TOKEN   # typed, never in shell history
+```
+
+Keep the token or password in a secret store or an environment file only you can read, never in a
+committed file or a Compose file. **Never turn certificate verification off** to make a connection
+work (`MLFLOW_TRACKING_INSECURE_TLS`): give the client the authority that signed the server's
+certificate with `MLFLOW_TRACKING_SERVER_CERT_PATH` instead.
 
 **A URI carrying credentials is refused** (`https://user:password@host`). Put them in the
 variables above instead, so they cannot reach a log line by way of the URI.
+
+The adapter is tested against a real MLflow server behind an HTTPS proxy that checks basic, bearer
+and client-certificate authentication, with a certificate authority generated for each run and
+trusted only through `MLFLOW_TRACKING_SERVER_CERT_PATH`. A wrong password and an untrusted
+certificate both leave the run unrecorded, as described under [when the server is
+down](#when-the-server-is-down).
+
+## A tracking server for development
+
+Any MLflow tracking server works. Two ways to run one locally; neither is started by anything in
+VisionSet.
+
+### Standalone
+
+```bash
+pip install mlflow   # the full package: the skinny client has no server
+mlflow server --host 127.0.0.1 --port 5000 --backend-store-uri sqlite:///mlflow.db
+```
+
+Then point VisionSet at `http://127.0.0.1:5000`, as in [turning it on](#turning-it-on). Run the
+server in its own virtual environment if you can: the full package brings a large dependency set
+that VisionSet's environment does not need. On macOS, port 5000 is often held by AirPlay Receiver;
+pick another with `--port`.
+
+### The Compose profile
+
+The development stack ([CONTRIBUTING.md](../../CONTRIBUTING.md#dev-setup))
+has an optional `mlflow` profile. A plain `docker compose up` does not start it, and no other
+service depends on it.
+
+```bash
+# The server alone, for VisionSet running on the host:
+docker compose -f docker/compose.yaml --profile mlflow up -d mlflow
+export VISIONSET_MLFLOW_ENABLED=true
+export MLFLOW_TRACKING_URI=http://127.0.0.1:5050
+
+# Or the server and the stack's api, with tracking turned on there:
+docker compose -f docker/compose.yaml -f docker/compose.mlflow.yaml --profile mlflow up --build
+```
+
+| | |
+| --- | --- |
+| Image | `ghcr.io/mlflow/mlflow`, pinned to the client version VisionSet locks, and updated by Dependabot under the repository's three-day cool-down; a test fails when the image and the lock disagree. |
+| Port | `127.0.0.1:5050` on the host — loopback only, and not 5000. Move it with `VISIONSET_MLFLOW_PORT` in `docker/.env`. The UI is at the same address. |
+| Storage | The `mlflow-data` named volume: a SQLite database and an artifact directory, apart from the VisionSet workspace. It survives `down`; `docker volume rm visionset_mlflow-data` deletes it. `down -v` deletes it too, along with the other profiles' volumes. |
+| Authentication | None. It is for one developer on one machine: do not publish its port beyond loopback. |
+| `docker/compose.mlflow.yaml` | Installs the `mlflow` extra into the api image (hence `--build`, on every switch in or out), and sets `VISIONSET_MLFLOW_ENABLED=true`, `MLFLOW_TRACKING_URI=http://mlflow:5000` and `VISIONSET_MLFLOW_EXPERIMENT` (default `visionset-dev`) for the api. Without it the api runs untracked even while the server is up. |
+
+## Connecting from where VisionSet runs
+
+The URI is resolved by the process that runs VisionSet, so it depends on where that process is:
+
+| VisionSet runs | Server runs | `MLFLOW_TRACKING_URI` |
+| --- | --- | --- |
+| On the host | On the host, or the Compose profile | `http://127.0.0.1:<port>` (5050 for the profile) |
+| In the Compose stack | The Compose profile | `http://mlflow:5000` — the service name on the Compose network, as `docker/compose.mlflow.yaml` sets it. `127.0.0.1` inside a container is the container itself. |
+| In a container | On the host | `http://host.docker.internal:<port>` on Docker Desktop; on Linux add `extra_hosts: ["host.docker.internal:host-gateway"]` to the service. The server must listen on an address the container can reach and list `host.docker.internal` in `--allowed-hosts`. The Compose profile is simpler. |
+| Anywhere | Another machine | `https://<host>`, with the [authentication and TLS](#authentication-and-tls) variables above. |
+
+A server reached by a name other than `localhost` or a private address must allow that name: MLflow
+refuses other `Host` headers unless its `--allowed-hosts` includes them, and the profile allows
+`mlflow`. For VisionSet in a container and a remote server, pass the credentials into that container
+from an environment file you keep out of version control.
 
 ## When it is misconfigured
 
@@ -87,6 +181,13 @@ it imports the client, and only where the variable is not already set, so your v
 
 ## What is sent
 
+**In short:** run names, ids, parameters, metrics and tags from the lists on this page, and a
+release's identity as a dataset input, to the one server `MLFLOW_TRACKING_URI` names — with the
+credentials you configured, as an `Authorization` header to that server only. **No artifacts are
+uploaded**, ever: no images, annotations, label files, export archives, model weights or logs, and
+nothing is registered in MLflow's model registry. That holds even on a server that accepts
+artifacts, such as the Compose profile's.
+
 A run is opened through `MlflowClient` with an explicit run id. VisionSet uses no autologging and no
 active run, and never calls `mlflow.set_tracking_uri`, so it does not change what other MLflow code
 in the same process does.
@@ -111,8 +212,10 @@ export archives, credentials or absolute paths, and no artifact uploads.
 **Telemetry and printing.** VisionSet sets `MLFLOW_DISABLE_TELEMETRY=true`,
 `MLFLOW_DISABLE_AGENT_HINT=true` and `MLFLOW_SUPPRESS_PRINTING_URL_TO_STDOUT=true` before it imports
 the client, so the MLflow SDK sends no usage telemetry of its own and does not print a link to each
-finished run, with the server's address in it, to standard output. As with the timeouts, a value you
-set yourself is kept.
+finished run, with the server's address in it, to standard output. A telemetry or hint value you set
+yourself is kept, as with the timeouts. `MLFLOW_SUPPRESS_PRINTING_URL_TO_STDOUT` is always set to
+`true`, whatever you set: standard output carries the MCP server's protocol and the command line's
+`--json` output, and a printed run link would corrupt either.
 
 ## Across processes
 
@@ -298,3 +401,71 @@ The job's row is still the answer.
 
 Treat a `RUNNING` run with no live job behind it as abandoned, and read the job's state from
 VisionSet.
+
+## Command line and MCP
+
+The CLI and the MCP server never queue a job: they run the work in their own process and wait for
+it. The commands and tools below open runs too, with the names, allowlists and rules described under
+[background jobs](#background-jobs). The same operation sends the same tags, parameters, metrics and
+[release lineage](#release-lineage) wherever it ran, except as listed here.
+
+| Operation | Commands | MCP tools | Runs |
+| --- | --- | --- | --- |
+| Pre-labeling | `visionset job pre-label`, `visionset batch pre-label`, `visionset project pre-label` | `pre_label_job`, `pre_label_batch`, `pre_label_project` | One `annotation.pre_label` run for each job it labels. |
+| Export | `visionset export`, except with `--check` | `export_release` | One `export.release` run. |
+| Ingest | `visionset ingest` | `ingest` | One `ingest.resume` run. |
+| Model weight download | `visionset inference download` | `download_connection_weights` | One `inference.download_weights` run. |
+
+Nothing else a command or a tool does opens a run: reads, edits, approvals, publishing a release,
+`export --check` and `check_export`, imports, integrity checks and thumbnail backfills are not
+tracked.
+
+### How these runs differ
+
+- **`visionset.execution_source` names the surface**: `cli` for a command, `mcp` for a tool,
+  instead of `background_job`.
+- **Pre-labeling** writes a job row of its own, as it always has, so its run carries that row's id
+  as `visionset.job_id` and its `visionset.attempt` (`1`). The run opens when the row is written,
+  after every refusal has passed, so a refused call opens no run. A batch or project call labels one
+  job after another and opens one run for each.
+- **Export, ingest and weight download** write no job row, so their runs carry neither
+  `visionset.job_id` nor `visionset.attempt`. `visionset.execution_id` is new for each call. The run
+  opens once the arguments have been checked and the names resolved, so a call refused at that point
+  opens no run. A refusal the operation makes itself, such as an export's consent check or a
+  destination that is not empty, ends the run `FAILED` with the error's class and code, as any other
+  failure during the work does.
+- **An ingest's `visionset.ingest_job_id` is sent when the ingest returns**, because the ingest run
+  it names is created by the call itself. A failed ingest's run does not carry it.
+- **`duration_seconds`** is the time the work took in the calling process. For pre-labeling it
+  starts when the job row is written.
+- **A run ends `FINISHED` or `FAILED`.** The exception is a pre-labeling run stopped by a cancel
+  request on its row, which ends `KILLED` as a background one does. An interrupted command (Ctrl-C) ends its run `FAILED` with `visionset.error_class` set to
+  `KeyboardInterrupt`.
+
+### Delivery and output
+
+Delivery is the same as for a worker ([delivery never holds a job](#delivery-never-holds-a-job)):
+opening and closing a run are queued for the process's own delivery thread, so a slow or failing
+tracking server never delays the work, changes its result, its output or a command's exit code.
+
+- **A command waits for its deliveries before it exits**, for up to 10 seconds, and then exits with
+  the output and exit code it would have had anyway. A tracking server that never answers therefore
+  delays a command's exit by at most that long. The MCP server delivers as it goes, and waits the
+  same 10 seconds when it stops.
+- **Nothing is written to standard output.** Standard output is a command's output and the MCP
+  server's protocol channel; tracking warnings go to the `visionset.tracking` logger, which writes to
+  standard error unless logging is configured otherwise.
+- **With tracking off**, a command or a tool reads the flag and nothing else: no client is imported,
+  no thread is started and nothing is sent.
+- **An unreadable `VISIONSET_MLFLOW_ENABLED`** is logged once per process when the first tracked
+  operation starts, and the work runs untracked.
+
+### What is not covered
+
+- **A run left open by a process that died stays open.** No dispatcher watches a command or an MCP
+  server, and the sweeps under [runs left open](#runs-left-open) look only for `background_job`
+  runs. A command killed outright, or an MCP server that dies during a call, leaves its run
+  `RUNNING`; so does a command whose deliveries were still waiting when its 10 seconds ran out.
+- **A process 64 or more deliveries behind** does not track its next operation at all.
+- **Export, ingest and weight download have no job row**, so a run from a command or a tool cannot
+  be matched to one; `visionset.execution_id` is its only handle.

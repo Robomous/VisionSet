@@ -40,6 +40,8 @@ from pydantic import ConfigDict, Field, with_config
 from typing_extensions import TypedDict
 
 from visionset import wire
+from visionset.jobs import ingest as ingest_job
+from visionset.jobs.inline import Surface, tracked_run
 from visionset.kernel.domain import ScanFrame
 from visionset.kernel.services import (
     IngestService,
@@ -159,7 +161,9 @@ def ingest(
             if frame is None
             else sources.register_point_clouds(resolved.id, source_path, frame=frame)
         )
-        result = IngestService(workspace).ingest(registered.id, batch_name=batch_name)
+        with tracked_run(Surface.MCP, ingest_job.JOB_TYPE) as run:
+            result = IngestService(workspace).ingest(registered.id, batch_name=batch_name)
+            run.ingested(result, workspace)
     return {
         "source": wire.source(registered),
         # Not `job_id`: an agent reading that key tries it on `get_job` and is

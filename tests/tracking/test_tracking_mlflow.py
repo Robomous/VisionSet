@@ -166,6 +166,23 @@ def _rebuilt_in_a_worker(payload: dict[str, object]) -> tuple[str, dict[str, obj
     return type(tracker).__name__, settings.model_dump(mode="json"), run_id
 
 
+def test_an_operator_cannot_reopen_run_links_on_stdout(
+    server: MlflowServer,
+    monkeypatch: pytest.MonkeyPatch,
+    capfd: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.setenv("MLFLOW_SUPPRESS_PRINTING_URL_TO_STDOUT", "false")
+    tracker = build_tracker(load_tracking_settings())
+
+    run_id = tracker.start_run("export")
+    tracker.end_run(run_id)
+
+    out, _ = capfd.readouterr()
+    assert run_id == "run-1"
+    assert os.environ["MLFLOW_SUPPRESS_PRINTING_URL_TO_STDOUT"] == "true"
+    assert out == ""
+
+
 def test_a_spawned_worker_rebuilds_an_enabled_tracker_from_the_payload(
     server: MlflowServer,
 ) -> None:

@@ -20,11 +20,15 @@ WORKDIR /workspace
 
 COPY pyproject.toml uv.lock ./
 
+# One extra from uv.lock to add, e.g. `mlflow` (docker/compose.mlflow.yaml); none by default.
+ARG VISIONSET_EXTRA=""
+
 # No venv: uv does not count a venv's inherited system site-packages as installed, so it
 # would reinstall the torch the base already has. `--break-system-packages` is what PEP 668
 # requires to install into Ubuntu's interpreter. The lockfile still decides the base set.
 RUN --mount=type=cache,target=/root/.cache/uv \
-    uv export --frozen --no-emit-project --no-hashes -o /tmp/requirements.txt \
+    uv export --frozen --no-emit-project --no-hashes ${VISIONSET_EXTRA:+--extra "$VISIONSET_EXTRA"} \
+      -o /tmp/requirements.txt \
     && uv pip install --system --break-system-packages -r /tmp/requirements.txt
 
 # The local-inference extra minus torch. Floors copied from pyproject.toml's extra and

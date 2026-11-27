@@ -36,6 +36,7 @@ from visionset.cli._workspace import WorkspaceOption, opened_workspace
 from visionset.cli.batches import GeometryOption, announce_plan
 from visionset.cli.inference import ConnectionArgument
 from visionset.inference import DEFAULT_MINIMUM_CONFIDENCE, geometry_selection, pre_label_recorded
+from visionset.jobs.inline import Surface, pre_label_observer
 from visionset.kernel.domain import MARK_TRANSITIONS, AssetProgress
 from visionset.kernel.services import BatchService, InferenceConnectionService, JobService
 
@@ -271,6 +272,7 @@ def job_pre_label(
             geometries=geometry_selection(geometry),
             on_plan=announce_plan,
             on_progress=lambda done, total: note(f"Pre-labeling {done}/{total} asset(s)."),
+            observer=pre_label_observer(Surface.CLI),
         )
     if json_out:
         document({"job_id": str(job), **asdict(outcome)})

@@ -181,23 +181,48 @@ def _count(value: object) -> int | None:
     return value
 
 
-def attempt_tags(attempt: AttemptTracking, payload: Mapping[str, JsonValue]) -> dict[str, str]:
-    """The tags a run opens with."""
-    tags = {
-        TAG_JOB_ID: str(attempt.job_id),
-        TAG_EXECUTION_ID: str(attempt.execution_id),
-        TAG_ATTEMPT: str(attempt.attempt),
-        TAG_SOURCE: EXECUTION_SOURCE,
-    }
-    if _JOB_TYPE.fullmatch(attempt.job_type):
-        tags[TAG_JOB_TYPE] = attempt.job_type
-    if _VERSION.fullmatch(__version__):
-        tags[TAG_VERSION] = __version__
+def identifier_tags(payload: Mapping[str, JsonValue]) -> dict[str, str]:
+    """The identifiers a payload names, each one only once it parses as a UUID."""
+    tags: dict[str, str] = {}
     for key, tag in IDENTIFIER_TAGS.items():
         identifier = _uuid(payload.get(key))
         if identifier is not None:
             tags[tag] = identifier
     return tags
+
+
+def run_tags(
+    source: str,
+    job_type: str,
+    execution_id: UUID,
+    payload: Mapping[str, JsonValue],
+    *,
+    job_id: UUID | None = None,
+    attempt: int | None = None,
+) -> dict[str, str]:
+    """The tags a run opens with, wherever the work runs. ``source`` is a fixed name."""
+    tags = {TAG_EXECUTION_ID: str(execution_id), TAG_SOURCE: source}
+    if job_id is not None:
+        tags[TAG_JOB_ID] = str(job_id)
+    if attempt is not None:
+        tags[TAG_ATTEMPT] = str(attempt)
+    if _JOB_TYPE.fullmatch(job_type):
+        tags[TAG_JOB_TYPE] = job_type
+    if _VERSION.fullmatch(__version__):
+        tags[TAG_VERSION] = __version__
+    return {**tags, **identifier_tags(payload)}
+
+
+def attempt_tags(attempt: AttemptTracking, payload: Mapping[str, JsonValue]) -> dict[str, str]:
+    """The tags a background attempt's run opens with."""
+    return run_tags(
+        EXECUTION_SOURCE,
+        attempt.job_type,
+        attempt.execution_id,
+        payload,
+        job_id=attempt.job_id,
+        attempt=attempt.attempt,
+    )
 
 
 def attempt_params(job_type: str, payload: Mapping[str, JsonValue]) -> dict[str, ParamValue]:
@@ -494,8 +519,7 @@ atexit.register(_flush_at_exit)
 class TrackedAttempt:
     """The run for one attempt: opened on the delivery thread, closed there too."""
 
-    def __init__(self, attempt: AttemptTracking, tracker: Tracker, tags: dict[str, str]) -> None:
-        self._attempt = attempt
+    def __init__(self, tracker: Tracker, tags: dict[str, str]) -> None:
         self._tracker = tracker
         self._tags = tags
         self._run_id: str | None = None
@@ -551,11 +575,13 @@ class TrackedAttempt:
         failures: int,
         duration_s: float,
         workspace: WorkspaceService | None = None,
+        tags: Mapping[str, str] | None = None,
     ) -> None:
         """Close the run of an attempt whose handler returned.
 
         ``workspace`` is read for the rows a completed attempt worked on, and only
         when it was not cancelled; the reads happen here, on the caller's thread.
+        ``tags`` are already-allowlisted tags learned only once the work returned.
         """
         try:
             metrics = outcome_metrics(
@@ -577,7 +603,11 @@ class TrackedAttempt:
             RunStatus.KILLED if cancelled else RunStatus.FINISHED,
             params={**params, **records.params},
             metrics={"duration_seconds": duration_s, **metrics, **records.metrics},
-            tags={**records.tags, TAG_JOB_STATE: "cancelled" if cancelled else "succeeded"},
+            tags={
+                **(tags or {}),
+                **records.tags,
+                TAG_JOB_STATE: "cancelled" if cancelled else "succeeded",
+            },
             datasets=records.datasets,
         )
 
@@ -590,11 +620,14 @@ class TrackedAttempt:
         self.close(RunStatus.FAILED, metrics={"duration_seconds": duration_s}, tags=tags)
 
 
-def open_attempt(
-    attempt: AttemptTracking | None, payload: Mapping[str, JsonValue]
+def open_run(
+    settings: TrackingSettings,
+    job_type: str,
+    payload: Mapping[str, JsonValue],
+    tags: Callable[[], dict[str, str]],
 ) -> TrackedAttempt | None:
-    """Queue the opening of this attempt's run, or ``None`` when it is not tracked."""
-    if attempt is None or not attempt.settings.mlflow_enabled:
+    """Queue the opening of a run, or answer ``None`` when it is not tracked. Never raises."""
+    if not settings.mlflow_enabled:
         return None
     try:
         if _COURIER.backlog() >= MAX_BACKLOG:
@@ -603,16 +636,27 @@ def open_attempt(
                 _COURIER.backlog(),
             )
             return None
-        tracker = _tracker_for(attempt.settings)
+        tracker = _tracker_for(settings)
         if isinstance(tracker, NoOpTracker):
             return None
-        run = TrackedAttempt(attempt, tracker, attempt_tags(attempt, payload))
-        params = attempt_params(attempt.job_type, payload)
+        run = TrackedAttempt(tracker, tags())
+        params = attempt_params(job_type, payload)
         _COURIER.send(lambda: run._open(params))
         return run
     except Exception as exc:  # noqa: BLE001
         _log.warning("MLflow tracking could not queue a run (%s).", type(exc).__name__)
         return None
+
+
+def open_attempt(
+    attempt: AttemptTracking | None, payload: Mapping[str, JsonValue]
+) -> TrackedAttempt | None:
+    """Queue the opening of this attempt's run, or ``None`` when it is not tracked."""
+    if attempt is None:
+        return None
+    return open_run(
+        attempt.settings, attempt.job_type, payload, lambda: attempt_tags(attempt, payload)
+    )
 
 
 def reconcile(settings: TrackingSettings | None, tags: Mapping[str, str], reason: str) -> None:

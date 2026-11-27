@@ -40,6 +40,8 @@ from visionset.inference import (
     fetch_weights,
     registered,
 )
+from visionset.jobs import weights as weights_job
+from visionset.jobs.inline import Surface, tracked_run
 from visionset.kernel.domain import ConnectionType, InferenceConnection, Precision
 from visionset.kernel.services import InferenceConnectionService
 from visionset.wire import shapes
@@ -316,7 +318,11 @@ def inference_download(
         # already set up, no weights of its own, the extra not installed — and
         # ``opened_workspace`` is what turns one into a sentence and exit 1
         # rather than a traceback.
-        ready = fetch_weights(service, connection_id, on_progress=note)
+        with tracked_run(
+            Surface.CLI, weights_job.JOB_TYPE, weights_job.payload_for(connection_id)
+        ) as run:
+            ready = fetch_weights(service, connection_id, on_progress=note, on_bytes=run.on_bytes())
+            run.downloaded(ready, service)
     if json_out:
         document(wire.connection(ready))
         return

@@ -31,7 +31,6 @@ URI_VARIABLE: Final = "MLFLOW_TRACKING_URI"
 ENVIRONMENT_DEFAULTS: Final[Mapping[str, str]] = {
     "MLFLOW_DISABLE_TELEMETRY": "true",
     "MLFLOW_DISABLE_AGENT_HINT": "true",
-    "MLFLOW_SUPPRESS_PRINTING_URL_TO_STDOUT": "true",
     "MLFLOW_HTTP_REQUEST_TIMEOUT": "5",
     "MLFLOW_HTTP_REQUEST_MAX_RETRIES": "1",
     "MLFLOW_HTTP_REQUEST_BACKOFF_FACTOR": "1",
@@ -39,6 +38,13 @@ ENVIRONMENT_DEFAULTS: Final[Mapping[str, str]] = {
 """Applied with ``setdefault`` before MLflow is imported, so an operator's own
 value always wins. MLflow's defaults retry for minutes, which would stall the
 work being tracked when the server is down."""
+
+ENVIRONMENT_FORCED: Final[Mapping[str, str]] = {
+    "MLFLOW_SUPPRESS_PRINTING_URL_TO_STDOUT": "true",
+}
+"""Overwritten whatever the operator set: standard output is a protocol channel for
+the MCP stdio server and for ``--json`` output, and MLflow prints a run link to it
+from the delivery thread."""
 
 _STATUS: Final[Mapping[RunStatus, str]] = {
     RunStatus.FINISHED: "FINISHED",
@@ -324,6 +330,7 @@ def build_mlflow_tracker(experiment: str) -> MlflowTracker:
     uri = _tracking_uri()
     for name, value in ENVIRONMENT_DEFAULTS.items():
         os.environ.setdefault(name, value)
+    os.environ.update(ENVIRONMENT_FORCED)
     tracking = _imported("mlflow.tracking")
     entities = _imported("mlflow.entities")
     _install_redaction(uri)

@@ -33,7 +33,7 @@ from collections.abc import Callable, Iterable, Mapping, Sequence
 from contextlib import suppress
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from typing import Final
+from typing import Final, Protocol
 from uuid import UUID
 
 from pydantic import JsonValue
@@ -710,6 +710,16 @@ INLINE_WORKER: Final = "inline"
 """The ``worker`` an inline run's row names: no dispatcher claimed it."""
 
 
+class RecordedRunObserver(Protocol):
+    """Told when an inline run's row is written and when it is settled. Never raises."""
+
+    def recorded(self, row: BackgroundJob) -> None: ...
+
+    def settled(
+        self, row: BackgroundJob, outcome: BackgroundJobOutcome, error: BaseException | None
+    ) -> None: ...
+
+
 def pre_label_recorded(
     workspace: WorkspaceService,
     *,
@@ -722,6 +732,7 @@ def pre_label_recorded(
     on_progress: Callable[[int, int], None] | None = None,
     should_stop: Callable[[], bool] | None = None,
     pool: ProviderPool | None = None,
+    observer: RecordedRunObserver | None = None,
 ) -> PreLabelOutcome:
     """:func:`pre_label`, run in this process and written down as a job row.
 
@@ -740,6 +751,10 @@ def pre_label_recorded(
 
     A cancel request on the row — ``POST /jobs/{id}/cancel`` from a server on the
     same workspace — stops the run at its next asset, as it would a queued one.
+
+    ``observer`` hears of the row once it is written and again once it is
+    settled, with the receipt the row was given — which is how a surface tracks
+    an inline run without a second reading of what it came to.
     """
     store = workspace.metadata_store
     row: list[BackgroundJob] = []
@@ -769,6 +784,8 @@ def pre_label_recorded(
             )
         row.append(created)
         reporter.append(SqliteProgressReporter(store, created.id))
+        if observer is not None:
+            observer.recorded(created)
         if on_plan is not None:
             on_plan(plan)
 
@@ -783,10 +800,14 @@ def pre_label_recorded(
             should_stop is not None and should_stop()
         )
 
-    def settle(outcome: BackgroundJobOutcome) -> None:
-        # A row that will not take its receipt must not cost the run its result.
-        with suppress(VisionSetError):
-            workspace.job_queue.finish(row[0].id, outcome)
+    def settle(outcome: BackgroundJobOutcome, error: BaseException | None = None) -> None:
+        try:
+            # A row that will not take its receipt must not cost the run its result.
+            with suppress(VisionSetError):
+                workspace.job_queue.finish(row[0].id, outcome)
+        finally:
+            if observer is not None:
+                observer.settled(row[0], outcome, error)
 
     try:
         outcome = pre_label(
@@ -810,7 +831,8 @@ def pre_label_recorded(
                     error_code=error_code(exc),
                     processed=reporter[0].reported_processed,
                     total=reporter[0].reported_total,
-                )
+                ),
+                exc,
             )
         raise
     if row:
@@ -855,6 +877,7 @@ def _pre_label_one(
     on_plan: Callable[[Batch, int, PreLabelPlan], None] | None,
     on_progress: Callable[[Batch, int, int], None] | None,
     pool: ProviderPool | None,
+    observer: RecordedRunObserver | None,
 ) -> PreLabeledJob:
     plans: list[PreLabelPlan] = []
 
@@ -876,6 +899,7 @@ def _pre_label_one(
         on_plan=record,
         on_progress=progress,
         pool=pool,
+        observer=observer,
     )
     return PreLabeledJob(batch, job_id, outcome, plans[0])
 
@@ -891,6 +915,7 @@ def pre_label_selection(
     on_plan: Callable[[Batch, int, PreLabelPlan], None] | None = None,
     on_progress: Callable[[Batch, int, int], None] | None = None,
     pool: ProviderPool | None = None,
+    observer: RecordedRunObserver | None = None,
 ) -> list[PreLabeledJob]:
     """Run every open job of every selected batch, in order, one after another.
 
@@ -917,6 +942,7 @@ def pre_label_selection(
                     on_plan=on_plan,
                     on_progress=on_progress,
                     pool=pool,
+                    observer=observer,
                 )
             )
     return ran
