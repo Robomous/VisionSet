@@ -4,9 +4,10 @@ Status: **proposed** (#364). The direction was approved on 2026-11-26: keep cont
 media, model ordered frame occurrences separately, and give persistent sequence-scoped tracks
 explicit observations. This page settles the details that approval left open. Slice 1, the
 occurrence model, migration and importer writes, slice 2, the track and observation kernel
-over REST, the CLI and MCP, and slice 4, tracks in the release manifest at version 7, are
-implemented - see
-[annotations](../../annotations.md#a-track-observes-annotations-an-annotation-knows-nothing-of-tracks)
+over REST, the CLI and MCP, slice 3, reading tracks and observing and unobserving in the browser,
+and slice 4, tracks in the release manifest at version 7, are implemented - see
+[annotations](../../annotations.md#a-track-observes-annotations-an-annotation-knows-nothing-of-tracks),
+[the annotation workspace](../../ui/annotator.md#the-side-panel)
 and [releases](../../releases.md#the-manifests-own-format-version). So is
 [#1170](https://github.com/Robomous/VisionSet/issues/1170), MOTChallenge sequences in and out with
 2D boxes over image-sequence sources - see [import](../../import.md#formats) and

@@ -4,7 +4,7 @@
  */
 
 import { cn } from "@robomous/ui-core";
-import { Check, Copy, Film, Folder } from "lucide-react";
+import { Check, Copy, Film, Folder, GalleryHorizontalEnd } from "lucide-react";
 import { useEffect, useRef, useState, type CSSProperties, type JSX, type ReactNode } from "react";
 
 import { AssetImage } from "../../annotator/AssetImage";
@@ -23,7 +23,7 @@ export const SWAP =
 export const SWAP_OUT = "scale-25 opacity-0 blur-[4px]";
 
 export function SourceIcon({ source, className }: { readonly source: Source | undefined; readonly className?: string }): JSX.Element {
-  const Icon = source?.kind === "video" ? Film : Folder;
+  const Icon = source?.kind === "video" ? Film : source?.kind === "image_sequence" ? GalleryHorizontalEnd : Folder;
   return <Icon aria-hidden="true" strokeWidth={1.75} className={cn("size-3.5 shrink-0", className)} />;
 }
 

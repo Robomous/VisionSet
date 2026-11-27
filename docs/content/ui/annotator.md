@@ -222,7 +222,8 @@ moving between frames and settling one are the island's and the bar's, not this 
 regions, no tabs and no splitter** — Classes, Tags, Annotations. A tab is a claim that
 things are alternatives, and these are three answers about one frame, read top to bottom:
 *what may I draw*, *what is true of the whole picture*, *what have I drawn*. All three are
-on screen at once.
+on screen at once. On a frame of a sequence source a fourth, Tracks, sits under them: it answers a
+question about the sequence rather than the frame, *what follows this object from frame to frame*.
 
 **A region with nothing to show is not rendered**, and its divider goes with it: no class
 anything can be drawn with, or no class declaring a tag. A heading over an empty box is a
@@ -330,6 +331,54 @@ A newly drawn polyline records every vertex `visible`. Edits keep the list align
 points: a moved lane or vertex keeps it, an inserted vertex takes the state of the vertex
 before it — so a vertex added inside an occluded run stays occluded — and a deleted vertex
 takes its own state with it.
+
+**Tracks (bottom), on a frame of a sequence source.** A [track](../annotations.md#a-track-observes-annotations-an-annotation-knows-nothing-of-tracks)
+follows one object through the frame occurrences of one video or image-sequence source, so the
+region renders only when the frame has a source and that source has occurrences; a folder's
+frame, a scan and an upload with no source have none, and ask nothing about tracks. A read that
+fails says so in the region's place, with *Try again*; a later reread that fails says so under the
+tracks it still shows. Header — the word `Tracks`, the count, and a
+`+` that starts a track from the selected object; then one row per track of the source in creation
+order, inside a scroller capped at about four rows: swatch, the track's name (its class and its
+imported id, else `#n` in creation order — a track has no name of its own), `here` when it observes
+this frame, and how many frames it observes. Pressing a row follows that track: a left accent rule
+and a tint, as a class row, because both are a choice of what to work with rather than a thing on
+the picture. Following is held above the frame, so it survives moving between frames.
+
+The followed track opens beneath the list: its standing in this batch in a line
+(`3 of 4 settled in this batch · 2 outside it`, from `GET /tracks/{id}/status`, derived on every
+read), `‹` and `›` either side of where it is on this frame (`On this frame at 12`), then the writes.
+**A step opens the asset of the track's previous or next observation, through the same save-first
+path as Next**, and only an asset this job carries: observations on assets another job holds — the
+rest of a sequence a correction batch did not take — are passed over, and the frame it lands on says
+`Passed over 2 frames outside this job.` Where nothing in the job lies that way the arrow stays,
+disabled with its reason (`No later frame on this track`, or `Every later frame of this track is
+outside this job (3)`). Gaps need nothing: a track ends where its observations end and reappears at
+the next one. A frame whose bytes repeat at two positions is one asset at two occurrences, so the
+position last stepped to is what tells the two apart.
+
+**Two writes, both a job's, both the kernel's to judge.** *Add selected object* observes the one
+selected drawn object at this frame, and *Remove from track* takes the track's observation here away
+— the object stays, as the kernel keeps it. The `+` creates a track of the object's class and
+observes the object with it; a refused observe leaves the new track listed, empty, and says so.
+Adding and starting save first, so an object drawn a moment ago is stored before a track names it,
+and a refused save stops there with its own notice; removing names only the occurrence and needs no
+save. What a write came to is held above the frame, so one that lands after a step is still said. Where this frame is several positions of its source, a write
+asks which (`At frame 4`). Every write is gated on the frame declaring `annotate` and is otherwise
+withheld with its reason: `Viewing only`, `Select one drawn object to add it`, `That object is
+already on car 7`, `The track already follows an object on this frame`. An object of another class
+is listed-and-refused, as the reassignment menu refuses a geometry: `This track follows “car”`.
+What only the kernel can know — a model's labels nobody has judged yet (`ASSET_NOT_JUDGED`), an
+asset another job carries — is its refusal, rendered under the region as prose from the one
+vocabulary; what landed is said there too (`Added at frame 4`). Merging, splitting, changing a
+track's class and deleting a track are not offered in the editor.
+
+**An observed object's row carries a track badge** (`Route`), after the model mark: its name and
+position on hover (`On track car 7 at frame 12`), and a press follows that track. The badge is keyed
+by the annotation the kernel stored, so **a pasted copy is on no track** — paste mints a fresh id,
+which no observation names — and copy and paste are otherwise untouched by tracking. Changing the
+class of an observed object from its row is refused at save (`TRACK_CLASS_MISMATCH`), because a
+track's objects carry its class; deleting one deletes its observation, and the region rereads.
 
 The split between the regions is a **hairline, not a handle** — a draggable splitter would
 add per-user state to a surface whose whole value is being the same on every frame. The two
@@ -566,8 +615,9 @@ What a viewer is:
   on the last frame: `complete` is the *job's* declaration, and a job whose last frame
   happens to be `accepted` would otherwise have no way to be finished. Once finished it
   reads `Finished`, the page's standing statement that the work is over.
-- **Navigation stays whole.** `‹`, Next, the counter and the frame gallery all work, and no
-  save-first guard engages — there is nothing to save, and nothing ever autosaves.
+- **Navigation stays whole.** `‹`, Next, the counter, the frame gallery and a track's steps all
+  work, and no save-first guard engages — there is nothing to save, and nothing ever autosaves.
+  The Tracks region stays, with every write withheld as `Viewing only`.
 - **Reads stay live.** Zoom, pan, fullscreen, visibility toggles, the object filter, and
   copy — the road a box takes into a correction batch — all work; paste and every other
   write is refused at the engine (`readOnly` on the canvas, `READ_ONLY_KINDS` for the

@@ -1,6 +1,7 @@
 /**
  * The annotation page's right-hand panel: **Classes, Tags, Annotations** — three
- * stacked regions.
+ * stacked regions — and, on a frame of a sequence source, the page's Tracks
+ * region under them.
  *
  * ## Why it is here and not in `@visionset/annotator`
  *
@@ -92,8 +93,8 @@ import {
   type Tool,
 } from "@visionset/annotator";
 import { useAnnotatorSnapshot } from "@visionset/annotator/react";
-import { Check, ChevronDown, Eye, EyeOff, Sparkles, Trash2 } from "lucide-react";
-import { useEffect, useRef, useState, type JSX, type RefObject } from "react";
+import { Check, ChevronDown, Eye, EyeOff, Route, Sparkles, Trash2 } from "lucide-react";
+import { useEffect, useRef, useState, type JSX, type ReactNode, type RefObject } from "react";
 
 import { geometryLabel } from "../data/geometryCategory";
 import { classColor } from "../palette";
@@ -168,7 +169,23 @@ export interface AnnotatorPanelProps {
    * the selection. The page owns the view, so it owns the way to focus it.
    */
   readonly onReturnFocus?: () => void;
+  /**
+   * The Tracks region, composed by the page: it reads tracks off the wire,
+   * which this panel never does. Absent for a frame that is not part of a
+   * sequence source.
+   */
+  readonly tracks?: ReactNode;
+  /** For each drawn object a track observes, by its id in the document: what to call the track, and how to show it. */
+  readonly trackMarks?: ReadonlyMap<string, TrackMark>;
 }
+
+/** That an object is on a track — the track's name and where, and the way to open it in the Tracks region. */
+export interface TrackMark {
+  readonly label: string;
+  readonly onShow: () => void;
+}
+
+const NO_TRACK_MARKS: ReadonlyMap<string, TrackMark> = new Map();
 
 export function AnnotatorPanel({
   store,
@@ -185,6 +202,8 @@ export function AnnotatorPanel({
   scan = null,
   layout = "card",
   onReturnFocus,
+  tracks,
+  trackMarks = NO_TRACK_MARKS,
 }: AnnotatorPanelProps): JSX.Element {
   const snapshot = useAnnotatorSnapshot(store);
   const scanSnapshot = useAnnotatorSnapshot(scan?.store ?? null);
@@ -379,6 +398,7 @@ export function AnnotatorPanel({
                 schema={schema}
                 selected={snapshot.selection.has(annotation.id)}
                 hidden={hiddenIds.has(annotation.id)}
+                trackMark={trackMarks.get(annotation.id)}
                 onSelect={() => {
                   store.select(selectOnly(annotation.id));
                   onReturnFocus?.();
@@ -439,6 +459,13 @@ export function AnnotatorPanel({
         />
       )}
       </div>
+
+      {tracks !== undefined && (
+        <>
+          <div className="h-px shrink-0 bg-border" aria-hidden="true" data-testid="panel-split-tracks" />
+          {tracks}
+        </>
+      )}
     </section>
   );
 }
@@ -607,6 +634,27 @@ function ModelMark({
   );
 }
 
+/** That a track follows this object: its name on hover, and a press opens it in the Tracks region. */
+function TrackBadge({ mark, index }: { readonly mark: TrackMark | undefined; readonly index: number }): JSX.Element | null {
+  if (mark === undefined) return null;
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <button
+          type="button"
+          data-testid={`object-track-${index}`}
+          aria-label={`On track ${mark.label}`}
+          onMouseDown={keepCanvasFocus}
+          onClick={mark.onShow}
+          className="relative inline-flex size-5 shrink-0 items-center justify-center rounded text-muted-foreground outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/30"
+        >
+          <Route className="size-3" aria-hidden="true" />
+        </button>
+      </TooltipTrigger>
+      <TooltipContent side="left">On track {mark.label}</TooltipContent>
+    </Tooltip>
+  );
+}
 
 interface ObjectRowProps {
   readonly annotation: Annotation;
@@ -616,6 +664,7 @@ interface ObjectRowProps {
   readonly schema: AnnotationSchema;
   readonly selected: boolean;
   readonly hidden: boolean;
+  readonly trackMark: TrackMark | undefined;
   readonly onSelect: () => void;
   readonly onToggleVisible: () => void;
   /** Absent in read-only: there is no delete to offer, so no button is drawn. */
@@ -643,6 +692,7 @@ function ObjectRow({
   schema,
   selected,
   hidden,
+  trackMark,
   onSelect,
   onToggleVisible,
   onRemove,
@@ -724,6 +774,7 @@ function ObjectRow({
         {/* A mark, not a target: it sits above the row so its tooltip can open, and
             nothing about it selects. */}
         <ModelMark annotation={annotation} index={index} />
+        <TrackBadge mark={trackMark} index={index} />
         <span className="pointer-events-none relative ml-auto shrink-0 pr-1 text-xs text-muted-foreground tabular-nums">
           #{number}
         </span>

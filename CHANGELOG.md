@@ -13,6 +13,18 @@ nothing was being distributed. This is the first version that is.
 
 ### Added
 
+- **Tracks in the annotation workspace.** On a frame of a video or image-sequence source, the side panel gains a
+  Tracks region: the source's tracks with their class and frame count, the followed track's standing in this batch,
+  and `‹` / `›` to its previous and next frame in the job, through the save-first path, passing over - and saying
+  so - frames another job carries. *Add selected object* observes the selected object at this frame, *Remove from
+  track* takes the observation away and keeps the object, and `+` starts a track of the object's class from it. A
+  frame whose bytes repeat at several positions asks which one a write names. Writes save first, are gated on the
+  frame's `annotate` declaration and render the kernel's refusals as prose; an observed object's row carries a
+  track badge, and a pasted copy is on no track. Merging, splitting, a class change and deleting a track stay off
+  the editor (#1180).
+- **Image sequences read as sequences.** An `image_sequence` source has its own icon and reads *Sequence* on its
+  heading and in the Images view's source menu, which groups *Videos*, *Sequences* and *Folders* when a project
+  holds more than one kind (#1188).
 - **Detect all: every instance of a class on one image, and you keep the ones you want.** `POST /inference/detect`
   asks a `text_detect` connection for one class on one asset - by the class's name unless a `phrase` is sent - and
   writes nothing. Each candidate carries its own `confidence`, the class it maps to, the model's label and its

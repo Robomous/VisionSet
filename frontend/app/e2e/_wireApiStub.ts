@@ -32,6 +32,7 @@ function asset(
   progress: Wire["AssetProgress"],
   batchState: Wire["BatchState"] = "in_annotation",
   jobState: Wire["AnnotationJobState"] = "in_progress",
+  sourceId: string | null = null,
 ): Wire["BatchAssetOut"] {
   return {
     id: `asset-${index}`,
@@ -42,7 +43,7 @@ function asset(
     width: 640,
     height: 480,
     format: "png",
-    source_id: null,
+    source_id: sourceId,
     frame_index: index,
     frame_timestamp: null,
     thumbnail_hash: "ab".repeat(32),
@@ -203,6 +204,28 @@ export const READY_SAM = {
   updated_at: "2026-08-08T00:00:00Z",
 } satisfies Wire["ConnectionOut"];
 
+/**
+ * A sequence source the job's frames came from, its occurrences and its tracks,
+ * which the observe, unobserve and create POSTs actually move — `progressStore`'s
+ * reasoning: the track claims are about what the page shows afterwards.
+ *
+ * Absent by default, and then every frame has no source and nothing about
+ * tracks is asked.
+ */
+export interface TrackWorld {
+  readonly sourceId: string;
+  readonly occurrences: readonly Wire["FrameOccurrenceOut"][];
+  tracks: Wire["TrackOut"][];
+  /** When set, every observe refuses 409 with this code and this message. */
+  refuseObserve?: { code: string; message: string };
+}
+
+function observationAt(world: TrackWorld, occurrenceId: string, annotationId: string): Wire["TrackObservationOut"] | null {
+  const at = world.occurrences.find((one) => one.id === occurrenceId);
+  if (at === undefined) return null;
+  return { occurrence_id: at.id, position: at.position, timestamp: at.timestamp, asset_id: at.asset_id, annotation_id: annotationId };
+}
+
 export async function serveApi(
   page: Page,
   sent: Request[],
@@ -215,6 +238,7 @@ export async function serveApi(
   seeded: readonly Wire["AnnotationOut"][] = [],
   suggestible = false,
   calibrations: Readonly<Record<string, Wire["CalibrationOut"]>> = {},
+  tracks?: TrackWorld,
 ): Promise<void> {
   const stored: Wire["AnnotationOut"][] = [...seeded];
   /** How many ids the "kernel" has minted, so each is new. */
@@ -306,8 +330,8 @@ export async function serveApi(
       return route.fulfill({
         json: {
           items: [
-            asset(1, progress.get("asset-1") ?? "unannotated", lifecycle.batch, lifecycle.job),
-            asset(2, progress.get("asset-2") ?? "annotated", lifecycle.batch, lifecycle.job),
+            asset(1, progress.get("asset-1") ?? "unannotated", lifecycle.batch, lifecycle.job, tracks?.sourceId ?? null),
+            asset(2, progress.get("asset-2") ?? "annotated", lifecycle.batch, lifecycle.job, tracks?.sourceId ?? null),
           ],
           total: 2,
         } satisfies Wire["BatchAssetPage"],
@@ -450,6 +474,10 @@ export async function serveApi(
         } satisfies Wire["AssetCalibrationOut"],
       });
     }
+    if (tracks !== undefined) {
+      const answered = trackRoute(tracks, request.method(), path, request.postData(), progress);
+      if (answered !== null) return route.fulfill(answered);
+    }
     if (path.endsWith("/content") || path.endsWith("/thumbnail")) {
       return route.fulfill({ contentType: "image/png", body: PIXEL });
     }
@@ -493,6 +521,73 @@ export async function serveApi(
   });
 }
 
+type Fulfilment = { status?: number; json?: unknown; body?: string };
+
+/** The track routes, against `world`; null for a path that is not one of them. */
+function trackRoute(
+  world: TrackWorld,
+  method: string,
+  path: string,
+  posted: string | null,
+  progress: Map<string, Wire["AssetProgress"]>,
+): Fulfilment | null {
+  const sourcePath = `/sources/${world.sourceId}`;
+  if (path === `${sourcePath}/occurrences`) {
+    return { json: { items: [...world.occurrences], total: world.occurrences.length } satisfies Wire["FrameOccurrencePage"] };
+  }
+  if (path === `${sourcePath}/tracks` && method === "GET") {
+    return { json: { items: world.tracks, total: world.tracks.length } satisfies Wire["TrackPage"] };
+  }
+  if (path === `${sourcePath}/tracks` && method === "POST") {
+    const body = JSON.parse(posted ?? "{}") as Wire["TrackCreate"];
+    const created: Wire["TrackOut"] = {
+      id: `track-${world.tracks.length + 1}`,
+      source_id: world.sourceId,
+      label_class: body.label_class,
+      external_id: body.external_id ?? null,
+      observations: [],
+    };
+    world.tracks.push(created);
+    return { status: 201, json: created };
+  }
+  const status = /^\/tracks\/([^/]+)\/status$/.exec(path);
+  if (status !== null) {
+    const track = world.tracks.find((one) => one.id === status[1]);
+    const held = (track?.observations ?? []).filter((one) => progress.has(one.asset_id));
+    const count = (of: Wire["AssetProgress"]): number => held.filter((one) => progress.get(one.asset_id) === of).length;
+    const counts: Wire["ProgressCounts"] = {
+      unannotated: count("unannotated"),
+      pre_labeled: count("pre_labeled"),
+      annotated: count("annotated"),
+      skipped: count("skipped"),
+      review_pending: count("review_pending"),
+      accepted: count("accepted"),
+      total: held.length,
+    };
+    const outside = (track?.observations.length ?? 0) - held.length;
+    const settled = held.length > 0 && outside === 0 && counts.unannotated + counts.pre_labeled + counts.review_pending === 0;
+    return { json: { track_id: status[1]!, batch_id: BATCH, progress: counts, outside, settled } satisfies Wire["TrackStatusOut"] };
+  }
+  const observe = new RegExp(`^/jobs/${JOB}/tracks/([^/]+)/observations$`).exec(path);
+  if (observe !== null && method === "POST") {
+    if (world.refuseObserve !== undefined) return { status: 409, json: world.refuseObserve };
+    const body = JSON.parse(posted ?? "{}") as Wire["ObservationCreate"];
+    const track = world.tracks.find((one) => one.id === observe[1]);
+    const seen = observationAt(world, body.occurrence_id, body.annotation_id);
+    if (track === undefined || seen === null) return { status: 404, json: { code: "TRACK_NOT_FOUND", message: path } };
+    track.observations = [...track.observations, seen].sort((a, b) => a.position - b.position);
+    return { status: 201, json: track };
+  }
+  const unobserve = new RegExp(`^/jobs/${JOB}/tracks/([^/]+)/observations/([^/]+)$`).exec(path);
+  if (unobserve !== null && method === "DELETE") {
+    const track = world.tracks.find((one) => one.id === unobserve[1]);
+    if (track === undefined) return { status: 404, json: { code: "TRACK_NOT_FOUND", message: path } };
+    track.observations = track.observations.filter((one) => one.occurrence_id !== unobserve[2]);
+    return { status: 204, body: "" };
+  }
+  return null;
+}
+
 export async function openJob(
   page: Page,
   sent: Request[],
@@ -502,8 +597,9 @@ export async function openJob(
   seeded?: readonly Wire["AnnotationOut"][],
   suggestible?: boolean,
   calibrations?: Readonly<Record<string, Wire["CalibrationOut"]>>,
+  tracks?: TrackWorld,
 ): Promise<void> {
-  await serveApi(page, sent, progress, lifecycle, size, seeded, suggestible, calibrations);
+  await serveApi(page, sent, progress, lifecycle, size, seeded, suggestible, calibrations, tracks);
   await page.goto(`/jobs/${JOB}`);
   await page.getByTestId("token-input").fill("a-token");
   await page.getByTestId("token-submit").click();

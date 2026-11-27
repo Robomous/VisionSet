@@ -356,9 +356,12 @@ record, and fetches nothing.
 *The band.* One row over the grid says what it holds. With several sources it is the source
 menu: a button naming the source in use and its count, and beside it that choice's one-line
 description. The menu shows each source with its first image as a cover, its name, a short line
-of what it is, and its count; it groups them under *Videos* and *Folders* when a project has
-both. With one source the band is that source's name and description. The tile size (three
-densities) sits at the band's right.
+of what it is, and its count; it groups them under *Videos*, *Sequences* and *Folders* when a
+project has more than one kind. A *sequence* is an `image_sequence` source an import wrote, such as
+one OpenLane segment: it carries its own icon and reads *Sequence · 40 images · …*, its tiles are
+captioned *Image N* like a folder's, because an asset does not carry its position in a sequence.
+With one source the band is that source's name and description. The tile size (three densities)
+sits at the band's right.
 
 *Source headings.* With more than one source on the page each section is headed by its icon and
 name, then what the source is, said once — *Video · 48 frames · 854 × 480 · JPEG · one every
