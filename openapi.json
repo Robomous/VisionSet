@@ -5170,7 +5170,7 @@
         "type": "object"
       },
       "PreLabelRunOut": {
-        "description": "The most recent pre-labeling run: which job, how far, and what it found.\n\n`annotation_job_id` is the job the run is over; `job_id` is the queue row to\npoll.\n\nPresent whenever pre-labeling has ever been asked for, and describing the\nmost recent run \u2014 including one this session did not launch. A dialog\nreopened after a reload, in a second tab, or after a run started from the\nterminal reads the same state from here rather than from a job id a\ncomponent happened to keep.\n\n**Assets, where a download counts bytes and a check counts files.** The\nhandler owns a loop over the job's untouched assets and knows the whole\nset before the first forward pass, so both its progress and its total are\ncounted in the unit its own work is over.\n\n**The outcome, once the job has one.** `stopped_early`, `assets_labeled`,\n`regions_discarded`, `regions_out_of_bounds` and `annotations_replaced` are\nthe handler's own account of what a settled run did.\nThey are `null` while the job is still `queued` or `running`, and `null`\nwhere it ended `failed` before producing one \u2014 but a `cancelled` run still\ncarries them: stopping partway is a coherent outcome for a handler whose\ncontract is to write only where nothing has been written.",
+        "description": "The most recent pre-labeling run: which job, how far, and what it found.\n\n`annotation_job_id` is the job the run is over; `job_id` is the queue row to\npoll.\n\nPresent whenever pre-labeling has ever been asked for, and describing the\nmost recent run \u2014 including one this session did not launch. A dialog\nreopened after a reload, in a second tab, or after a run started from the\nterminal reads the same state from here rather than from a job id a\ncomponent happened to keep.\n\n**Assets, where a download counts bytes and a check counts files.** The\nhandler owns a loop over the job's untouched assets and knows the whole\nset before the first forward pass, so both its progress and its total are\ncounted in the unit its own work is over.\n\n**The outcome, once the job has one.** `stopped_early`, `assets_labeled`,\n`regions_discarded`, `regions_out_of_bounds`, `annotations_replaced` and\n`assets_protected` are the handler's own account of what a settled run did.\nThey are `null` while the job is still `queued` or `running`, and `null`\nwhere it ended `failed` before producing one \u2014 but a `cancelled` run still\ncarries them: stopping partway is a coherent outcome for a handler whose\ncontract is to write only where nothing has been written.",
         "properties": {
           "annotation_job_id": {
             "format": "uuid",
@@ -5202,6 +5202,17 @@
           "assets_processed": {
             "title": "Assets Processed",
             "type": "integer"
+          },
+          "assets_protected": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Assets Protected"
           },
           "assets_total": {
             "anyOf": [
@@ -5290,7 +5301,8 @@
           "assets_labeled",
           "regions_discarded",
           "regions_out_of_bounds",
-          "annotations_replaced"
+          "annotations_replaced",
+          "assets_protected"
         ],
         "title": "PreLabelRunOut",
         "type": "object"

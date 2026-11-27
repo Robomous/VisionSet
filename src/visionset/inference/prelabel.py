@@ -88,6 +88,7 @@ from visionset.kernel.services import (
     SchemaService,
     WorkspaceService,
 )
+from visionset.kernel.services.annotation_service import confirmed_elsewhere
 from visionset.kernel.services.dataset_service import member_asset_ids_of
 
 DEFAULT_MINIMUM_CONFIDENCE: Final = 0.35
@@ -130,6 +131,10 @@ class PreLabelOutcome:
     #: Model labels a replacing run superseded — rows that went so this run's
     #: could land. Zero for a run that was not asked to replace.
     annotations_replaced: int = 0
+    #: ``pre_labeled`` frames a replacing run passed over because their labels
+    #: were confirmed in a completed batch or are in the dataset. Not counted
+    #: in ``assets_considered``. Zero for a run that was not asked to replace.
+    assets_protected: int = 0
 
 
 def unsupported_prompt_message(connection_name: str) -> str:
@@ -565,7 +570,7 @@ def pre_label(
         for label_class in schema.classes
     }
 
-    targets = _targets(
+    targets, protected = _targets(
         workspace, job, project_id=batch.project_id, replace_model_labels=replace_model_labels
     )
     total = len(targets)
@@ -588,6 +593,7 @@ def pre_label(
                 regions_discarded=discarded,
                 regions_out_of_bounds=out_of_bounds,
                 annotations_replaced=replaced,
+                assets_protected=protected,
             )
 
         asset = ingest.asset(batch.project_id, asset_id)
@@ -671,6 +677,7 @@ def pre_label(
         regions_discarded=discarded,
         regions_out_of_bounds=out_of_bounds,
         annotations_replaced=replaced,
+        assets_protected=protected,
     )
 
 
@@ -695,6 +702,7 @@ def outcome_result(
         "regions_discarded": outcome.regions_discarded,
         "regions_out_of_bounds": outcome.regions_out_of_bounds,
         "annotations_replaced": outcome.annotations_replaced,
+        "assets_protected": outcome.assets_protected,
     }
 
 
@@ -946,8 +954,9 @@ def _targets(
     *,
     project_id: UUID,
     replace_model_labels: bool,
-) -> tuple[tuple[UUID, bool], ...]:
-    """Every ``(asset, replacing)`` this run will reach, in a stable order.
+) -> tuple[tuple[tuple[UUID, bool], ...], int]:
+    """Every ``(asset, replacing)`` this run will reach, in a stable order, and
+    how many ``pre_labeled`` frames it passes over as confirmed.
 
     Read off the job's own progress rather than off its batch's membership: a
     batch of any size is partitioned into several jobs, and only the one asked
@@ -964,12 +973,14 @@ def _targets(
     and is marked so: it goes through the door's replacing path, which is the
     only path that may remove what an earlier run wrote.
 
-    **A replacing target is never in the trunk.** A batch cut over an
-    already-promoted asset opens it ``pre_labeled`` — every label on it is a
-    model's, whoever confirmed it — so progress cannot tell an unjudged guess
-    from a confirmed box. A trunk member's labels were judged in a completed
-    batch, and replacing them would delete that work; such an asset is passed
-    over silently, as ``enter_unreviewed`` would refuse it.
+    **A replacing target is never in the trunk, nor settled in a completed
+    batch.** A batch cut over such an asset opens it ``pre_labeled`` — every
+    label on it is a model's, whoever confirmed it — so progress cannot tell an
+    unjudged guess from a confirmed box. Its labels were judged in a completed
+    batch, promoted or not, and replacing them would delete that work; such an
+    asset is passed over, as ``enter_unreviewed`` would refuse it, and counted
+    as protected. Labels this job's own earlier run wrote there stay
+    replaceable (:func:`confirmed_elsewhere`).
     """
     candidates = [
         (asset_id, progress is AssetProgress.PRE_LABELED)
@@ -978,16 +989,18 @@ def _targets(
         or (replace_model_labels and progress is AssetProgress.PRE_LABELED)
     ]
     with workspace.unit_of_work() as uow:
-        trunk = (
+        replacing_ids = [asset_id for asset_id, replacing in candidates if replacing]
+        protected = (
             member_asset_ids_of(uow, ProjectService(workspace).require_dataset(uow, project_id))
-            if replace_model_labels
-            else frozenset[UUID]()
+            .intersection(replacing_ids)
+            .union(confirmed_elsewhere(uow, job, replacing_ids))
         )
-        return tuple(
+        targets = tuple(
             (asset_id, replacing)
             for asset_id, replacing in candidates
-            if (asset_id not in trunk if replacing else not uow.annotations.list(asset_id))
+            if (asset_id not in protected if replacing else not uow.annotations.list(asset_id))
         )
+        return targets, len(protected)
 
 
 def class_by_answer(phrases: Mapping[str, str]) -> dict[str, str]:

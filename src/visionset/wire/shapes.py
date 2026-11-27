@@ -313,6 +313,7 @@ class PreLabelRun(TypedDict):
     regions_discarded: int | None
     regions_out_of_bounds: int | None
     annotations_replaced: int | None
+    assets_protected: int | None
 
 
 @closed

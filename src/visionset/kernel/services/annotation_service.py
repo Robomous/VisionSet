@@ -117,7 +117,10 @@ from visionset.kernel.errors import (
 )
 from visionset.kernel.ports import UnitOfWork
 from visionset.kernel.services.batch_service import BatchService
-from visionset.kernel.services.dataset_service import member_asset_ids_of
+from visionset.kernel.services.dataset_service import (
+    confirmed_asset_ids_of,
+    member_asset_ids_of,
+)
 from visionset.kernel.services.job_service import JobService
 from visionset.kernel.services.project_service import ProjectService
 from visionset.kernel.services.schema_service import SchemaService
@@ -253,9 +256,11 @@ class AnnotationService:
         nothing" and "reviewed and found empty" are different facts.
 
         ``replacing`` names frames this door itself labeled earlier and
-        nobody has touched since — each must be ``pre_labeled`` and **outside
-        the trunk**, because a label that reached the trunk was confirmed in
-        some batch and no run in another batch may delete it — whose
+        nobody has touched since — each must be ``pre_labeled``, **outside
+        the trunk** and settled as promotable in **no completed batch**
+        unless every model row on it is this job's own, because such a
+        frame's labels were confirmed in some batch and no run in another
+        batch may delete them — whose
         ``provenance='model'`` rows go in the same transaction as the new
         ones land; an empty ``annotations`` with a non-empty ``replacing`` is
         a run that found nothing any more, and the frame returns to
@@ -270,7 +275,8 @@ class AnnotationService:
                 carries annotations from a skipped-and-restored round, or a
                 frame named in ``replacing`` is not ``pre_labeled`` —
                 somebody has taken it over — or is already in the dataset's
-                trunk, whose labels another batch confirmed.
+                trunk or settled in a completed batch, whose labels another
+                batch confirmed.
             AnnotationNotFromModel: an annotation does not carry model provenance.
             InvalidAnnotation: an annotation does not satisfy the pinned version.
             CalibrationMissing: a 3D label names an asset with no calibration,
@@ -292,6 +298,7 @@ class AnnotationService:
             if superseded:
                 dataset = ProjectService(self._workspace).require_dataset(uow, batch.project_id)
                 _require_outside_trunk(superseded, member_asset_ids_of(uow, dataset))
+                _require_unconfirmed(superseded, confirmed_elsewhere(uow, job, superseded))
             outgoing = [
                 stored
                 for asset_id in superseded
@@ -954,6 +961,42 @@ def _require_outside_trunk(asset_ids: Iterable[UUID], trunk: frozenset[UUID]) ->
             raise AssetNotWritable(
                 f"asset {asset_id} is already in the dataset, so its labels were confirmed in "
                 f"a completed batch; a model's labels only replace labels nobody has judged"
+            )
+
+
+def confirmed_elsewhere(
+    uow: UnitOfWork, job: AnnotationJob, asset_ids: Collection[UUID]
+) -> frozenset[UUID]:
+    """Those of ``asset_ids`` carrying model labels a completed batch confirmed.
+
+    A completed batch settled the frame ``annotated`` or ``accepted``, and a
+    model row on it was not written by ``job``. Rows ``job`` wrote are its own
+    unjudged output, replaceable even on such a frame — a frame a correction
+    emptied and this job pre-labeled again. An edit re-stamps ``job_id``, so a
+    row a person changed in another batch is never mistaken for one of them.
+    """
+    return frozenset(
+        asset_id
+        for asset_id in confirmed_asset_ids_of(uow, asset_ids)
+        if any(
+            row.provenance == "model" and row.job_id != job.id
+            for row in uow.annotations.list(asset_id)
+        )
+    )
+
+
+def _require_unconfirmed(asset_ids: Iterable[UUID], confirmed: frozenset[UUID]) -> None:
+    """Refuse to supersede labels a completed batch confirmed, promoted or not.
+
+    ``_require_outside_trunk`` closes the case after promotion; this closes it
+    from completion on.
+    """
+    for asset_id in asset_ids:
+        if asset_id in confirmed:
+            raise AssetNotWritable(
+                f"asset {asset_id} was settled when its batch completed, so its labels were "
+                f"confirmed in a completed batch; a model's labels only replace labels "
+                f"nobody has judged"
             )
 
 

@@ -75,6 +75,7 @@ ALLOWED_METRICS = {
     "regions_out_of_bounds_count",
     "annotations_written_count",
     "annotations_replaced_count",
+    "assets_protected_count",
 }
 
 
@@ -456,6 +457,7 @@ def test_pre_labeling_sends_its_request_its_model_and_its_counts(
             "regions_discarded": 0,
             "regions_out_of_bounds": 2,
             "annotations_replaced": 5,
+            "assets_protected": 6,
         },
     }
     job = workspace.job_queue.enqueue(BackgroundJobSpec(type=TYPE, payload=payload))
@@ -486,6 +488,7 @@ def test_pre_labeling_sends_its_request_its_model_and_its_counts(
         "regions_out_of_bounds_count": 2.0,
         "annotations_written_count": 21.0,
         "annotations_replaced_count": 5.0,
+        "assets_protected_count": 6.0,
     }
 
 

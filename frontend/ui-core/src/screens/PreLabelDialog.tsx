@@ -161,6 +161,7 @@ interface RunView {
   readonly regionsDiscarded: number | null;
   readonly regionsOutOfBounds: number | null;
   readonly annotationsReplaced: number | null;
+  readonly assetsProtected: number | null;
 }
 
 /**
@@ -174,6 +175,7 @@ function viewFromJob(job: BackgroundJob): RunView {
   const regionsDiscarded = job.result.regions_discarded;
   const regionsOutOfBounds = job.result.regions_out_of_bounds;
   const annotationsReplaced = job.result.annotations_replaced;
+  const assetsProtected = job.result.assets_protected;
   return {
     jobId: job.id,
     state: job.state,
@@ -185,6 +187,7 @@ function viewFromJob(job: BackgroundJob): RunView {
     regionsDiscarded: typeof regionsDiscarded === "number" ? regionsDiscarded : null,
     regionsOutOfBounds: typeof regionsOutOfBounds === "number" ? regionsOutOfBounds : null,
     annotationsReplaced: typeof annotationsReplaced === "number" ? annotationsReplaced : null,
+    assetsProtected: typeof assetsProtected === "number" ? assetsProtected : null,
   };
 }
 
@@ -201,6 +204,7 @@ function viewFromRun(run: PreLabelRun): RunView {
     regionsDiscarded: run.regions_discarded,
     regionsOutOfBounds: run.regions_out_of_bounds,
     annotationsReplaced: run.annotations_replaced,
+    assetsProtected: run.assets_protected,
   };
 }
 
@@ -301,6 +305,12 @@ function DoneSummary({
         <p className="text-xs text-muted-foreground" data-testid="prelabel-replaced">
           Replaced {view.annotationsReplaced} earlier model region
           {view.annotationsReplaced === 1 ? "" : "s"}.
+        </p>
+      )}
+      {(view.assetsProtected ?? 0) > 0 && (
+        <p className="text-xs text-muted-foreground" data-testid="prelabel-protected">
+          Left {view.assetsProtected} pre-labeled frame{view.assetsProtected === 1 ? "" : "s"}{" "}
+          alone: a completed batch confirmed {view.assetsProtected === 1 ? "its" : "their"} labels.
         </p>
       )}
       {skipped > 0 && (
@@ -833,8 +843,8 @@ function PreLabelDialog({
                     </span>
                   </label>
                   <FieldDescription>
-                    Frames anyone has edited, confirmed or skipped in this job are never
-                    touched. This cannot be undone.
+                    Frames anyone has edited, confirmed or skipped in this job, or that a
+                    completed batch confirmed, are never touched. This cannot be undone.
                   </FieldDescription>
                 </div>
               )}

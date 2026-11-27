@@ -653,6 +653,7 @@ def test_pre_label_json_emits_the_complete_outcome(
         "assets_labeled": 6,
         "annotations_written": 6,
         "annotations_replaced": 0,
+        "assets_protected": 0,
         "model_ref": "acme/detector@abc123",
         "stopped_early": False,
         "assets_skipped": 0,

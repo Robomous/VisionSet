@@ -2553,6 +2553,7 @@ describe("the batches panel", () => {
           pre_label_run: {
             annotation_job_id: "aj",
             annotations_replaced: null,
+            assets_protected: null,
             assets_labeled: null,
             assets_processed: 3,
             assets_total: 10,
@@ -2596,6 +2597,7 @@ describe("auto-label over the batches", () => {
   const RUNNING = {
     annotation_job_id: "aj",
     annotations_replaced: null,
+    assets_protected: null,
     assets_labeled: null,
     assets_processed: 3,
     assets_total: 40,
@@ -3157,6 +3159,7 @@ describe("batchRows", () => {
     const run = (state: "queued" | "running" | "succeeded" | "failed" | "cancelled"): Batch["pre_label_run"] => ({
       annotation_job_id: "aj",
       annotations_replaced: null,
+      assets_protected: null,
       assets_labeled: null,
       assets_processed: 3,
       assets_total: 10,
