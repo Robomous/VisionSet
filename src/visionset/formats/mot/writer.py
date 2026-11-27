@@ -1,12 +1,13 @@
 """MOTChallenge out: one sequence per source a released track observes.
 
-Each source becomes ``<source-id>/``, holding ``seqinfo.ini``, the observed
-frames as ``img1/<frame:06d><ext>`` and ``gt/gt.txt`` with ``gt/labels.txt``,
-the layout the importer reads back. Frame ``n`` is the occurrence at position
-``n - 1``, so a position no released track observes is a gap in ``img1``, and
-``seqLength`` runs to the last observed position. ``frameRate`` is the last
-observed position over its timestamp; timing that was not uniform keeps its
-frame numbers and loses its spacing.
+Each source becomes ``<source-id>/``, holding ``seqinfo.ini``, every frame the
+release holds of it as ``img1/<frame:06d><ext>``, observed or not, and
+``gt/gt.txt`` with ``gt/labels.txt``, the layout the importer reads back. Frame
+``n`` is the occurrence at position ``n - 1``, so only a position the release
+holds no frame for is a gap in ``img1``, and ``seqLength`` runs to the last held
+position. ``frameRate`` is the last written position over its timestamp; timing
+that was not uniform keeps its frame numbers and loses its spacing. Timing the
+source never recorded is refused, and so is timing all at the first frame.
 
 A row is one observation of a box: ``frame``, the track's id, the box, ``conf``
 ``1`` for a label with no confidence and the confidence otherwise, the class's
@@ -29,7 +30,7 @@ from pathlib import Path
 from typing import Final
 from uuid import UUID
 
-from visionset.formats._layout import dimensions_of, write_image_as
+from visionset.formats._layout import dimensions_of, held_frames, write_image_as
 from visionset.formats._targets import self_target
 from visionset.formats.mot.reader import (
     FRAME_DIGITS,
@@ -94,28 +95,28 @@ class MotExporter:
             by_source.setdefault(track.source_id, []).append(track)
         for source_id, tracks in by_source.items():
             _write_sequence(
-                dest / str(source_id),
-                str(source_id),
-                tracks,
-                drawn,
-                class_ids,
-                [one.name for one in manifest.classes],
-                content,
+                dest / str(source_id), source_id, tracks, drawn, class_ids, manifest, content
             )
 
 
 def _write_sequence(
     into: Path,
-    name: str,
+    source_id: UUID,
     tracks: list[ManifestTrack],
     drawn: Mapping[UUID, tuple[ManifestAsset, ManifestAnnotation]],
     class_ids: Mapping[str, int],
-    class_names: list[str],
+    manifest: Manifest,
     content: ContentReader,
 ) -> None:
+    name = str(source_id)
     identities = _identities(tracks)
-    frames: dict[int, ManifestAsset] = {}
-    timing: list[tuple[int, float]] = []
+    frames = held_frames(manifest, source_id)
+    timing: list[tuple[int, float | None]] = [
+        (one.position, one.timestamp)
+        for source in manifest.sources
+        if source.source_id == source_id
+        for one in source.occurrences
+    ]
     rows: list[tuple[int, int, str]] = []
     for track in tracks:
         for observation in track.observations:
@@ -160,7 +161,7 @@ def _write_sequence(
         "".join(f"{row}\n" for _, _, row in sorted(rows)), encoding="utf-8"
     )
     (into / GT_DIRNAME / LABELS_FILENAME).write_text(
-        "".join(f"{one}\n" for one in class_names), encoding="utf-8"
+        "".join(f"{one.name}\n" for one in manifest.classes), encoding="utf-8"
     )
     (into / SEQINFO_FILENAME).write_text(
         f"[{SEQINFO_SECTION}]\n"
@@ -211,15 +212,25 @@ def _row(
     return f"{frame},{identity},{coordinates},{confidence},{class_id},-1"
 
 
-def _frame_rate(name: str, timing: list[tuple[int, float]]) -> str:
+def _frame_rate(name: str, timing: list[tuple[int, float | None]]) -> str:
+    unknown = sorted({position for position, timestamp in timing if timestamp is None})
+    if unknown:
+        raise ExportSourceUnreadable(
+            f"sequence {name}: the timing of frame {unknown[0] + 1} is unknown, because its "
+            "source recorded none, so seqinfo.ini cannot give a frameRate"
+        )
     position, timestamp = max(
-        ((position, timestamp) for position, timestamp in timing if timestamp > 0),
+        (
+            (position, timestamp)
+            for position, timestamp in timing
+            if timestamp is not None and timestamp > 0
+        ),
         default=(0, 0.0),
     )
     rate = round(position / timestamp, _RATE_DECIMALS) if timestamp > 0 else 0.0
     if rate <= 0:
         raise ExportSourceUnreadable(
-            f"sequence {name}: no observed frame after its first has a usable timestamp, "
+            f"sequence {name}: no frame after its first has a nonzero timestamp, "
             "so its frame rate cannot be derived"
         )
     return _number(rate)

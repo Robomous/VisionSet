@@ -606,6 +606,37 @@ def _add_tracks(connection: Connection) -> None:
         Base.metadata.tables[name].create(connection, checkfirst=True)
 
 
+def _allow_unknown_frame_timing(connection: Connection) -> None:
+    """``frame_occurrence.timestamp`` becomes nullable: timing a source never recorded.
+
+    SQLite cannot relax ``NOT NULL`` in place, so the table is rebuilt from
+    ``_tables``. Dropping it would cascade to ``track_observation`` silently, so
+    both tables are read out in rowid order, dropped child first, recreated and
+    written back. Every value is kept as it was: a ``0`` an earlier CVAT import
+    wrote for unrecorded timing cannot be told from a recorded ``0``, so it stays
+    a ``0``. Idempotent: a nullable column is left alone.
+    """
+    columns = inspect(connection).get_columns("frame_occurrence")
+    if next(column for column in columns if column["name"] == "timestamp")["nullable"]:
+        return
+    tables = [Base.metadata.tables[name] for name in ("frame_occurrence", "track_observation")]
+    rows = [
+        [
+            dict(row)
+            for row in connection.execute(
+                select(table).order_by(literal_column("rowid"))
+            ).mappings()
+        ]
+        for table in tables
+    ]
+    for table in reversed(tables):
+        table.drop(connection)
+    for table, kept in zip(tables, rows, strict=True):
+        table.create(connection)
+        if kept:
+            connection.execute(table.insert(), kept)
+
+
 MIGRATIONS: list[Migration] = [
     Migration(version=1, name="baseline_schema", upgrade=_create_baseline_schema),
     Migration(version=2, name="batch_lineage", upgrade=_add_batch_lineage),
@@ -636,6 +667,7 @@ MIGRATIONS: list[Migration] = [
     Migration(version=23, name="group_labels", upgrade=_add_group_labels),
     Migration(version=24, name="frame_occurrences", upgrade=_add_frame_occurrences),
     Migration(version=25, name="tracks", upgrade=_add_tracks),
+    Migration(version=26, name="unknown_frame_timing", upgrade=_allow_unknown_frame_timing),
 ]
 
 FORMAT_VERSION: int = MIGRATIONS[-1].version

@@ -26,7 +26,14 @@ from sqlalchemy.exc import IntegrityError
 from visionset.kernel.adapters import SqliteMetadataStore
 from visionset.kernel.adapters._tables import META_TABLE, Base
 from visionset.kernel.adapters.migrations import FORMAT_VERSION, MIGRATIONS
-from visionset.kernel.domain import FrameOccurrence, IngestFailureKind, Track
+from visionset.kernel.domain import (
+    Annotation,
+    BboxGeometry,
+    FrameOccurrence,
+    IngestFailureKind,
+    Track,
+    TrackObservation,
+)
 from visionset.kernel.errors import (
     ConstraintViolated,
     WorkspaceCorrupt,
@@ -1367,4 +1374,93 @@ def test_a_generation_24_file_gains_empty_track_tables_and_keeps_its_occurrences
     assert _schema(migrated) == expected
     with migrated.unit_of_work() as uow:
         assert [t.label_class for t in uow.tracks.list(clip)] == ["car"]
+    migrated.close()
+
+
+def _at_generation_twenty_five(path: Path) -> SqliteMetadataStore:
+    """A file whose ``frame_occurrence.timestamp`` is ``NOT NULL``, as before migration 26."""
+    store = SqliteMetadataStore(path)
+    store.initialize()
+    with store.engine.begin() as connection:
+        found = connection.execute(
+            text("select type, sql from sqlite_master where tbl_name = 'frame_occurrence'")
+        ).all()
+        table = next(sql for kind, sql in found if kind == "table")
+        indexes = [sql for kind, sql in found if kind == "index" and sql is not None]
+        assert "timestamp FLOAT," in table
+        connection.execute(text("DROP TABLE track_observation"))
+        connection.execute(text("DROP TABLE frame_occurrence"))
+        connection.execute(text(table.replace("timestamp FLOAT,", "timestamp FLOAT NOT NULL,")))
+        for index in indexes:
+            connection.execute(text(index))
+        Base.metadata.tables["track_observation"].create(connection)
+        connection.execute(text(f"UPDATE {META_TABLE} SET format_version = 25"))
+    return store
+
+
+def test_a_generation_25_file_allows_unknown_timing_and_keeps_every_row(tmp_path: Path) -> None:
+    """Migration 26 rebuilds ``frame_occurrence`` without cascading to ``track_observation``.
+
+    A ``0`` written before the migration stays a ``0``: nothing tells it from a
+    recorded one.
+    """
+    fresh = SqliteMetadataStore(tmp_path / "fresh.db")
+    fresh.initialize()
+    expected = _schema(fresh)
+    fresh.close()
+
+    clip, first, second = uuid4(), uuid4(), uuid4()
+    store = _at_generation_twenty_five(tmp_path / "old.db")
+    assert _schema(store) != expected
+    with store.engine.begin() as connection:
+        connection.execute(text("insert into workspace (id, name) values ('w', 'ws')"))
+        connection.execute(
+            text("insert into project (id, workspace_id, name) values ('p', 'w', 'clips')")
+        )
+        _insert_source(connection, clip.hex, "image_sequence", "image-sequence-import:x")
+        _insert_asset(connection, first.hex, clip.hex, "/seq/a.png", None)
+        _insert_asset(connection, second.hex, clip.hex, "/seq/b.png", None)
+    with store.unit_of_work() as uow:
+        at_zero, later = uow.frame_occurrences.add_many(
+            [
+                FrameOccurrence(source_id=clip, position=0, timestamp=0.0, asset_id=first),
+                FrameOccurrence(source_id=clip, position=2, timestamp=0.98, asset_id=second),
+            ]
+        )
+        track = uow.tracks.add(Track(source_id=clip, label_class="car"))
+        annotation = uow.annotations.add(
+            Annotation(
+                asset_id=second,
+                label_class="car",
+                schema_version=1,
+                geometry=BboxGeometry(x=1, y=1, width=2, height=2),
+                provenance="human",
+            )
+        )
+        observation = uow.track_observations.add(
+            TrackObservation(track_id=track.id, occurrence_id=later.id, annotation_id=annotation.id)
+        )
+    store.close()
+
+    migrated = SqliteMetadataStore(tmp_path / "old.db")
+    migrated.initialize()
+    assert migrated.format_version == FORMAT_VERSION
+    assert MIGRATIONS[25].name == "unknown_frame_timing"
+    assert _schema(migrated) == expected
+    with migrated.unit_of_work() as uow:
+        assert [(o.id, o.position, o.timestamp) for o in uow.frame_occurrences.list(clip)] == [
+            (at_zero.id, 0, 0.0),
+            (later.id, 2, 0.98),
+        ]
+        assert uow.track_observations.list(track.id) == [observation]
+        uow.frame_occurrences.add(
+            FrameOccurrence(source_id=clip, position=1, timestamp=None, asset_id=first)
+        )
+    with migrated.engine.begin() as connection:
+        MIGRATIONS[25].upgrade(connection)
+    assert _schema(migrated) == expected
+    with migrated.unit_of_work() as uow:
+        timing = {o.position: o.timestamp for o in uow.frame_occurrences.list(clip)}
+        assert timing == {0: 0.0, 1: None, 2: 0.98}
+        assert uow.track_observations.list(track.id) == [observation]
     migrated.close()

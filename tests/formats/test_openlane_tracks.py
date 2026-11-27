@@ -14,7 +14,7 @@ from tests.fixtures.media import write_image
 from visionset.formats.lanes import OpenLane2dImporter
 from visionset.kernel import AssetNotInJob, ImportSourceUnreadable
 from visionset.kernel.domain import (
-    TRACKED_MANIFEST_VERSION,
+    SEQUENCED_MANIFEST_VERSION,
     AnnotationJob,
     AssetProgress,
     BatchState,
@@ -411,7 +411,9 @@ def test_an_imported_track_releases_and_a_rerun_keeps_the_hash(imported: Importe
     first = releases.publish(dataset_id, "v1")
     manifest = releases.manifest(first.id)
 
-    assert manifest.manifest_version == TRACKED_MANIFEST_VERSION
+    assert manifest.manifest_version == SEQUENCED_MANIFEST_VERSION
+    (listed,) = manifest.sources
+    assert [o.position for o in listed.occurrences] == [0, 1, 2]
     assert sorted(
         (t.external_id, [o.position for o in t.observations]) for t in manifest.tracks
     ) == [

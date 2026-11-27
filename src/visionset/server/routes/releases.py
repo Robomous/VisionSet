@@ -182,6 +182,11 @@ def publish_release(workspace: WorkspaceDep, dataset_id: UUID, body: ReleaseCrea
     A track observing an annotation the release copies is listed with those
     observations only, in source position order, and makes the release a
     manifest version 7. A release no track observes omits `tracks`.
+
+    A release holding an asset of an image-sequence source lists that source
+    with every occurrence whose asset it holds, as `sources`, and is a manifest
+    version 9; so is one whose observed timing is unknown (`null`, not `0`).
+    A release holding no image-sequence asset omits `sources`.
     """
     release = ReleaseService(workspace).publish(
         dataset_id, body.tag, split=None if body.split is None else body.split.to_domain()

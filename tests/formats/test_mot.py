@@ -17,7 +17,7 @@ from tests.fixtures.media import write_image
 from visionset.formats.mot import MotExporter, MotImporter
 from visionset.kernel import ExportSourceUnreadable, ImportSourceUnreadable
 from visionset.kernel.domain import (
-    TRACKED_MANIFEST_VERSION,
+    SEQUENCED_MANIFEST_VERSION,
     AssetProgress,
     BboxGeometry,
     ClassExportStatus,
@@ -428,7 +428,7 @@ def _read_back(dest: Path) -> dict[str, tuple[dict[str, str], list[tuple[object,
 def test_an_export_is_a_mot_layout_an_independent_reader_takes(world: World) -> None:
     project_id, run = world.run("mot", _two_sequences(world.root / "src"), *EVERY_LOSS)
     release_id = world.release(project_id, run)
-    assert world.releases.manifest(release_id).manifest_version == TRACKED_MANIFEST_VERSION
+    assert world.releases.manifest(release_id).manifest_version == SEQUENCED_MANIFEST_VERSION
     dest = world.root / "out"
     report = world.releases.export(release_id, MotExporter(), dest, allow_lossy=True).compatibility
 
@@ -457,7 +457,7 @@ def test_an_export_is_a_mot_layout_an_independent_reader_takes(world: World) -> 
         (5, 2, 24.0, 4.0, 8.0, 12.0, 1.0, "car", -1.0),
     ]
     info, rows = sequences[second]
-    assert (info["seqLength"], info["frames"]) == ("3", "000001.png,000003.png")
+    assert (info["seqLength"], info["frames"]) == ("3", "000001.png,000002.png,000003.png")
     assert [row[:2] for row in rows] == [(1, 1), (3, 1), (3, 9)]
 
     # The one box no track observes is the one the report drops.
@@ -553,7 +553,7 @@ def _release() -> Release:
 
 
 def _manifest(
-    tracks: Sequence[tuple[str | None, Sequence[tuple[int, float]]]],
+    tracks: Sequence[tuple[str | None, Sequence[tuple[int, float | None]]]],
     *,
     sizes: Sequence[tuple[int, int]] = (),
     confidence: float | None = None,
@@ -606,7 +606,7 @@ def _manifest(
         for index, (position, size) in enumerate(zip(positions, sized, strict=True))
     )
     manifest = Manifest(
-        manifest_version=TRACKED_MANIFEST_VERSION,
+        manifest_version=SEQUENCED_MANIFEST_VERSION,
         schema_version=1,
         classes=(LabelClass(name="person", geometries=(GeometryType.BBOX,)),),
         assets=assets,
@@ -667,6 +667,13 @@ def test_a_frame_rate_nothing_observed_can_give_is_refused(
     manifest, blobs = _manifest([("1", observed)])
     with pytest.raises(ExportSourceUnreadable, match="frame rate cannot be derived"):
         _export(manifest, blobs, tmp_path)
+
+
+def test_unknown_timing_is_refused_apart_from_timing_at_zero(tmp_path: Path) -> None:
+    manifest, blobs = _manifest([("1", [(0, None), (1, None)])])
+    with pytest.raises(ExportSourceUnreadable, match="timing of frame 1 is unknown"):
+        _export(manifest, blobs, tmp_path)
+    assert not any(tmp_path.iterdir())
 
 
 def test_a_cropped_away_untracked_label_is_counted_once(tmp_path: Path) -> None:

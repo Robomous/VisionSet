@@ -26,6 +26,7 @@ class FrameOccurrence(BaseModel):
     #: The extraction-grid ordinal. It equals the ``#frame=`` ordinal of the asset's URI
     #: only when this source stored the bytes, not for a frame deduplicated onto an earlier asset.
     position: int = Field(ge=0)
-    #: Seconds into the clip, as recorded for the frame drawn at this position.
-    timestamp: float = Field(ge=0)
+    #: Seconds into the clip, as recorded for the frame drawn at this position;
+    #: ``None`` when the source recorded no timing, which is not ``0``.
+    timestamp: float | None = Field(ge=0)
     asset_id: UUID

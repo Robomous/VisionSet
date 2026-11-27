@@ -283,7 +283,7 @@ export const checkFormatPage: Check<Schemas["FormatPage"]> =
   /*#__PURE__*/ object({ "items": [true, arrayOf(checkFormatOut)], "total": [true, isInteger] } as const);
 
 export const checkFrameOccurrenceOut: Check<Schemas["FrameOccurrenceOut"]> =
-  /*#__PURE__*/ object({ "asset_id": [true, isString], "id": [true, isString], "position": [true, isInteger], "source_id": [true, isString], "timestamp": [true, isNumber] } as const);
+  /*#__PURE__*/ object({ "asset_id": [true, isString], "id": [true, isString], "position": [true, isInteger], "source_id": [true, isString], "timestamp": [true, either([isNumber, isNull] as const)] } as const);
 
 export const checkFrameOccurrencePage: Check<Schemas["FrameOccurrencePage"]> =
   /*#__PURE__*/ object({ "items": [true, arrayOf(checkFrameOccurrenceOut)], "total": [true, isInteger] } as const);
@@ -511,7 +511,7 @@ export const checkSuggestionOut: Check<Schemas["SuggestionOut"]> =
   /*#__PURE__*/ object({ "applied": [true, checkAppliedParameters], "confidence": [true, isNumber], "model_ref": [true, isString], "parameters": [true, arrayOf(checkSuggestParameter)], "regions": [true, arrayOf(checkSuggestedRegion)] } as const);
 
 export const checkTrackObservationOut: Check<Schemas["TrackObservationOut"]> =
-  /*#__PURE__*/ object({ "annotation_id": [true, isString], "asset_id": [true, isString], "occurrence_id": [true, isString], "position": [true, isInteger], "timestamp": [true, isNumber] } as const);
+  /*#__PURE__*/ object({ "annotation_id": [true, isString], "asset_id": [true, isString], "occurrence_id": [true, isString], "position": [true, isInteger], "timestamp": [true, either([isNumber, isNull] as const)] } as const);
 
 export const checkTrackOut: Check<Schemas["TrackOut"]> =
   /*#__PURE__*/ object({ "external_id": [true, either([isString, isNull] as const)], "id": [true, isString], "label_class": [true, isString], "observations": [true, arrayOf(checkTrackObservationOut)], "source_id": [true, isString] } as const);

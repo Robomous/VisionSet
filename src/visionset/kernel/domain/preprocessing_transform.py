@@ -51,7 +51,7 @@ from visionset.kernel.domain.release import (
     ManifestAnnotation,
     ManifestAsset,
     SplitAssignment,
-    tracks_within,
+    manifest_within,
 )
 from visionset.kernel.domain.schema import AttributeValue, GeometryType
 from visionset.kernel.errors import (
@@ -850,7 +850,8 @@ def plugin_manifest(manifest: Manifest, view: TransformedView) -> Manifest:
     source; ``width`` and ``height`` are the transformed size. Classes stay the manifest's. A file
     still carrying a 3D label carries its source's calibration, which only a
     step that leaves the pixels where they are lets through. Tracks keep only
-    the observations whose annotation a variant-0 file still carries.
+    the observations whose annotation a variant-0 file still carries, and sources
+    the occurrences of the assets it still holds.
     """
     sources = {asset.asset_id: asset for asset in manifest.assets}
     assets = tuple(
@@ -875,9 +876,7 @@ def plugin_manifest(manifest: Manifest, view: TransformedView) -> Manifest:
         )
         for file in view.files
     )
-    return manifest.model_copy(
-        update={"assets": assets, "tracks": tracks_within(manifest.tracks, assets)}
-    )
+    return manifest_within(manifest, assets)
 
 
 def _manifest_annotation(annotation: TransformedAnnotation, variant: int) -> ManifestAnnotation:

@@ -974,7 +974,7 @@ class FrameOccurrenceRow(Base):
         SaUuid, ForeignKey("source.id", ondelete="CASCADE"), index=True, nullable=False
     )
     position: Mapped[int] = mapped_column(Integer, nullable=False)
-    timestamp: Mapped[float] = mapped_column(Float, nullable=False)
+    timestamp: Mapped[float | None] = mapped_column(Float, nullable=True)
     asset_id: Mapped[UUID] = mapped_column(
         SaUuid, ForeignKey("asset.id", ondelete="CASCADE"), index=True, nullable=False
     )
