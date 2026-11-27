@@ -27,11 +27,11 @@ target - never through a dict, so a typo answers a `VisionSetError` rather than 
 
 ## What ships
 
-Forty-three plugins in [`pyproject.toml`](../../../../pyproject.toml)'s
-`[project.entry-points."visionset.formats"]`: the twenty-three exporters below and twenty importers,
+Forty-five plugins in [`pyproject.toml`](../../../../pyproject.toml)'s
+`[project.entry-points."visionset.formats"]`: the twenty-four exporters below and twenty-one importers,
 `ultralytics-import`, `yolov5-yaml-import`, `darknet-import`, `yolo-obb-import`, `dota-import`,
 `coco-import`, `coco-panoptic-import`, `segmentation-png-import`, `voc-import`, `labelme-import`,
-`createml-import`, `open-images-import`,
+`createml-import`, `open-images-import`, `tfrecord-import`,
 `classification-import`, `classification-dir-import`, `openlane-2d-import`, `kitti-import`, `mot-import`, `cvat-images-import`,
 `cvat-video-import` and `nuscenes-import` (see [Importers](#importers)).
 
@@ -49,6 +49,7 @@ Forty-three plugins in [`pyproject.toml`](../../../../pyproject.toml)'s
 | `labelme` | [`labelme/`](../../../../src/visionset/formats/labelme/) - one LabelMe JSON document beside each picture, rectangles and polygons in pixels |
 | `createml` | [`createml/`](../../../../src/visionset/formats/createml/) - one Apple Create ML object-detection JSON array beside the pictures of each folder, boxes as centre and size in pixels |
 | `open-images` | [`open_images/`](../../../../src/visionset/formats/open_images/) - one Open Images `<split>-annotations-bbox.csv` of normalized corners per split, the pictures under `<split>/` and a `class-descriptions-boxable.csv` |
+| `tfrecord` | [`tfrecord/`](../../../../src/visionset/formats/tfrecord/) - TensorFlow Object Detection `tf.train.Example` records, one `<split>.tfrecord` per split holding each picture's bytes and its normalized boxes, beside a `label_map.pbtxt`; framing and protobuf by hand in [`_wire.py`](../../../../src/visionset/formats/tfrecord/_wire.py) |
 | `classification` | [`classification/`](../../../../src/visionset/formats/classification/) - `labels.csv`, one row per (image, tag) |
 | `classification-dir` | [`classification_dir/`](../../../../src/visionset/formats/classification_dir/) - `<fold>/<class>/<picture>`, each picture once under one class; declares `single_tag`, so extra tags are reported dropped and untagged assets counted in `untagged_assets` |
 | `tusimple`, `curvelanes`, `bdd100k-lane`, `culane`, `openlane-2d` | [`lanes/`](../../../../src/visionset/formats/lanes/) - five plugins over one shared core |
@@ -61,7 +62,11 @@ Forty-three plugins in [`pyproject.toml`](../../../../pyproject.toml)'s
 The same group carries importers, which satisfy the other port,
 [`Importer`](../../../../src/visionset/kernel/ports/importer.py): `read(src)` returns an
 `ImportedDataset` - classes, images by relative path, their labels, and a report of everything it
-could not represent - and touches no workspace. A class may carry attribute definitions (the
+could not represent - and touches no workspace. An importer whose pictures live inside its files
+also satisfies the optional
+[`OpensPictures`](../../../../src/visionset/kernel/ports/importer.py): `ImportService` calls
+`open(src, path)` for an image path that names no file, and an `OSError` from it is an `image`
+loss - see the [amendment](../decisions/an-import-is-a-labeled-batch.md). A class may carry attribute definitions (the
 schema's own `Attribute`) and a label attribute values as the source spells them; an importer
 reads a value as its definition's kind where it can and otherwise passes it on, because whether a
 value is kept is `ImportService`'s judgement against the schema the label lands under, not the
@@ -71,7 +76,7 @@ and labels in the one `ScanFrame` the dataset declares; `ImportService` stores e
 of the same bytes under a point-cloud source declaring that frame. `registry.importers()` filters the scan by that
 port, and `registry.pick_importer(installed, name)` resolves a name with the same aliases,
 refusing with `ImportFormatNotFound`. `ImportService` takes the instance, as `ReleaseService.export`
-takes an exporter. The built-ins are twenty, nineteen of them answering to their exporter's `format_name`:
+takes an exporter. The built-ins are twenty-one, twenty of them answering to their exporter's `format_name`:
 [`ultralytics-import`](../../../../src/visionset/formats/ultralytics/reader.py),
 [`yolov5-yaml-import`](../../../../src/visionset/formats/yolov5_yaml/reader.py),
 [`darknet-import`](../../../../src/visionset/formats/darknet/reader.py) and
@@ -92,6 +97,8 @@ reads masks only as its descriptor states them,
 `image` inside the source the same way and measures the picture, because the file records no size,
 [`open-images-import`](../../../../src/visionset/formats/open_images/reader.py), which maps each
 `LabelName` through the class descriptions file and measures each picture an `ImageID` names,
+[`tfrecord-import`](../../../../src/visionset/formats/tfrecord/reader.py), the one that implements
+`OpensPictures`, reading each picture out of its record rather than from a file,
 [`classification-import`](../../../../src/visionset/formats/classification/reader.py),
 [`classification-dir-import`](../../../../src/visionset/formats/classification_dir/reader.py), which
 refuses a picture filed under two classes, nested directories and class names that collide ignoring
@@ -293,6 +300,8 @@ The table is generated by `scripts/export_format_matrix.py` and held current by 
 | `openlane-2d` | import | lane detection, with per-vertex visibility and lane tracks: OpenLane 2D: one JSON per frame with lane_lines carrying uv, category, visibility and track id | polyline | — | — | validated | fixture; round trip |
 | `segmentation-png` | export | semantic segmentation: class-index PNG per picture (8-bit, or 16-bit past 255 ids) with a segmentation.json descriptor; import also reads palette masks and the VOC layout with a mask suffix, as the descriptor states | mask | polygon | yes | validated | fixture; round trip; independent reader (test-local PNG decoder over zlib and the PNG filters, no Pillow) |
 | `segmentation-png` | import | semantic segmentation: class-index PNG per picture (8-bit, or 16-bit past 255 ids) with a segmentation.json descriptor; import also reads palette masks and the VOC layout with a mask suffix, as the descriptor states | mask | — | — | validated | fixture; round trip |
+| `tfrecord` | export | object detection: TensorFlow Object Detection API tf.train.Example records: &lt;split>.tfrecord of image/encoded and normalized image/object/bbox/* boxes beside a label_map.pbtxt | bbox | — | yes | validated | fixture; independent reader (test-local TFRecord framing, CRC32C and protobuf wire parser over the Object Detection feature names); round trip |
+| `tfrecord` | import | object detection: TensorFlow Object Detection API tf.train.Example records: &lt;split>.tfrecord of image/encoded and normalized image/object/bbox/* boxes beside a label_map.pbtxt | bbox | — | — | validated | fixture; round trip |
 | `tusimple` | export | lane detection: TuSimple: one JSON record per picture, lanes sampled at shared h_samples rows | — | polyline | yes | validated | fixture |
 | `ultralytics` (alias `yolo`) | export | object detection, instance segmentation, image classification: detect: data.yaml with path and indexed names, class cx cy w h rows; segment: the same layout with normalized polygon rows; classify: a class-directory tree per fold | bbox, classification_tag, polygon | — | yes | validated | fixture; round trip; independent reader (ultralytics, `yolo` group) |
 | `ultralytics` (alias `yolo`) | import | object detection, instance segmentation, image classification: detect: data.yaml with path and indexed names, class cx cy w h rows; segment: the same layout with normalized polygon rows; classify: a class-directory tree per fold | bbox, classification_tag, polygon | — | — | validated | fixture; round trip |

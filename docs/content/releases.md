@@ -427,7 +427,7 @@ The fix is vocabulary rather than capability. `Exporter` declares two geometry s
   for `coco`, which writes a polygon as a polygon and a mask as RLE and drops a rotated box,
   for `yolo-obb` and `dota`, which write a rotated box as itself and drop everything else, for
   `labelme`, which writes boxes and polygons as themselves and drops everything else, for
-  `createml` and `open-images`, which write boxes as themselves and drop everything else, and for
+  `createml`, `open-images` and `tfrecord`, which write boxes as themselves and drop everything else, and for
   `cvat-images` and `cvat-video`, which write a rotated box as a CVAT box and its `rotation`. The two sets are disjoint, and `supported` wins if a plugin
   says both, because resolving a contradiction towards the weaker claim would report a loss that
   does not happen.
@@ -564,6 +564,7 @@ The catalog this build ships, generated from the declarations by
 | `open-images` | open-images | `other` | `open-images` | — | bbox | — | — |
 | `openlane-2d` | openlane-2d | `other` | `openlane-2d` | — | polyline | — | — |
 | `segmentation-png` | segmentation-png | `other` | `segmentation-png` | — | mask, polygon | — | — |
+| `tfrecord` | tfrecord | `other` | `tfrecord` | — | bbox | — | — |
 | `tusimple` | tusimple | `other` | `tusimple` | — | polyline | — | — |
 | `voc` | voc | `other` | `voc` | — | bbox | — | — |
 | `yolo-obb` | yolo-obb | `other` | `yolo-obb` | — | obb | — | — |
@@ -1062,6 +1063,53 @@ also creates, and `-1`, Open Images' unknown, otherwise.
 boxes, polylines, masks, tags and 3D geometry are dropped and reported, and every other attribute
 and the provenance have nowhere to go. A test reads the export with Python's `csv` module and
 Pillow alone, by the published column spec; no Open Images tool was run against it.
+
+### The TensorFlow Object Detection format
+
+`tfrecord` writes the **TensorFlow Object Detection API's `tf.train.Example` dataset schema** - not
+an arbitrary TFRecord, which is only a container - without TensorFlow or protobuf: the record
+framing (length, masked CRC32C of the length, data, masked CRC32C of the data) and the protobuf
+wire format are written by hand. The export holds `label_map.pbtxt` and one uncompressed
+`<split>.tfrecord` per split that holds pictures, `train` for a release without a split recipe,
+`train`, `val` and `test` with one. Every picture is one record, written whether or not it carries
+a box. The [`tfrecord` importer](import.md#formats) reads it back, and also reads GZIP-compressed
+and sharded record files.
+
+```text
+item {
+  id: 1
+  name: "sign"
+}
+```
+
+The label map's ids are `1` upward in class-name order, so the same classes always get the same
+ids; `0` is the background the API reserves. Each record's features are:
+
+| Feature | Type | Value |
+| --- | --- | --- |
+| `image/encoded` | bytes | the picture's own bytes, JPEG or PNG |
+| `image/format` | bytes | `jpeg` or `png` |
+| `image/filename` | bytes | `<hash>.<ext>` |
+| `image/source_id` | bytes | the content hash |
+| `image/height`, `image/width` | int64 | the recorded size |
+| `image/object/bbox/xmin`, `xmax`, `ymin`, `ymax` | float | per box, its edges divided by the width or height |
+| `image/object/class/text` | bytes | per box, the class name |
+| `image/object/class/label` | int64 | per box, the class's label-map id |
+| `image/object/difficult`, `truncated`, `is_crowd` | int64 | per box, `1` or `0`, only when a box of the picture carries a boolean attribute of that name |
+
+A box is clamped into its picture, as the API expects fractions in `[0, 1]`; its far edge is first
+rounded to three decimal places of a pixel. The fractions are float32, so the importer rounds each
+corner back to three decimals of a pixel: a box whose corners carry at most three decimals reads
+back exactly on a picture up to 16,384 pixels a side, and any other within half a thousandth of a
+pixel plus the size over 2^25. A box with a flag attribute absent is written `0` beside one that
+has it, and reads back `false`.
+
+`lossy = True` and `supported_geometries` is `{bbox}`, with nothing degraded: polygons, rotated
+boxes, polylines, masks, tags and 3D geometry are dropped and reported, and confidence, every other
+attribute and the provenance have nowhere to go. Instance masks and keypoints are deliberately not
+written in this version. A WebP picture refuses the export, because the API decodes JPEG and PNG.
+A test decodes the export with its own TFRecord and protobuf parser, by the published feature names;
+no TensorFlow was run against it.
 
 ### The classification format
 

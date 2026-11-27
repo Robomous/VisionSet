@@ -380,6 +380,14 @@ def test_the_installed_exporters_declare_what_they_can_carry() -> None:
                 "targets": ["segmentation-png"],
             },
             {
+                "name": "tfrecord",
+                "lossy": True,
+                "geometries": ["bbox"],
+                "degraded_geometries": [],
+                "modalities": ["image"],
+                "targets": ["tfrecord"],
+            },
+            {
                 # The one lane format that does not write the vertices it
                 # was given: TuSimple's file *is* the X where a lane crosses each
                 # of a fixed set of rows, so a lane is resampled rather than
@@ -437,7 +445,7 @@ def test_the_installed_exporters_declare_what_they_can_carry() -> None:
                 "targets": ["yolov7"],
             },
         ],
-        "total": 24,
+        "total": 25,
     }
 
 

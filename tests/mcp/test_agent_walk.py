@@ -197,6 +197,7 @@ def test_an_agent_can_take_a_folder_of_images_to_an_exported_release(
         "open-images",
         "openlane-2d",
         "segmentation-png",
+        "tfrecord",
         "tusimple",
         "ultralytics",
         "voc",

@@ -137,7 +137,7 @@ src/visionset/          Single Python distribution (one wheel, one import namesp
   mcp/                  MCP server (stdio) — 66 agent tools over the same SDK, four more on request
   formats/              Exporter plugins: ultralytics, yolov5-yaml, darknet, yolo-obb, dota, coco,
                         coco-panoptic, segmentation-png, voc, labelme, createml, open-images,
-                        classification, classification-dir, the five lane formats, mot,
+                        tfrecord, classification, classification-dir, the five lane formats, mot,
                         cvat-images and cvat-video;
                         importer plugins for most of them, plus the kitti and nuscenes scan importers
                         (entry-point group `visionset.formats`)

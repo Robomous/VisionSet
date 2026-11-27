@@ -17,6 +17,11 @@ commit then stores the blobs outside any transaction, as ingest does, and
 writes every row — assets, schema version, batch, labels, approval — in one
 transaction, so a refusal anywhere leaves none of them.
 
+An image whose path names no file in the source is asked of the importer when
+it implements ``OpensPictures``, as a TFRecord importer does for the pictures
+its records hold; otherwise, or when the importer holds none, it is an
+``image`` loss. Either way nothing is written into the source.
+
 A dataset of scans takes the same path with three differences. Each headerless
 scan is stored as a binary PCD of its own bytes, so the point-cloud processor
 that decodes an ingested scan decodes it too. The commit's transaction also
@@ -37,6 +42,7 @@ carry it. See
 
 from __future__ import annotations
 
+import functools
 from collections import Counter
 from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass
@@ -94,7 +100,7 @@ from visionset.kernel.errors import (
     ProjectNotFound,
     VisionSetError,
 )
-from visionset.kernel.ports import Importer, UnitOfWork
+from visionset.kernel.ports import Importer, OpensPictures, UnitOfWork
 from visionset.kernel.ports.point_cloud_processor import MAX_POINT_CLOUD_BYTES
 from visionset.kernel.services.annotation_service import AnnotationService
 from visionset.kernel.services.batch_service import BatchService
@@ -140,6 +146,8 @@ class _Planned:
     duplicates: dict[PurePosixPath, PurePosixPath] | None = None
     writes: frozenset[PurePosixPath] = frozenset()
     repeats: dict[PurePosixPath, list[ImportedImage]] | None = None
+    opener: Callable[[PurePosixPath], BinaryIO] | None = None
+    opened: frozenset[PurePosixPath] = frozenset()
 
 
 class ImportService:
@@ -247,9 +255,7 @@ class ImportService:
         if frame is None:
             items = list(plan.images)
             for image in plan.images:
-                candidates.append(
-                    self._store(project_id, planned.root, image, planned.probes[image.path])
-                )
+                candidates.append(self._store(project_id, planned, image))
                 if on_progress is not None:
                     on_progress(len(candidates), len(plan.images))
         else:
@@ -418,13 +424,20 @@ class ImportService:
 
         missing: list[PurePosixPath] = []
         probes: dict[PurePosixPath, _Probe] = {}
+        opener = _opener(importer, root)
+        opened: set[PurePosixPath] = set()
         for image in dataset.images:
             path = _contained(root, image.path)
-            if not path.is_file():
+            if path.is_file():
+                probes[image.path] = self._probe(_open(path, str(image.path)), image)
+                continue
+            served = _served(opener, image.path)
+            if served is None:
                 missing.append(image.path)
                 losses.append(_image_loss(image, "the source holds no such file"))
                 continue
-            probes[image.path] = self._probe(path, image)
+            opened.add(image.path)
+            probes[image.path] = self._probe(served, image)
 
         kept: list[ImportedImage] = []
         duplicates: dict[PurePosixPath, PurePosixPath] = {}
@@ -583,6 +596,8 @@ class ImportService:
             duplicates=duplicates,
             writes=frozenset(writes),
             repeats=repeats,
+            opener=opener,
+            opened=frozenset(opened),
         )
 
     def _planned_scans(
@@ -723,9 +738,9 @@ class ImportService:
         )
         return _ScanProbe(content_hash=sha256_hex(content), metadata=metadata)
 
-    def _probe(self, path: Path, image: ImportedImage) -> _Probe:
+    def _probe(self, source: BinaryIO, image: ImportedImage) -> _Probe:
         name = str(image.path)
-        with _open(path, name) as handle:
+        with source as handle:
             still = self._single_still(handle, name)
             if still.payload is None:
                 handle.seek(0)
@@ -756,10 +771,17 @@ class ImportService:
             uow, project_id, _derived_classes(dataset), description="imported dataset"
         ).published
 
-    def _store(self, project_id: UUID, root: Path, image: ImportedImage, probe: _Probe) -> Asset:
-        path = _contained(root, image.path)
+    def _store(self, project_id: UUID, planned: _Planned, image: ImportedImage) -> Asset:
+        probe = planned.probes[image.path]
+        path = _contained(planned.root, image.path)
         name = str(image.path)
-        with _open(path, name) as handle:
+        if image.path in planned.opened:
+            source = _served(planned.opener, image.path)
+            if source is None:
+                raise ImportSourceUnreadable(f"image {name!r} changed while it was being imported")
+        else:
+            source = _open(path, name)
+        with source as handle:
             still = self._single_still(handle, name)
             if still.payload is None:
                 handle.seek(0)
@@ -849,6 +871,24 @@ def _contained(root: Path, relative: PurePosixPath) -> Path:
     if not resolved.is_relative_to(root):
         raise ImportSourceUnreadable(f"image {str(relative)!r} resolves outside the source")
     return resolved
+
+
+def _opener(importer: Importer, root: Path) -> Callable[[PurePosixPath], BinaryIO] | None:
+    if not isinstance(importer, OpensPictures):
+        return None
+    return functools.partial(importer.open, root)
+
+
+def _served(
+    opener: Callable[[PurePosixPath], BinaryIO] | None, relative: PurePosixPath
+) -> BinaryIO | None:
+    """The picture the importer reads out of its source, ``None`` when it holds none."""
+    if opener is None:
+        return None
+    try:
+        return opener(relative)
+    except OSError:
+        return None
 
 
 def _open(path: Path, name: str) -> BinaryIO:

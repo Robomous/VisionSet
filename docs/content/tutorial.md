@@ -235,6 +235,7 @@ mot                 yes
 open-images         yes
 openlane-2d         yes
 segmentation-png    yes
+tfrecord            yes
 tusimple            yes
 ultralytics         yes
 voc                 yes
@@ -244,7 +245,7 @@ yolov5-yaml         yes
 
 The five lane formats write polylines, `classification` writes image-level tags, `classification-dir` files each picture under one class directory, `kitti` writes
 scans and their cuboids, `mot` and `cvat-video` write tracks, `cvat-images` writes CVAT's per-picture
-shapes, `yolo-obb` and `dota` write rotated boxes, `segmentation-png` writes class-index PNG masks, `coco-panoptic` writes RGB segment PNGs with their `segments_info`, `labelme` writes LabelMe JSON documents beside their pictures, `createml` writes boxes into one Create ML JSON array per folder, `open-images` writes boxes as normalized rows of one Open Images CSV per split, `coco`
+shapes, `yolo-obb` and `dota` write rotated boxes, `segmentation-png` writes class-index PNG masks, `coco-panoptic` writes RGB segment PNGs with their `segments_info`, `labelme` writes LabelMe JSON documents beside their pictures, `createml` writes boxes into one Create ML JSON array per folder, `open-images` writes boxes as normalized rows of one Open Images CSV per split, `tfrecord` writes boxes and picture bytes as TensorFlow Object Detection records per split, `coco`
 also writes masks as RLE, and the rest write boxes and polygons (`yolo` is still accepted as an alias of `ultralytics` for one release); the whole set is described in [releases.md](releases.md#exporting). Run the
 command rather than trusting this listing — it reads installed entry-point metadata, so a
 third-party plugin appears in it too.
