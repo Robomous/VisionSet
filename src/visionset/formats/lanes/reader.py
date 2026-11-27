@@ -13,10 +13,18 @@ is the class name the exporter resolves to those numbers, so a re-export writes
 them again. ``visibility`` maps ``1`` to visible and ``0`` to occluded; the
 format has no "unknown", so an import never produces unlabeled.
 
+A directory named ``segment-*`` whose documents are all named by a number is a
+sequence: its frames are ordered by that number, OpenLane's frame timestamp in
+units of 10 ns, and each lane's ``track_id`` becomes the ``track`` of its label.
+An id written as the name ``"7"`` in a segment that also has the integer ``7``
+is a loss rather than a merge: the two spellings are not assumed to be one lane.
+
 What the domain cannot hold is counted into ``losses`` by kind: 3D points, a
-camera calibration, track ids and a position ``attribute`` that say more than
-the exporter's own echo of the lane's order and category, and a visibility array
-that is not one ``0`` or ``1`` per point. Upstream OpenLane's column-major
+camera calibration, a track id outside a sequence, a position ``attribute`` that
+says more than the exporter's own echo of the lane's category, and a visibility
+array that is not one ``0`` or ``1`` per point. The exporter's ``lane_<n>`` track
+id is its echo of the lane's order, not an identity, and is neither carried nor
+reported. Upstream OpenLane's column-major
 ``uv`` (``[[u...], [v...]]``) is a different layout and is refused, not guessed.
 """
 
@@ -35,8 +43,10 @@ from visionset.kernel.domain import (
     GeometryType,
     ImportedClass,
     ImportedDataset,
+    ImportedFrame,
     ImportedImage,
     ImportedLabel,
+    ImportedSequence,
     ImportLoss,
     ImportLossKind,
     PolylineGeometry,
@@ -46,6 +56,16 @@ from visionset.kernel.domain import (
 from visionset.kernel.errors import ImportSourceUnreadable
 
 LABELS_DIRNAME: Final = "labels"
+SEGMENT_PREFIX: Final = "segment-"
+
+#: Seconds per unit of a frame's name: OpenLane names a frame by Waymo's
+#: microsecond timestamp with two digits appended.
+_SECONDS_PER_TICK: Final = 1e-8
+
+_SPELLED_TWICE: Final = (
+    "its track id is a name spelling an integer track id of the same segment; "
+    "the label is kept untracked"
+)
 
 #: OpenLane's category integers and their names, plus the exporter's road edges.
 #:
@@ -91,20 +111,37 @@ class OpenLane2dImporter:
         categories: dict[str, int] = {}
         losses: _Losses = Counter()
 
-        for document_path in _label_files(src, root):
+        found = _label_files(src, root)
+        segments = _segments(found)
+        frames: dict[Path, PurePosixPath] = {}
+        numbered: dict[Path, set[str]] = {}
+        named: list[tuple[Path, list[ImportedLabel], int]] = []
+        for document_path in found:
             document = _load(document_path)
             name = document_path.relative_to(src).as_posix()
-            path = _image_path(document, name)
+            path = frames[document_path] = _image_path(document, name)
             if path in images:
                 raise ImportSourceUnreadable(
                     f"{name}: image {str(path)!r} is named by more than one label file"
                 )
             labels = images[path] = []
             _camera(document, losses)
+            sequenced = document_path.parent in segments
             for position, lane in enumerate(_lanes(document, name)):
-                label = _label(lane, position, name, categories, losses)
-                if label is not None:
-                    labels.append(label)
+                label = _label(lane, position, name, categories, losses, sequenced=sequenced)
+                if label is None:
+                    continue
+                if label.track is not None:
+                    if _is_integer(lane["track_id"]):
+                        numbered.setdefault(document_path.parent, set()).add(label.track)
+                    else:
+                        named.append((document_path.parent, labels, len(labels)))
+                labels.append(label)
+        for directory, labels, index in named:
+            label = labels[index]
+            if label.track in numbered.get(directory, set()):
+                losses[(ImportLossKind.ATTRIBUTE, label.class_name, _SPELLED_TWICE)] += 1
+                labels[index] = label.model_copy(update={"track": None})
 
         classes = tuple(
             ImportedClass(name=name, geometries=(GeometryType.POLYLINE,))
@@ -120,6 +157,19 @@ class OpenLane2dImporter:
                 losses=tuple(
                     ImportLoss(kind=kind, subject=subject, count=count, reason=reason)
                     for (kind, subject, reason), count in losses.items()
+                ),
+                sequences=tuple(
+                    ImportedSequence(
+                        name=directory.name,
+                        frames=tuple(
+                            ImportedFrame(
+                                path=frames[document],
+                                timestamp=(tick - ordered[0][0]) * _SECONDS_PER_TICK,
+                            )
+                            for tick, document in ordered
+                        ),
+                    )
+                    for directory, ordered in segments.items()
                 ),
             )
         except ValidationError as exc:
@@ -145,6 +195,19 @@ def _label_files(src: Path, root: Path) -> list[Path]:
                 f"label file {path.relative_to(src).as_posix()!r} resolves outside the source"
             )
     return found
+
+
+def _segments(found: list[Path]) -> dict[Path, list[tuple[int, Path]]]:
+    """Each ``segment-*`` directory whose documents are all named by a number, in time order."""
+    by_directory: dict[Path, list[Path]] = {}
+    for path in found:
+        by_directory.setdefault(path.parent, []).append(path)
+    return {
+        directory: sorted((int(path.stem), path) for path in documents)
+        for directory, documents in sorted(by_directory.items())
+        if directory.name.startswith(SEGMENT_PREFIX)
+        and all(path.stem.isascii() and path.stem.isdigit() for path in documents)
+    }
 
 
 def _json_files(src: Path, directory: Path) -> list[Path]:
@@ -226,6 +289,8 @@ def _label(
     name: str,
     categories: dict[str, int],
     losses: _Losses,
+    *,
+    sequenced: bool,
 ) -> ImportedLabel | None:
     category = lane.get("category", 0)
     if not _is_integer(category):
@@ -256,9 +321,7 @@ def _label(
         losses[
             (ImportLossKind.GEOMETRY, class_name, "3D points are not imported; the lane is kept")
         ] += 1
-    track_id = lane.get("track_id")
-    if track_id is not None and track_id != f"lane_{position}":
-        losses[(ImportLossKind.ATTRIBUTE, class_name, "track ids are not imported")] += 1
+    track = _track(lane.get("track_id"), position, class_name, losses, sequenced=sequenced)
     attribute = lane.get("attribute")
     if attribute is not None and not (_is_integer(attribute) and attribute == category):
         losses[(ImportLossKind.ATTRIBUTE, class_name, "the lane attribute is not imported")] += 1
@@ -269,7 +332,23 @@ def _label(
         if visibility is None
         else PolylineGeometry(points=points, visibility=visibility)
     )
-    return ImportedLabel(class_name=class_name, geometry=geometry)
+    return ImportedLabel(class_name=class_name, geometry=geometry, track=track)
+
+
+def _track(
+    track_id: object, position: int, class_name: str, losses: _Losses, *, sequenced: bool
+) -> str | None:
+    """The lane's identity within its sequence, or ``None``, counting one that cannot be kept."""
+    if track_id is None or track_id == f"lane_{position}":
+        return None
+    if not sequenced:
+        reason = "a track id outside a segment-* sequence is not imported"
+    elif _is_integer(track_id) or (isinstance(track_id, str) and track_id.strip()):
+        return str(track_id)
+    else:
+        reason = "a track id that is not an integer or a name is not imported"
+    losses[(ImportLossKind.ATTRIBUTE, class_name, reason)] += 1
+    return None
 
 
 def _points(uv: object) -> list[tuple[float, float]] | None:
@@ -312,4 +391,4 @@ def _is_number(value: object) -> bool:
         ) from None
 
 
-__all__ = ["CATEGORY_NAMES", "LABELS_DIRNAME", "OpenLane2dImporter"]
+__all__ = ["CATEGORY_NAMES", "LABELS_DIRNAME", "SEGMENT_PREFIX", "OpenLane2dImporter"]

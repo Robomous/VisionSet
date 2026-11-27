@@ -34,6 +34,12 @@ row and do not care which service wrote it.
 `POINT_CLOUD_DIRECTORY` source - see
 [Point-cloud directories and their frame](#point-cloud-directories-and-their-frame).
 
+An `IMAGE_SEQUENCE` source has no registration at all. An [import](import.md) whose dataset
+orders stills, such as an OpenLane segment, writes one per sequence inside its own transaction
+through `SourceService.add_image_sequence_in`, with the sequence's frame occurrences, so tracks
+can observe them. Like a video import, every run writes a new one, under a fresh
+`image-sequence-import:<uuid4>` locator that names no path, and nothing ingests from it.
+
 `register_images` checks that the directory exists and is a directory, and stops there. What is
 *in* it is read at ingest, because a count taken at registration would be stale by the time
 anything used it.
@@ -42,7 +48,7 @@ anything used it.
 
 | Field | Meaning |
 | --- | --- |
-| `kind` | `image_directory`, `point_cloud_directory` or `video` - a `SourceKind` |
+| `kind` | `image_directory`, `point_cloud_directory`, `video` or `image_sequence` - a `SourceKind` |
 | `locator` | identifies the origin; only the two directory kinds promise it is a path this process can open |
 | `display_name` | what somebody asked this source to be *called*, or `None` for nobody said |
 | `registered_at` | timezone-aware UTC, the **first** registration |
@@ -314,6 +320,6 @@ screen uses the same route for `.pcd` and `.ply` files - see [ingest.md](ingest.
   `adapters/_tables.py` for why, and what it costs).
 - **No event.** Registering a source announces nothing. `IngestCompleted` is the event this area
   emits, and [the ingest pipeline](ingest.md) owns it.
-- **No remote kinds.** `SourceKind` has three members and grows by a deliberate kernel change with
+- **No remote kinds.** `SourceKind` has four members and grows by a deliberate kernel change with
   a service method behind it - see the enum's own docstring for why it is an enum where
   `DatasetChange.operation` is a plain `str`.

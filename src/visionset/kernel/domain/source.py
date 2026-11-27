@@ -48,7 +48,7 @@ class SourceKind(StrEnum):
     never heard of.
 
     Neither applies here. ``SourceService`` and ``VideoImportService`` are the
-    only two doors to a ``Source``, one per member, so no foreign writer exists;
+    only two doors to a ``Source``, so no foreign writer exists;
     the kernel **branches** on this value, in the invariant tying
     :attr:`Source.video` to
     :attr:`SourceKind.VIDEO`, and a branch on a magic string is the shape this
@@ -62,12 +62,17 @@ class SourceKind(StrEnum):
     VIDEO = "video"
     #: A directory of PCD and PLY scans, each one a ``point_cloud`` asset.
     POINT_CLOUD_DIRECTORY = "point_cloud_directory"
+    #: Stills an imported dataset orders itself, such as one OpenLane segment.
+    IMAGE_SEQUENCE = "image_sequence"
 
 
 #: The kinds whose locator is a directory this process opens and reads.
 DIRECTORY_KINDS: frozenset[SourceKind] = frozenset(
     {SourceKind.IMAGE_DIRECTORY, SourceKind.POINT_CLOUD_DIRECTORY}
 )
+
+#: The kinds whose frame occurrences are ordered, so a track may observe them.
+SEQUENCE_KINDS: frozenset[SourceKind] = frozenset({SourceKind.VIDEO, SourceKind.IMAGE_SEQUENCE})
 
 
 def canonical_path(path: Path) -> str:

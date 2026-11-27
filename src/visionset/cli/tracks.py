@@ -1,5 +1,5 @@
 # usage: from visionset.cli.tracks import track_app
-"""``visionset track`` — one object followed through the frames of a video source.
+"""``visionset track`` — one object followed through the frames of a sequence source.
 
 ``occurrences``, ``list``, ``show``, ``status`` and ``create`` read or start
 tracks; every other command names the job acting with ``--job``, because a track
@@ -24,11 +24,13 @@ from visionset.kernel.domain import AssetProgress, TrackDetail
 from visionset.kernel.services import SourceService, TrackService
 
 track_app = typer.Typer(
-    help="Follow one object through the frames of a video source.", no_args_is_help=True
+    help="Follow one object through the frames of a video or image sequence.", no_args_is_help=True
 )
 
 TrackArgument = Annotated[UUID, typer.Argument(help="The track, by id.")]
-SourceOption = Annotated[UUID, typer.Option("--source", help="The video source, by id.")]
+SourceOption = Annotated[
+    UUID, typer.Option("--source", help="The video or image-sequence source, by id.")
+]
 JobOption = Annotated[UUID, typer.Option("--job", help="The annotation job acting, by id.")]
 OccurrenceOption = Annotated[
     UUID, typer.Option("--occurrence", help="The frame occurrence, by id.")
@@ -84,7 +86,7 @@ def _print_track(detail: TrackDetail, *, json_out: bool) -> None:
 def track_occurrences(
     source: SourceOption, json_out: JsonOption = False, workspace: WorkspaceOption = None
 ) -> None:
-    """List a source's frame occurrences, in position order. Empty for a non-video source."""
+    """List a source's frame occurrences, in position order. Empty unless it is a sequence."""
     with opened_workspace(workspace) as service:
         found = SourceService(service).occurrences(source)
     if json_out:
@@ -162,7 +164,7 @@ def track_create(
     json_out: JsonOption = False,
     workspace: WorkspaceOption = None,
 ) -> None:
-    """Start an empty track on a video source, of a class the active schema declares."""
+    """Start an empty track on a sequence source, of a class the active schema declares."""
     with opened_workspace(workspace) as service:
         created = TrackService(service).create(source, label_class, external_id=external_id)
     if json_out:

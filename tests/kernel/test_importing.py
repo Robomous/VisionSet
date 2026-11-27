@@ -14,9 +14,11 @@ from visionset.kernel.domain import (
     ImportConsent,
     ImportedClass,
     ImportedDataset,
+    ImportedFrame,
     ImportedImage,
     ImportedLabel,
     ImportedScan,
+    ImportedSequence,
     ImportLoss,
     ImportLossKind,
     PolygonGeometry,
@@ -178,3 +180,76 @@ def test_a_layout_with_a_skipped_field_is_a_pcd_with_a_padding_field() -> None:
 
     assert "FIELDS x y z intensity _\n" in header
     assert "POINTS 2\nDATA binary\n" in header
+
+
+# --- sequences and track ids ----------------------------------------------------
+
+
+def _tracked(
+    *paths: str,
+    sequences: tuple[ImportedSequence, ...],
+    geometry: BboxGeometry | Cuboid3DGeometry = BOX,
+) -> ImportedDataset:
+    return ImportedDataset(
+        classes=(ImportedClass(name="car", geometries=BOTH),),
+        images=tuple(
+            ImportedImage(
+                path=path,
+                labels=(ImportedLabel(class_name="car", geometry=geometry, track="7"),),
+            )
+            for path in paths
+        ),
+        sequences=sequences,
+    )
+
+
+def _sequence(*paths: str, times: tuple[float, ...] | None = None) -> ImportedSequence:
+    stamps = times if times is not None else tuple(float(i) for i in range(len(paths)))
+    return ImportedSequence(
+        name="segment-1",
+        frames=tuple(
+            ImportedFrame(path=p, timestamp=t) for p, t in zip(paths, stamps, strict=True)
+        ),
+    )
+
+
+def test_a_tracked_label_on_a_sequenced_image_is_accepted() -> None:
+    dataset = _tracked("a.png", "b.png", sequences=(_sequence("a.png", "b.png"),))
+    assert [frame.timestamp for frame in dataset.sequences[0].frames] == [0.0, 1.0]
+
+
+@pytest.mark.parametrize(
+    ("sequences", "message"),
+    [
+        ((), "in no sequence"),
+        ((_sequence("a.png", "b.png"), _sequence("b.png")), "in two sequences"),
+        ((_sequence("a.png", "b.png", "c.png"),), "not a listed image"),
+    ],
+)
+def test_a_track_id_needs_exactly_one_sequence_of_listed_images(
+    sequences: tuple[ImportedSequence, ...], message: str
+) -> None:
+    with pytest.raises(ValidationError, match=message):
+        _tracked("a.png", "b.png", sequences=sequences)
+
+
+def test_a_track_id_on_a_3d_label_is_refused() -> None:
+    with pytest.raises(ValidationError, match="2D geometry only"):
+        _tracked("a.png", sequences=(_sequence("a.png"),), geometry=CUBOID)
+
+
+@pytest.mark.parametrize(
+    ("paths", "times"),
+    [(("a.png", "a.png"), (0.0, 1.0)), (("a.png", "b.png"), (1.0, 0.0)), (("a.png",), (-1.0,))],
+)
+def test_a_sequence_lists_each_frame_once_in_time_order(
+    paths: tuple[str, ...], times: tuple[float, ...]
+) -> None:
+    with pytest.raises(ValidationError):
+        _sequence(*paths, times=times)
+
+
+@pytest.mark.parametrize("track", ["", "  "])
+def test_a_blank_track_id_is_refused(track: str) -> None:
+    with pytest.raises(ValidationError):
+        ImportedLabel(class_name="car", geometry=BOX, track=track)

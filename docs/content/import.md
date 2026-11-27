@@ -27,6 +27,22 @@ upload variant yet. [surfaces.md](surfaces.md) shows what each surface can do.
    written and the batch is approved, in one transaction. Approval seeds each labeled asset as
    `annotated`. Nothing is completed or promoted.
 
+A dataset of images may also order some of its images into **sequences**, such as OpenLane's
+segments, and name the object each label draws within one - its **track id**. Each sequence holding
+an asset the run creates or labels becomes a new `image_sequence` source, with one frame occurrence
+per position it holds, and every track id in it becomes a track of that source with the id as its
+`external_id`, observing the labels the run writes; the rules are
+[a track observes frame occurrences](architecture/decisions/a-track-observes-frame-occurrences.md).
+Every import writes its own sources, so the same id in two sequences, or in two imports of one,
+is two tracks and never merges. A position whose image the source does not hold is a gap, and one
+whose bytes repeat an earlier image is an occurrence of that image's asset, its labels dropped as
+an `image` loss as any repeat's are; within a sequence, earlier means earlier in the sequence's own
+order, not in path order. A track takes the class of its first label in sequence order: a
+later label of the same id and another class, or a second label of one id in one frame, is kept
+untracked and reported as an `attribute` loss. The plan counts the `sequences` a commit would
+write and the `tracks` over the labels it would write, so a re-run that writes nothing counts none;
+the run returns the sources in `source_ids` and counts `tracks_written`. A track observes 2D labels only.
+
 A dataset of scans differs in three ways. A headerless scan is stored as a binary PCD of its own
 bytes, so it is a `point_cloud` asset like an ingested one, with its preview. The same transaction
 writes a point-cloud source at the import directory declaring the dataset's frame, or reuses the
@@ -61,7 +77,7 @@ computed from the content, and a commit that would drop something is refused wit
 | `label` | A whole label: an RLE or crowd mask, a polygon of several rings, a label outside its image. |
 | `image` | An image the source names but does not hold, or one whose bytes repeat an earlier image; its labels go with it. A nuScenes camera frame, which is not read. |
 | `scan` | A scan whose points repeat an earlier scan's, or one gone from the source; its labels go with it. A nuScenes sweep or radar frame, which is not read. |
-| `attribute` | Extras the importer does not carry, such as COCO attributes, VOC difficult or pose flags, an OpenLane camera calibration or track id, KITTI truncation, occlusion, alpha and calibration, nuScenes attributes, visibility, instance tokens, point counts, poses and a scene's fields other than its name. |
+| `attribute` | Extras the importer does not carry, such as COCO attributes, VOC difficult or pose flags, an OpenLane camera calibration, a track id outside a sequence or one a track cannot hold, KITTI truncation, occlusion, alpha and calibration, nuScenes attributes, visibility, instance tokens, point counts, poses and a scene's fields other than its name. |
 
 The refusal carries the full report in its `detail.losses`. Inspecting the source first returns
 the same report and writes nothing; its `loss_kinds` is exactly what the commit has to consent to,
@@ -71,8 +87,10 @@ and its `conflicts` are what would refuse the commit whatever it consents to.
 
 An import is one-shot, not a sync. Running the same source again adds no asset, because assets
 are addressed by content, and no label already on its asset; when nothing is new it creates no
-batch at all. Once a reviewer has changed an imported label, the source's version is new again and
-lands on an asset a batch holds, so the re-run is refused.
+batch at all, and no source or track. A re-run that does write lands every sequence it touches as a
+new source, whose tracks observe only the labels that run wrote. Once a reviewer has changed an
+imported label, the source's version is new again and lands on an asset a batch holds, so the
+re-run is refused.
 
 ## At a terminal and from an agent
 
@@ -92,14 +110,14 @@ naming the kinds to accept. See [mcp-tools.md](mcp-tools.md).
 | Format | Reads | Reported as lost |
 | --- | --- | --- |
 | `coco` | `annotations/instances_*.json` with images under `images/<fold>/` or `images/`, the layout the COCO exporter writes; boxes and single-ring polygons | RLE and crowd masks, multi-ring polygons, keypoints, captions and other non-instances files, attributes |
-| `openlane-2d` | `labels/**/*.json`, one document per image naming it in `file_path`, the layout the OpenLane 2D exporter writes; lanes as polylines with their per-vertex `visibility` | 3D points (`xyz`), a camera calibration, track ids and lane `attribute` values beyond the exporter's own, a `visibility` that is not one `0` or `1` per point (the lane is kept without it), malformed lanes |
+| `openlane-2d` | `labels/**/*.json`, one document per image naming it in `file_path`, the layout the OpenLane 2D exporter writes; lanes as polylines with their per-vertex `visibility`; each `segment-*` directory as an image sequence and its lanes' `track_id` as tracks | 3D points (`xyz`), a camera calibration, a track id outside a `segment-*` sequence, and lane `attribute` values beyond the exporter's own, a `visibility` that is not one `0` or `1` per point (the lane is kept without it), malformed lanes |
 | `ultralytics` | `data.yaml` with `names` and pictures under any `images/` directory, labels at the matching `labels/` path, the layout the exporter writes; boxes (four values) and polygons (six or more, an even count); or a class tree (`train`/`val`/`test` directories of class directories) as tags | Keypoints of a pose dataset (`kpt_shape`), malformed rows, an unknown class index, a zero-area or wholly outside box, a label file with no picture, the labels of a picture whose size cannot be read |
 | `yolov5-yaml` | The same layout with `nc` and a list of `names` | As `ultralytics` |
 | `darknet` | `obj.names` (and `obj.data`) with the same `images/` and `labels/` layout | As `ultralytics`, bar keypoints |
 | `voc` | `Annotations/**/*.xml` with pictures under `JPEGImages/`; boxes | Pose, truncated, difficult and occluded values other than unspecified or `0`, other `<object>` children, parts, segmentation, an object with no name or box, a zero-area or outside box |
 | `classification` | `labels.csv` (`image`, `class`) and `classes.txt` beside `images/`; one tag per row | A row naming a class `classes.txt` does not declare, a second row of one class on one picture, a malformed row, a row with no picture or class |
 | `kitti` | A 3D object detection split: `velodyne/*.bin` scans, `label_2/*.txt` and `calib/*.txt`, at the top or in `training/` and `testing/` (or the `train/`, `val/`, `test/` the exporter writes); boxes as `cuboid_3d` in the `lidar_flu` frame | `DontCare` regions, each box's 2D image `bbox`, truncation, occlusion and alpha, the calibration itself, a score outside 0 to 1, a label with no scan, no usable calibration, a malformed line or a dimension that is not positive |
-| `nuscenes` | A data root: a version folder (`v1.0-mini`, `v1.0-trainval`, ...) of JSON tables beside `samples/LIDAR_TOP/*.pcd.bin`; the LIDAR_TOP keyframes, boxes as `cuboid_3d` in the `lidar_rfu` frame, and each keyframe's scene name as its group label | Attributes, visibility, instance tokens (tracking identity), `num_lidar_pts` and `num_radar_pts`, a scene's description, log and map, the ego pose and calibration themselves, a box leaning more than 6 degrees, a malformed box or a dimension that is not positive, an annotation whose sample has no LIDAR_TOP keyframe, the sweeps, and every other sensor's data |
+| `nuscenes` | A data root: a version folder (`v1.0-mini`, `v1.0-trainval`, ...) of JSON tables beside `samples/LIDAR_TOP/*.pcd.bin`; the LIDAR_TOP keyframes, boxes as `cuboid_3d` in the `lidar_rfu` frame, and each keyframe's scene name as its group label | Attributes, visibility, instance tokens (tracking identity, because a track follows 2D labels only), `num_lidar_pts` and `num_radar_pts`, a scene's description, log and map, the ego pose and calibration themselves, a box leaning more than 6 degrees, a malformed box or a dimension that is not positive, an annotation whose sample has no LIDAR_TOP keyframe, the sweeps, and every other sensor's data |
 
 **YOLO family** (`ultralytics`, `yolov5-yaml`, `darknet`). A picture is any file under an `images/`
 directory; its label is at the same path with the last `images` segment swapped for `labels` and
@@ -151,6 +169,21 @@ whole, so only a document whose every lane has two points can be misread. A lane
 kept quiet only when it equals the lane's category, which is what the exporter writes; any other
 value is an `attribute` loss. A symbolic link to a directory under `labels/` is refused, not
 followed.
+
+**OpenLane segments are sequences.** A directory named `segment-*` whose documents are all named by
+a number, as upstream OpenLane names a frame by its timestamp, is one image sequence named after the
+directory. Its frames are ordered by that number and read as hundredths of a microsecond, OpenLane's
+Waymo timestamp with two digits appended, so a frame's occurrence `timestamp` is its time in seconds
+since the segment's first frame. A lane's `track_id`, which OpenLane keeps unique across a segment,
+becomes its label's track id, as the integer's decimal text or the name as written. A name that
+spells an integer id of the same segment, such as `"7"` beside `7`, is not assumed to be that lane:
+its label is kept untracked and reported as an `attribute` loss. The segment's directory name
+becomes the source's name and must be a valid one, so a name a source cannot carry refuses the
+source at inspection. The exporter
+writes `lane_<n>`, its echo of the lane's order in the image rather than an identity, so that value
+is neither carried nor reported. Any other track id outside a sequence, such as in the exporter's
+fold directories or a segment with a document not named by a number, is an `attribute` loss, as is
+one that is neither an integer nor a non-blank name.
 **KITTI.** Each `velodyne/<id>.bin` is one scan of float32 `x, y, z, reflectance` records, kept
 byte for byte with reflectance as `intensity`; a file that is not a whole number of 16-byte
 points refuses the source. Its labels are `label_2/<id>.txt`, and a scan with none (the testing
@@ -196,7 +229,9 @@ release split can [keep every keyframe of a scene in one fold](releases.md#keepi
 The label is written at the asset's first arrival and never rewritten, so an asset imported before
 labels existed keeps none. The loss report names what the scene does not bring along - an
 `attribute` loss on `scene`, counted per scene, for its description, log and map - and the
-instance token that tracks an object across a scene's keyframes is still not carried.
+instance token that tracks an object across a scene's keyframes is still not carried: it follows a
+3D box through lidar scans, and a track follows 2D labels only until point-cloud tracking is
+decided ([a track observes frame occurrences](architecture/decisions/a-track-observes-frame-occurrences.md)).
 
 An annotation is in the global frame: `translation` is the box's centre, `size` is `(w, l, h)` and
 `rotation` a `(w, x, y, z)` quaternion. The import moves each box into the scan's frame through

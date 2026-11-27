@@ -1,5 +1,5 @@
 # usage: from visionset.server.routes import tracks
-"""Tracks: one object followed through the frame occurrences of a video source.
+"""Tracks: one object followed through the frame occurrences of a sequence source.
 
 Three routers. Reading and creating hang off the source and the track itself;
 every other write sits under ``/jobs/{job_id}``, as an annotation write does,
@@ -61,13 +61,13 @@ def list_tracks(workspace: WorkspaceDep, source_id: UUID) -> TrackPage:
 
 @source_router.post("", status_code=status.HTTP_201_CREATED, responses=documented(404, 409))
 def create_track(workspace: WorkspaceDep, source_id: UUID, body: TrackCreate) -> TrackOut:
-    """Start an empty track of one class on a video source.
+    """Start an empty track of one class on a video or image-sequence source.
 
     Not gated on a job: a track observes nothing until a job observes an
     annotation with it. The class must be declared by the project's active
     schema version. 404: `SOURCE_NOT_FOUND`, `SCHEMA_NOT_FOUND`. 409:
     `TRACK_EXTERNAL_ID_TAKEN`, for an `external_id` another track of the source
-    carries. 422: `SOURCE_NOT_SEQUENCE` for a source that is not a video,
+    carries. 422: `SOURCE_NOT_SEQUENCE` for a source that is neither a video nor an image sequence,
     `LABEL_CLASS_NOT_IN_SCHEMA`, `INVALID_NAME` for a blank class or external id.
     """
     return TrackOut.of(

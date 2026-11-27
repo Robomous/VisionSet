@@ -1,5 +1,5 @@
 # usage: from visionset.mcp import tracks
-"""Track tools: follow one object through the frame occurrences of a video source.
+"""Track tools: follow one object through the frame occurrences of a sequence source.
 
 There is no ``get_track``: every write answers the whole track, and
 ``list_tracks`` reads them all for a source, which is where an agent finds a
@@ -23,7 +23,10 @@ from visionset.mcp._resolve import identifier
 from visionset.mcp._workspace import opened_workspace
 from visionset.wire import shapes
 
-SourceRef = Annotated[str, Field(description="The video source, by id (from `list_sources`).")]
+SourceRef = Annotated[
+    str,
+    Field(description="The video or image-sequence source, by id (from `list_sources`)."),
+]
 TrackRef = Annotated[str, Field(description="The track, by id (from `list_tracks`).")]
 JobRef = Annotated[
     str,
@@ -38,11 +41,11 @@ LabelClassRef = Annotated[
 
 
 def list_frame_occurrences(source_id: SourceRef) -> shapes.Page[shapes.FrameOccurrence]:
-    """List a video source's frame occurrences, in position order.
+    """List a sequence source's frame occurrences, in position order.
 
     An occurrence is one position of the clip and the asset it decoded to;
     identical frames at two positions are one asset at two occurrences, and a
-    track observes occurrences, not assets. A source that is not a video has none.
+    track observes occurrences, not assets. A source that is no video or image sequence has none.
     """
     with opened_workspace() as workspace:
         found = SourceService(workspace).occurrences(identifier(source_id, what="source_id"))
@@ -50,7 +53,7 @@ def list_frame_occurrences(source_id: SourceRef) -> shapes.Page[shapes.FrameOccu
 
 
 def list_tracks(source_id: SourceRef) -> shapes.Page[shapes.Track]:
-    """List a video source's tracks, in creation order, each with its observations."""
+    """List a sequence source's tracks, in creation order, each with its observations."""
     with opened_workspace() as workspace:
         found = TrackService(workspace).list(identifier(source_id, what="source_id"))
     return wire.page([wire.track(t) for t in found])
@@ -84,11 +87,11 @@ def create_track(
         ),
     ] = None,
 ) -> shapes.Track:
-    """Start an empty track of one class on a video source.
+    """Start an empty track of one class on a video or image-sequence source.
 
     The class must be declared by the project's active schema version. Then
-    attach annotations with `observe_track`. Refused on a source that is not a
-    video, and for an `external_id` another track of the source carries.
+    attach annotations with `observe_track`. Refused on a source that is neither a
+    video nor an image sequence, and for an `external_id` another track of the source carries.
     """
     with opened_workspace() as workspace:
         created = TrackService(workspace).create(

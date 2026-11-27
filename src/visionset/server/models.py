@@ -2445,7 +2445,7 @@ class AnnotationPage(Page[AnnotationOut]):
 
 
 class FrameOccurrenceOut(BaseModel):
-    """One position of a video source, and the asset that position decoded to."""
+    """One position of a sequence source, and the asset that position decoded to."""
 
     id: UUID
     source_id: UUID
@@ -2490,7 +2490,7 @@ class TrackObservationOut(BaseModel):
 
 
 class TrackOut(BaseModel):
-    """One object followed through a video source, with its observations in position order."""
+    """One object followed through a sequence source, with its observations in position order."""
 
     id: UUID
     source_id: UUID

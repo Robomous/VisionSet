@@ -23,10 +23,11 @@ nothing else.
 
 from __future__ import annotations
 
-from collections.abc import Iterable
+from collections.abc import Iterable, Sequence
 from uuid import UUID
 
 from visionset.kernel.domain import (
+    SEQUENCE_KINDS,
     AnnotationJob,
     AnnotationOperation,
     AnnotationSchema,
@@ -34,7 +35,7 @@ from visionset.kernel.domain import (
     Batch,
     FrameOccurrence,
     ObservedFrame,
-    SourceKind,
+    Source,
     Track,
     TrackDetail,
     TrackObservation,
@@ -43,9 +44,11 @@ from visionset.kernel.domain import (
 from visionset.kernel.errors import (
     AnnotationAlreadyObserved,
     AnnotationNotAtOccurrence,
+    AssetNotInBatch,
     AssetNotJudged,
     BatchNotFound,
     FrameOccurrenceNotFound,
+    InvalidAnnotation,
     InvalidName,
     LabelClassNotInSchema,
     ObservationNotFound,
@@ -143,12 +146,12 @@ class TrackService:
     def create(
         self, source_id: UUID, label_class: str, *, external_id: str | None = None
     ) -> TrackDetail:
-        """Start an empty track of one class on a video source.
+        """Start an empty track of one class on a sequence source.
 
         Raises:
             InvalidName: the class or the external id is blank.
             SourceNotFound: no such source in this workspace.
-            SourceNotSequence: the source is not a video.
+            SourceNotSequence: the source is neither a video nor an image sequence.
             SchemaNotFound: the project has no schema yet.
             LabelClassNotInSchema: the active schema version does not declare the class.
             TrackExternalIdTaken: another track of the source carries ``external_id``.
@@ -159,16 +162,92 @@ class TrackService:
         track = Track(source_id=source_id, label_class=label_class, external_id=external_id)
         with self._workspace.unit_of_work() as uow:
             uow.hold_writes()
-            source = self._sources.require_source(uow, source_id)
-            if source.kind is not SourceKind.VIDEO:
-                raise SourceNotSequence(
-                    f"source {source.id} is a {source.kind.value}, and only a video source has "
-                    f"frame occurrences for a track to observe"
-                )
+            source = _require_sequence(self._sources.require_source(uow, source_id))
             _require_declared(self._schemas.require_active(uow, source.project_id), label_class)
             _require_external_id_free(uow, source_id, external_id)
             uow.tracks.add(track)
             return _detail(uow, track)
+
+    def add_imported_in(
+        self,
+        uow: UnitOfWork,
+        batch_id: UUID,
+        tracks: Sequence[tuple[Track, Sequence[TrackObservation]]],
+    ) -> tuple[TrackDetail, ...]:
+        """Write an import's tracks and their observations, inside the import's transaction.
+
+        No job acts yet: the import's batch is still a draft, and the gate is that
+        it holds every observed asset and each observed annotation is the
+        import's own. Every other rule of :meth:`create` and :meth:`observe` holds.
+
+        Raises:
+            BatchNotFound: no such batch in this workspace.
+            BatchNotEditable: the batch is past ``draft``.
+            InvalidName: a class or an external id is blank.
+            SourceNotFound: no such source in the batch's project.
+            SourceNotSequence: a source is neither a video nor an image sequence.
+            SchemaNotFound: the project has no schema yet.
+            LabelClassNotInSchema: the active schema version does not declare a class.
+            TrackExternalIdTaken: another track of the source carries an external id.
+            FrameOccurrenceNotFound: no such occurrence in this workspace.
+            TrackSourceMismatch: an occurrence belongs to another source.
+            AnnotationNotFound: no such annotation in this workspace.
+            AnnotationNotAtOccurrence: an annotation sits on another asset.
+            AssetNotInBatch: the batch does not hold an observed asset.
+            InvalidAnnotation: an annotation is not an import's, or is a 3D label.
+            TrackClassMismatch: an annotation's class is not its track's.
+            OccurrenceAlreadyObserved: a track observes one occurrence twice.
+            AnnotationAlreadyObserved: an annotation is observed twice.
+        """
+        batch = self._batches.hold_draft(uow, batch_id)
+        schema = self._schemas.require_active(uow, batch.project_id)
+        members = set(batch.asset_ids)
+        for track, observations in tracks:
+            _require_text(track.label_class, what="class")
+            if track.external_id is not None:
+                _require_text(track.external_id, what="external id")
+            source = self._sources.require_source(uow, track.source_id)
+            if source.project_id != batch.project_id:
+                raise SourceNotFound(f"no source {source.id} in project {batch.project_id}")
+            _require_sequence(source)
+            _require_declared(schema, track.label_class)
+            _require_external_id_free(uow, track.source_id, track.external_id)
+            uow.tracks.add(track)
+            seen: set[UUID] = set()
+            for observation in observations:
+                occurrence = self._require_occurrence(uow, track, observation.occurrence_id)
+                annotation = self._annotations.require_annotation(uow, observation.annotation_id)
+                if annotation.asset_id != occurrence.asset_id:
+                    raise AnnotationNotAtOccurrence(
+                        f"annotation {annotation.id} is on asset {annotation.asset_id}, and "
+                        f"occurrence {occurrence.id} decoded to asset {occurrence.asset_id}"
+                    )
+                if occurrence.asset_id not in members:
+                    raise AssetNotInBatch(
+                        f"batch {batch.id} does not hold asset {occurrence.asset_id}"
+                    )
+                if annotation.provenance != "import":
+                    raise InvalidAnnotation(
+                        f"annotation {annotation.id} is {annotation.provenance!r}, and an "
+                        f"import observes only the labels it wrote"
+                    )
+                if annotation.label_class != track.label_class:
+                    raise TrackClassMismatch(
+                        f"annotation {annotation.id} is {annotation.label_class!r} and track "
+                        f"{track.id} is {track.label_class!r}"
+                    )
+                require_trackable(uow, annotation)
+                if occurrence.id in seen:
+                    raise OccurrenceAlreadyObserved(
+                        f"track {track.id} observes occurrence {occurrence.id} twice"
+                    )
+                seen.add(occurrence.id)
+                if uow.observation_of(annotation.id) is not None:
+                    raise AnnotationAlreadyObserved(
+                        f"annotation {annotation.id} is already observed by a track"
+                    )
+                uow.track_observations.add(observation.model_copy(update={"track_id": track.id}))
+        return tuple(_detail(uow, track) for track, _ in tracks)
 
     def observe(
         self, job_id: UUID, track_id: UUID, occurrence_id: UUID, annotation_id: UUID
@@ -535,6 +614,15 @@ def _detail(uow: UnitOfWork, track: Track) -> TrackDetail:
         )
     frames.sort(key=lambda frame: frame.position)
     return TrackDetail(track=track, observations=tuple(frames))
+
+
+def _require_sequence(source: Source) -> Source:
+    if source.kind not in SEQUENCE_KINDS:
+        raise SourceNotSequence(
+            f"source {source.id} is a {source.kind.value}, and only a video or an image "
+            f"sequence has frame occurrences for a track to observe"
+        )
+    return source
 
 
 def _require_declared(schema: AnnotationSchema, label_class: str) -> None:

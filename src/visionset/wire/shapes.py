@@ -751,6 +751,8 @@ class ImportPlan(TypedDict):
     new_assets: int
     new_annotations: int
     annotations_already_present: int
+    sequences: int
+    tracks: int
 
 
 @closed
@@ -764,6 +766,8 @@ class ImportRun(TypedDict):
     annotations_written: int
     annotations_already_present: int
     losses: list[ImportLoss]
+    source_ids: list[str]
+    tracks_written: int
 
 
 @closed

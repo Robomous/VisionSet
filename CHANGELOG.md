@@ -23,6 +23,14 @@ nothing was being distributed. This is the first version that is.
   and hatched, labelled `left out`), `Accept N` writes only the chosen ones with their own scores in one undo step,
   and with none chosen Accept is disabled and `↵` writes nothing. A point suggestion still proposes at most one
   shape (#548).
+- **OpenLane track ids import as tracks.** An import may order its images into sequences; each one holding an
+  asset the run creates or labels becomes a new `image_sequence` source with its frame occurrences, and each track
+  id in it a track of that source with the id as `external_id`, written in the import's transaction. The
+  `openlane-2d` importer reads every `segment-*` directory of numbered documents as a sequence ordered by frame
+  timestamp and each lane's `track_id` as its track, so a track id is no longer an `attribute` loss there; one
+  outside a sequence, or that a track cannot hold, still is. The same id in two segments or two imports is two
+  tracks. A track observes 2D labels only, so nuScenes' `instance_token` stays a declared loss. The plan reports
+  `sequences` and `tracks`, the run `source_ids` and `tracks_written` (#1182).
 - **Release manifests carry tracks.** `MANIFEST_VERSION` is 7: a release lists every track observing an
   annotation it copies - `id`, `source_id`, `label_class`, `external_id` - with only the observations whose
   asset and annotation it holds, each as `position`, `timestamp`, `asset_id` and `annotation_id`, ordered by

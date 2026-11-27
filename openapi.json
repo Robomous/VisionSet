@@ -3808,7 +3808,7 @@
         "type": "object"
       },
       "FrameOccurrenceOut": {
-        "description": "One position of a video source, and the asset that position decoded to.",
+        "description": "One position of a sequence source, and the asset that position decoded to.",
         "properties": {
           "asset_id": {
             "format": "uuid",
@@ -7069,11 +7069,12 @@
         "type": "object"
       },
       "SourceKind": {
-        "description": "The shapes of raw input VisionSet accepts.\n\nAn enum, where ``DatasetChange.operation`` and ``VideoMetadata.codec`` are\nplain ``str``. That doctrine turns on one question \u2014 *can something outside\nthis build write the value?* A change-log entry outlives the release that\nwrote it and a codec name is whatever the decoder that read it decides to\ncall it, so both have to stay readable when they name something this build\nnever heard of.\n\nNeither applies here. ``SourceService`` and ``VideoImportService`` are the\nonly two doors to a ``Source``, one per member, so no foreign writer exists;\nthe kernel **branches** on this value, in the invariant tying\n:attr:`Source.video` to\n:attr:`SourceKind.VIDEO`, and a branch on a magic string is the shape this\ncodebase replaces with a table; and the set grows by a deliberate kernel\nchange with a service method behind it. That is ``ImageFormat`` /\n``BatchState`` / ``IngestState`` territory, and it costs persistence nothing\n\u2014 a ``StrEnum`` member *is* a ``str``.",
+        "description": "The shapes of raw input VisionSet accepts.\n\nAn enum, where ``DatasetChange.operation`` and ``VideoMetadata.codec`` are\nplain ``str``. That doctrine turns on one question \u2014 *can something outside\nthis build write the value?* A change-log entry outlives the release that\nwrote it and a codec name is whatever the decoder that read it decides to\ncall it, so both have to stay readable when they name something this build\nnever heard of.\n\nNeither applies here. ``SourceService`` and ``VideoImportService`` are the\nonly two doors to a ``Source``, so no foreign writer exists;\nthe kernel **branches** on this value, in the invariant tying\n:attr:`Source.video` to\n:attr:`SourceKind.VIDEO`, and a branch on a magic string is the shape this\ncodebase replaces with a table; and the set grows by a deliberate kernel\nchange with a service method behind it. That is ``ImageFormat`` /\n``BatchState`` / ``IngestState`` territory, and it costs persistence nothing\n\u2014 a ``StrEnum`` member *is* a ``str``.",
         "enum": [
           "image_directory",
           "video",
-          "point_cloud_directory"
+          "point_cloud_directory",
+          "image_sequence"
         ],
         "title": "SourceKind",
         "type": "string"
@@ -7550,7 +7551,7 @@
         "type": "object"
       },
       "TrackOut": {
-        "description": "One object followed through a video source, with its observations in position order.",
+        "description": "One object followed through a sequence source, with its observations in position order.",
         "properties": {
           "external_id": {
             "anyOf": [
@@ -19987,7 +19988,7 @@
     },
     "/sources/{source_id}/occurrences": {
       "get": {
-        "description": "Every frame occurrence of this source, in position order.\n\nAn occurrence is one position of a clip's extraction grid and the asset it\ndecoded to; identical frames at two positions are one asset at two\noccurrences. A source that is not a video has none. An unknown source is\n404 `SOURCE_NOT_FOUND`.",
+        "description": "Every frame occurrence of this source, in position order.\n\nAn occurrence is one position of a clip's extraction grid and the asset it\ndecoded to; identical frames at two positions are one asset at two\noccurrences. A source that is neither a video nor an image sequence has\nnone. An unknown source is 404 `SOURCE_NOT_FOUND`.",
         "operationId": "list_frame_occurrences",
         "parameters": [
           {
@@ -20163,7 +20164,7 @@
         ]
       },
       "post": {
-        "description": "Start an empty track of one class on a video source.\n\nNot gated on a job: a track observes nothing until a job observes an\nannotation with it. The class must be declared by the project's active\nschema version. 404: `SOURCE_NOT_FOUND`, `SCHEMA_NOT_FOUND`. 409:\n`TRACK_EXTERNAL_ID_TAKEN`, for an `external_id` another track of the source\ncarries. 422: `SOURCE_NOT_SEQUENCE` for a source that is not a video,\n`LABEL_CLASS_NOT_IN_SCHEMA`, `INVALID_NAME` for a blank class or external id.",
+        "description": "Start an empty track of one class on a video or image-sequence source.\n\nNot gated on a job: a track observes nothing until a job observes an\nannotation with it. The class must be declared by the project's active\nschema version. 404: `SOURCE_NOT_FOUND`, `SCHEMA_NOT_FOUND`. 409:\n`TRACK_EXTERNAL_ID_TAKEN`, for an `external_id` another track of the source\ncarries. 422: `SOURCE_NOT_SEQUENCE` for a source that is neither a video nor an image sequence,\n`LABEL_CLASS_NOT_IN_SCHEMA`, `INVALID_NAME` for a blank class or external id.",
         "operationId": "create_track",
         "parameters": [
           {

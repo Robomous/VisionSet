@@ -7,7 +7,9 @@ probe made of it. Materializing assets out of it is the ingest pipeline's job;
 this service only ever writes one row.
 
 **Two registration methods, and each registers a directory**: one of stills,
-one of point-cloud scans, which also declares the scan frame. A ``VIDEO`` source
+one of point-cloud scans, which also declares the scan frame. An
+``IMAGE_SEQUENCE`` source is never registered: an import writes one, and its
+occurrences, inside its own transaction. A ``VIDEO`` source
 is not made here at all: the server never sees a clip, so there is nothing to
 open and nothing to probe. ``VideoImportService.start`` is the only door to one,
 and it writes its ``VideoProvenance`` from what a client's decoder declared.
@@ -43,11 +45,12 @@ It never names an adapter.
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from pathlib import Path
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from visionset.kernel.domain import (
+    SEQUENCE_KINDS,
     FrameOccurrence,
     Project,
     ScanFrame,
@@ -57,7 +60,12 @@ from visionset.kernel.domain import (
     geometry_needs_scan_frame,
     normalize_name,
 )
-from visionset.kernel.errors import CalibrationInUse, ProjectNotFound, SourceNotFound
+from visionset.kernel.errors import (
+    CalibrationInUse,
+    ProjectNotFound,
+    SourceNotFound,
+    SourceNotSequence,
+)
 from visionset.kernel.ports import UnitOfWork
 from visionset.kernel.services.workspace_service import WorkspaceService
 
@@ -80,7 +88,7 @@ class SourceService:
             return self.require_source(uow, source_id)
 
     def occurrences(self, source_id: UUID) -> list[FrameOccurrence]:
-        """The source's frame occurrences, in position order. Empty for a non-video source.
+        """The source's frame occurrences, in position order. Empty unless it is a sequence.
 
         Raises:
             SourceNotFound: no such source in this workspace.
@@ -215,6 +223,50 @@ class SourceService:
                 f"while no scan there holds a label"
             )
         return stored
+
+    def add_image_sequence_in(self, uow: UnitOfWork, project_id: UUID, display_name: str) -> Source:
+        """A new image-sequence source, in an import's transaction.
+
+        Every call is a new source, as every video import is: two imports of one
+        sequence are two sources, so an external id in one never meets the same
+        id in the other.
+
+        Raises:
+            InvalidName: ``display_name`` is blank.
+        """
+        return uow.sources.add(
+            Source(
+                project_id=project_id,
+                kind=SourceKind.IMAGE_SEQUENCE,
+                locator=f"image-sequence-import:{uuid4()}",
+                display_name=normalize_name(display_name, what="source name"),
+            )
+        )
+
+    def add_occurrences_in(
+        self, uow: UnitOfWork, source: Source, occurrences: Sequence[tuple[int, float, UUID]]
+    ) -> list[FrameOccurrence]:
+        """Write an image sequence's ``(position, timestamp, asset_id)`` occurrences.
+
+        Raises:
+            SourceNotSequence: the source is no sequence, so it has no positions.
+            ValueError: the source is a video, whose occurrences only its own
+                import writes, from the frames it staged.
+        """
+        if source.kind not in SEQUENCE_KINDS:
+            raise SourceNotSequence(
+                f"source {source.id} is a {source.kind.value}, which has no frame occurrences"
+            )
+        if source.kind is not SourceKind.IMAGE_SEQUENCE:
+            raise ValueError(f"source {source.id} is a video; its import writes its occurrences")
+        return uow.frame_occurrences.add_many(
+            [
+                FrameOccurrence(
+                    source_id=source.id, position=position, timestamp=timestamp, asset_id=asset
+                )
+                for position, timestamp, asset in occurrences
+            ]
+        )
 
     def _register_directory(
         self,

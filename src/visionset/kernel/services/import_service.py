@@ -23,6 +23,13 @@ that decodes an ingested scan decodes it too. The commit's transaction also
 writes the point-cloud source at the import root that declares the dataset's
 frame, unless one already declares it there. And a label has no image to fall
 outside of, so none is dropped for its position.
+
+A dataset of images may order some of them into sequences. Each sequence
+holding an asset the run creates or labels becomes a new image-sequence source
+with one occurrence per position it holds, and the labels naming a ``track``
+become that source's tracks, written in the same transaction through
+``TrackService``. See
+``docs/content/architecture/decisions/a-track-observes-frame-occurrences.md``.
 """
 
 from __future__ import annotations
@@ -45,9 +52,11 @@ from visionset.kernel.domain import (
     ImageFormat,
     ImportConsent,
     ImportedDataset,
+    ImportedFrame,
     ImportedImage,
     ImportedLabel,
     ImportedScan,
+    ImportedSequence,
     ImportLoss,
     ImportLossKind,
     ImportPlan,
@@ -56,6 +65,9 @@ from visionset.kernel.domain import (
     PointCloudMetadata,
     Project,
     ScanFrame,
+    Source,
+    Track,
+    TrackObservation,
     geometry_needs_calibration,
     geometry_needs_scan_frame,
     require_calibration,
@@ -86,9 +98,12 @@ from visionset.kernel.services.ingest_service import store_assets
 from visionset.kernel.services.project_service import ProjectService
 from visionset.kernel.services.schema_service import SchemaService
 from visionset.kernel.services.source_service import SourceService
+from visionset.kernel.services.track_service import TrackService
 from visionset.kernel.services.workspace_service import WorkspaceService
 
 _OUTSIDE = "it lies wholly outside its image"
+_OTHER_CLASS = "its track id names a track of another class; the label is kept untracked"
+_REPEATED = "its track id repeats within one frame; the label is kept untracked"
 
 
 @dataclass(frozen=True)
@@ -114,6 +129,8 @@ class _Planned:
     active: AnnotationSchema | None
     root: Path
     scan_probes: dict[PurePosixPath, _ScanProbe] | None = None
+    duplicates: dict[PurePosixPath, PurePosixPath] | None = None
+    writes: frozenset[PurePosixPath] = frozenset()
 
 
 class ImportService:
@@ -125,6 +142,7 @@ class ImportService:
         self._batches = BatchService(workspace)
         self._annotations = AnnotationService(workspace)
         self._sources = SourceService(workspace)
+        self._tracks = TrackService(workspace)
 
     def inspect(self, project_id: UUID, importer: Importer, src: Path) -> ImportPlan:
         """What committing this source would do, drop and refuse. Writes nothing.
@@ -237,6 +255,7 @@ class ImportService:
 
         with self._workspace.unit_of_work() as uow:
             self._require_project(uow, project_id)
+            sequences: list[tuple[ImportedSequence, Source]] = []
             if frame is not None:
                 source = self._sources.register_point_clouds_in(
                     uow, project_id, planned.root, frame=frame
@@ -245,6 +264,21 @@ class ImportService:
                     candidate.model_copy(update={"source_id": source.id})
                     for candidate in candidates
                 ]
+            else:
+                sequences = [
+                    (sequence, self._sources.add_image_sequence_in(uow, project_id, sequence.name))
+                    for sequence in plan.dataset.sequences
+                    if any(one.path in planned.writes for one in sequence.frames)
+                ]
+                source_of = {
+                    one.path: source.id for sequence, source in sequences for one in sequence.frames
+                }
+                candidates = [
+                    candidate.model_copy(update={"source_id": source_of[item.path]})
+                    if item.path in source_of
+                    else candidate
+                    for item, candidate in zip(items, candidates, strict=True)
+                ]
             stored, created = store_assets(
                 uow, project_id, candidates, stamped_at=datetime.now(UTC)
             )
@@ -252,6 +286,7 @@ class ImportService:
             schema = self._schema_for(uow, project_id, plan.dataset)
 
             proposed: list[Annotation] = []
+            tracked: dict[PurePosixPath, list[tuple[str, Annotation]]] = {}
             already = 0
             labeled: list[UUID] = []
             for item, candidate in zip(items, candidates, strict=True):
@@ -262,17 +297,18 @@ class ImportService:
                 if frame is not None:
                     _require_frame_still_declared(uow, asset, new, frame, item)
                 for label in new:
-                    proposed.append(
-                        Annotation(
-                            asset_id=asset.id,
-                            label_class=label.class_name,
-                            schema_version=schema.version,
-                            geometry=label.geometry,
-                            provenance="import",
-                            confidence=label.confidence,
-                        )
+                    annotation = Annotation(
+                        asset_id=asset.id,
+                        label_class=label.class_name,
+                        schema_version=schema.version,
+                        geometry=label.geometry,
+                        provenance="import",
+                        confidence=label.confidence,
                     )
+                    proposed.append(annotation)
                     labeled.append(asset.id)
+                    if label.track is not None:
+                        tracked.setdefault(item.path, []).append((label.track, annotation))
 
             members = list(dict.fromkeys([*created, *labeled]))
             batch = uow.batches.add(
@@ -285,6 +321,17 @@ class ImportService:
                 )
             )
             written = self._annotations.add_imported_in(uow, batch.id, proposed)
+            tracks = self._tracks.add_imported_in(
+                uow,
+                batch.id,
+                [
+                    track
+                    for sequence, source in sequences
+                    for track in self._sequence_tracks(
+                        uow, planned, sequence, source, by_hash, tracked
+                    )
+                ],
+            )
             approved, announcement = self._batches.approve_in(uow, batch.id)
 
         self._workspace.event_bus.publish(announcement)
@@ -298,7 +345,49 @@ class ImportService:
             annotations_written=len(written),
             annotations_already_present=already,
             losses=plan.losses,
+            source_ids=tuple(source.id for _, source in sequences),
+            tracks_written=len(tracks),
         )
+
+    def _sequence_tracks(
+        self,
+        uow: UnitOfWork,
+        planned: _Planned,
+        sequence: ImportedSequence,
+        source: Source,
+        by_hash: dict[str, Asset],
+        tracked: dict[PurePosixPath, list[tuple[str, Annotation]]],
+    ) -> list[tuple[Track, list[TrackObservation]]]:
+        """Write the sequence's occurrences; answer its tracks over the labels this run wrote."""
+        duplicates = planned.duplicates or {}
+        held: list[tuple[int, ImportedFrame, Asset]] = []
+        for position, one in enumerate(sequence.frames):
+            probe = planned.probes.get(duplicates.get(one.path, one.path))
+            if probe is not None:
+                held.append((position, one, by_hash[probe.content_hash]))
+        occurrences = self._sources.add_occurrences_in(
+            uow, source, [(position, one.timestamp, asset.id) for position, one, asset in held]
+        )
+        tracks: dict[str, tuple[Track, list[TrackObservation]]] = {}
+        for (_, one, _), occurrence in zip(held, occurrences, strict=True):
+            for external_id, annotation in tracked.get(one.path, []):
+                track, observations = tracks.setdefault(
+                    external_id,
+                    (
+                        Track(
+                            source_id=source.id,
+                            label_class=annotation.label_class,
+                            external_id=external_id,
+                        ),
+                        [],
+                    ),
+                )
+                observations.append(
+                    TrackObservation(
+                        track_id=track.id, occurrence_id=occurrence.id, annotation_id=annotation.id
+                    )
+                )
+        return list(tracks.values())
 
     # --- planning ------------------------------------------------------------
 
@@ -323,14 +412,18 @@ class ImportService:
             probes[image.path] = self._probe(path, image)
 
         kept: list[ImportedImage] = []
+        duplicates: dict[PurePosixPath, PurePosixPath] = {}
         first_with: dict[str, PurePosixPath] = {}
+        order = _listing_order(dataset)
         for image in sorted(
-            (image for image in dataset.images if image.path in probes), key=lambda i: str(i.path)
+            (image for image in dataset.images if image.path in probes),
+            key=lambda i: order.get(i.path, (str(i.path), 0)),
         ):
             probe = probes[image.path]
             original = first_with.setdefault(probe.content_hash, image.path)
             if original != image.path:
                 del probes[image.path]
+                duplicates[image.path] = original
                 losses.append(_image_loss(image, f"its bytes are those of {str(original)!r}"))
                 continue
             inside = []
@@ -346,7 +439,11 @@ class ImportService:
             ImportLoss(kind=ImportLossKind.LABEL, subject=name, count=count, reason=reason)
             for (name, reason), count in label_losses.items()
         )
+        kept, track_losses = _consistent_tracks(dataset, kept)
+        losses.extend(track_losses)
 
+        writes: set[PurePosixPath] = set()
+        tracked: dict[PurePosixPath, set[str]] = {}
         with self._workspace.unit_of_work() as uow:
             active = self._schemas.active(uow, project_id)
             known = {asset.content_hash: asset for asset in uow.assets.list(project_id)}
@@ -363,6 +460,8 @@ class ImportService:
             for image in kept:
                 asset = known.get(probes[image.path].content_hash)
                 if asset is None:
+                    writes.add(image.path)
+                    tracked[image.path] = {one.track for one in image.labels if one.track}
                     new_assets += 1
                     new_annotations += len(image.labels)
                     if any(
@@ -380,6 +479,9 @@ class ImportService:
                 new, repeated = _new_labels(_present(uow.annotations.list(asset.id)), image.labels)
                 already += repeated
                 new_annotations += len(new)
+                if new:
+                    writes.add(image.path)
+                    tracked[image.path] = {one.track for one in new if one.track}
                 if any(
                     geometry_needs_calibration(one.geometry, modality=asset.modality) for one in new
                 ):
@@ -398,6 +500,15 @@ class ImportService:
                         )
                     )
 
+        touched = [
+            sequence
+            for sequence in dataset.sequences
+            if any(one.path in writes for one in sequence.frames)
+        ]
+        tracks = sum(
+            len(set().union(*(tracked.get(one.path, set()) for one in sequence.frames)))
+            for sequence in touched
+        )
         members = bool(new_assets or new_annotations)
         refusals: list[VisionSetError] = []
         if active is not None:
@@ -422,6 +533,8 @@ class ImportService:
             new_assets=new_assets,
             new_annotations=new_annotations,
             annotations_already_present=already,
+            sequences=len(touched),
+            tracks=tracks,
         )
         return _Planned(
             plan=plan,
@@ -430,6 +543,8 @@ class ImportService:
             members=members,
             active=active,
             root=root,
+            duplicates=duplicates,
+            writes=frozenset(writes),
         )
 
     def _planned_scans(
@@ -739,6 +854,63 @@ def _image_loss(image: ImportedImage, why: str) -> ImportLoss:
         count=1,
         reason=f"{why}; its {len(image.labels)} label(s) would be lost",
     )
+
+
+def _listing_order(dataset: ImportedDataset) -> dict[PurePosixPath, tuple[str, int]]:
+    """Where a sequenced image sorts: at its sequence's first path, then by position.
+
+    The first of two images with equal bytes wins, so a sequence's frames are
+    ranked in its own order rather than by how their paths happen to sort.
+    """
+    return {
+        one.path: (str(sequence.frames[0].path), position)
+        for sequence in dataset.sequences
+        for position, one in enumerate(sequence.frames)
+    }
+
+
+def _consistent_tracks(
+    dataset: ImportedDataset, kept: list[ImportedImage]
+) -> tuple[list[ImportedImage], list[ImportLoss]]:
+    """The kept images with every track id a track cannot hold taken off its label.
+
+    A track takes the class of its first label in sequence order. A later label
+    of another class, or a second label of the same track in one frame, stays a
+    label and loses its track id, counted as an ``attribute`` loss. Answers the
+    images and those losses.
+    """
+    by_path = {image.path: image for image in kept}
+    dropped: Counter[tuple[str, str]] = Counter()
+    for sequence in dataset.sequences:
+        classes: dict[str, str] = {}
+        for one in sequence.frames:
+            image = by_path.get(one.path)
+            if image is None:
+                continue
+            here: set[str] = set()
+            labels: list[ImportedLabel] = []
+            for label in image.labels:
+                if label.track is not None:
+                    owner = classes.setdefault(label.track, label.class_name)
+                    reason = (
+                        _OTHER_CLASS
+                        if owner != label.class_name
+                        else _REPEATED
+                        if label.track in here
+                        else None
+                    )
+                    if reason is None:
+                        here.add(label.track)
+                    else:
+                        dropped[(label.class_name, reason)] += 1
+                        label = label.model_copy(update={"track": None})
+                labels.append(label)
+            by_path[one.path] = image.model_copy(update={"labels": tuple(labels)})
+    losses = [
+        ImportLoss(kind=ImportLossKind.ATTRIBUTE, subject=name, count=count, reason=reason)
+        for (name, reason), count in dropped.items()
+    ]
+    return [by_path[image.path] for image in kept], losses
 
 
 def _derived_classes(dataset: ImportedDataset) -> list[LabelClass]:
