@@ -793,11 +793,13 @@ def pre_label_recorded(
         )
 
     def settle(outcome: BackgroundJobOutcome, error: BaseException | None = None) -> None:
-        # A row that will not take its receipt must not cost the run its result.
-        with suppress(VisionSetError):
-            workspace.job_queue.finish(row[0].id, outcome)
-        if observer is not None:
-            observer.settled(row[0], outcome, error)
+        try:
+            # A row that will not take its receipt must not cost the run its result.
+            with suppress(VisionSetError):
+                workspace.job_queue.finish(row[0].id, outcome)
+        finally:
+            if observer is not None:
+                observer.settled(row[0], outcome, error)
 
     try:
         outcome = pre_label(
