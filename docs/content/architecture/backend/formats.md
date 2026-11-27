@@ -27,10 +27,10 @@ target - never through a dict, so a typo answers a `VisionSetError` rather than 
 
 ## What ships
 
-Thirty-three plugins in [`pyproject.toml`](../../../../pyproject.toml)'s
-`[project.entry-points."visionset.formats"]`: the eighteen exporters below and fifteen importers,
+Thirty-five plugins in [`pyproject.toml`](../../../../pyproject.toml)'s
+`[project.entry-points."visionset.formats"]`: the nineteen exporters below and sixteen importers,
 `ultralytics-import`, `yolov5-yaml-import`, `darknet-import`, `yolo-obb-import`, `dota-import`,
-`coco-import`, `segmentation-png-import`, `voc-import`,
+`coco-import`, `segmentation-png-import`, `voc-import`, `labelme-import`,
 `classification-import`, `openlane-2d-import`, `kitti-import`, `mot-import`, `cvat-images-import`,
 `cvat-video-import` and `nuscenes-import` (see [Importers](#importers)).
 
@@ -44,6 +44,7 @@ Thirty-three plugins in [`pyproject.toml`](../../../../pyproject.toml)'s
 | `coco` | [`coco/`](../../../../src/visionset/formats/coco/) - boxes, polygons and masks as compressed RLE |
 | `segmentation-png` | [`segmentation_png/`](../../../../src/visionset/formats/segmentation_png/) - one class-index PNG per picture and the `segmentation.json` descriptor its importer requires; masks whole, polygons rasterized |
 | `voc` | [`voc/`](../../../../src/visionset/formats/voc/) |
+| `labelme` | [`labelme/`](../../../../src/visionset/formats/labelme/) - one LabelMe JSON document beside each picture, rectangles and polygons in pixels |
 | `classification` | [`classification/`](../../../../src/visionset/formats/classification/) - `labels.csv`, one row per (image, tag) |
 | `tusimple`, `curvelanes`, `bdd100k-lane`, `culane`, `openlane-2d` | [`lanes/`](../../../../src/visionset/formats/lanes/) - five plugins over one shared core |
 | `mot` | [`mot/writer.py`](../../../../src/visionset/formats/mot/writer.py) - one MOTChallenge sequence per source a released track observes; declares `tracked_only`, so an untracked box is reported dropped |
@@ -65,7 +66,7 @@ and labels in the one `ScanFrame` the dataset declares; `ImportService` stores e
 of the same bytes under a point-cloud source declaring that frame. `registry.importers()` filters the scan by that
 port, and `registry.pick_importer(installed, name)` resolves a name with the same aliases,
 refusing with `ImportFormatNotFound`. `ImportService` takes the instance, as `ReleaseService.export`
-takes an exporter. The built-ins are fifteen, fourteen of them answering to their exporter's `format_name`:
+takes an exporter. The built-ins are sixteen, fifteen of them answering to their exporter's `format_name`:
 [`ultralytics-import`](../../../../src/visionset/formats/ultralytics/reader.py),
 [`yolov5-yaml-import`](../../../../src/visionset/formats/yolov5_yaml/reader.py),
 [`darknet-import`](../../../../src/visionset/formats/darknet/reader.py) and
@@ -78,6 +79,8 @@ reads corners through [`_obb.py`](../../../../src/visionset/formats/_obb.py);
 [`segmentation-png-import`](../../../../src/visionset/formats/segmentation_png/reader.py), which
 reads masks only as its descriptor states them,
 [`voc-import`](../../../../src/visionset/formats/voc/reader.py),
+[`labelme-import`](../../../../src/visionset/formats/labelme/reader.py), which resolves each
+`imagePath` inside the source and bounds and decodes embedded `imageData` before trusting it,
 [`classification-import`](../../../../src/visionset/formats/classification/reader.py) and
 [`openlane-2d-import`](../../../../src/visionset/formats/lanes/reader.py), which with
 [`mot-import`](../../../../src/visionset/formats/mot/reader.py) and
