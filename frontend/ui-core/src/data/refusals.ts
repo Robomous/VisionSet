@@ -372,6 +372,63 @@ function isClassCompatibility(value: unknown): value is ClassCompatibility {
   return isClassCount(value) && typeof (value as Record<string, unknown>)["status"] === "string";
 }
 
+/** The assets of one modality a format cannot write, left out whole. */
+export type ModalityCompatibility = components["schemas"]["ModalityCompatibilityOut"];
+
+/** What a format leaves out whole rather than per class: assets with no tag, and modalities it cannot write. */
+export interface LostAssets {
+  readonly untagged: number;
+  readonly modalities: readonly ModalityCompatibility[];
+}
+
+/**
+ * The whole assets a `LOSSY_EXPORT_NOT_CONSENTED` refusal's report leaves out,
+ * which no row of `classes` counts. A report without the fields leaves out none.
+ */
+export function lostAssets(detail: Record<string, unknown> | null): LostAssets {
+  const compatibility = detail?.["compatibility"];
+  if (typeof compatibility !== "object" || compatibility === null) return { untagged: 0, modalities: [] };
+  const report = compatibility as Record<string, unknown>;
+  const untagged = report["untagged_assets"];
+  const modalities = report["dropped_modalities"];
+  return {
+    untagged: typeof untagged === "number" && untagged > 0 ? untagged : 0,
+    modalities: Array.isArray(modalities) ? modalities.filter(isModalityCompatibility) : [],
+  };
+}
+
+function isModalityCompatibility(value: unknown): value is ModalityCompatibility {
+  if (typeof value !== "object" || value === null) return false;
+  const candidate = value as Record<string, unknown>;
+  return typeof candidate["modality"] === "string" && typeof candidate["assets"] === "number" && candidate["assets"] > 0;
+}
+
+const MODALITY_NOUNS: Record<string, readonly [string, string]> = {
+  image: ["image", "images"],
+  point_cloud: ["point cloud", "point clouds"],
+};
+
+/** `["12 assets carry no tag and would be left out.", "3 point clouds would be left out, with their 40 annotations."]` */
+function describeLostAssets(lost: LostAssets): string[] {
+  const sentences = lost.modalities.map((one) => {
+    const [singular, plural] = MODALITY_NOUNS[one.modality] ?? [one.modality, one.modality];
+    const noun = one.assets === 1 ? singular : plural;
+    const labels =
+      one.annotations > 0
+        ? `, with ${one.assets === 1 ? "its" : "their"} ${formatCount(one.annotations)} ${one.annotations === 1 ? "annotation" : "annotations"}`
+        : "";
+    return `${formatCount(one.assets)} ${noun} would be left out${labels}.`;
+  });
+  if (lost.untagged > 0) {
+    sentences.push(
+      lost.untagged === 1
+        ? "1 asset carries no tag and would be left out."
+        : `${formatCount(lost.untagged)} assets carry no tag and would be left out.`,
+    );
+  }
+  return sentences;
+}
+
 /** `"boxes"`, or `"box"` for exactly one; a geometry the build has no word for stays raw. */
 function geometryNoun(geometry: string, count: number): string {
   const table: Record<string, string> = count === 1 ? GEOMETRY_LABELS : GEOMETRY_PLURALS;
@@ -396,8 +453,19 @@ function listed(words: readonly string[]): string {
  * Rows a cropping resize split off (`cropped_by`) are the recipe's loss, not
  * the target's, and get a sentence of their own: `"The recipe's fill resize
  * would leave 5 boxes cut away."` — alone when the target refuses nothing.
+ *
+ * Assets left out whole (`lostAssets`) follow, one sentence per modality and
+ * one for the untagged.
  */
 export function describeTargetDrops(
+  target: { readonly label: string; readonly geometries: readonly string[] },
+  lost: readonly ClassCompatibility[],
+  whole: LostAssets = { untagged: 0, modalities: [] },
+): string {
+  return [classDrops(target, lost), ...describeLostAssets(whole)].join(" ");
+}
+
+function classDrops(
   target: { readonly label: string; readonly geometries: readonly string[] },
   lost: readonly ClassCompatibility[],
 ): string {

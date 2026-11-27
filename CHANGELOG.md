@@ -455,6 +455,10 @@ nothing was being distributed. This is the first version that is.
 
 ### Changed
 
+- **The browser's lossy-export consent counts the assets left out whole.** The sentence above the "Export anyway"
+  tick box was built from the report's `classes` only, so a release whose loss was untagged pictures or a modality
+  the format cannot write named no count. It now adds one sentence per dropped modality, naming it with its asset
+  and annotation counts, and one for `untagged_assets` - *12 assets carry no tag and would be left out.* (#1229).
 - **A repeated frame in an image sequence keeps its labels.** A sequence frame whose bytes repeat an earlier image
   was already an occurrence of that image's asset, but its labels were dropped as an `image` loss, so a track over
   static or duplicated frames lost those positions. Its labels now land on the shared asset: each tracked label as

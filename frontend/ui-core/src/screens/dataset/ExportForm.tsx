@@ -14,7 +14,7 @@ import { useEffect, useRef, useState, type JSX, type ReactNode } from "react";
 
 import { asApiError } from "../../data/errors";
 import { Alert, AlertDescription, AlertTitle, FieldError } from "@robomous/ui-core";
-import { describeClassCount, describeTargetDrops, jobFailureProse, lostClasses, refusalProse } from "../../data/refusals";
+import { describeClassCount, describeTargetDrops, jobFailureProse, lostAssets, lostClasses, refusalProse } from "../../data/refusals";
 import { EmptyState, ErrorState } from "../../patterns/AsyncStates";
 import { ExportTargetSelect } from "../../patterns/ExportTargetSelect";
 import { saveBlob } from "../download";
@@ -296,7 +296,7 @@ function Consent({
       <AlertDescription>
         {/* The sentence names the target and the counts when the 409
             carried its report; without one, the vocabulary's own line. */}
-        <p>{chosen !== undefined && lost !== null ? describeTargetDrops(chosen, lost) : refusalProse(failure)}</p>
+        <p>{chosen !== undefined && lost !== null ? describeTargetDrops(chosen, lost, lostAssets(failure?.detail ?? null)) : refusalProse(failure)}</p>
         {lost !== null && lost.length > 0 && (
           <ul className="mt-2 list-disc pl-5 text-sm" data-testid="lossy-classes">
             {lost.map((one) => (

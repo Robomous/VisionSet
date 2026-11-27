@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { ApiError } from "./errors.js";
-import { describeTargetDrops, refusalProse, type ClassCompatibility } from "./refusals.js";
+import { describeTargetDrops, lostAssets, refusalProse, type ClassCompatibility, type ModalityCompatibility } from "./refusals.js";
 
 describe("refusalProse — browser target refusals", () => {
   it("explains that this device is positive-point only, without inventing a server-error sentence", () => {
@@ -51,5 +51,59 @@ describe("describeTargetDrops — a cropping resize", () => {
     expect(sentence).toBe(
       "YOLO11 accepts boxes and polygons — 3 polylines would be dropped. The recipe's fill resize would leave 5 boxes cut away.",
     );
+  });
+});
+
+describe("describeTargetDrops — assets left out whole", () => {
+  const tags = { label: "Image folders", geometries: ["classification_tag"] };
+  const scans = (assets: number, annotations: number): ModalityCompatibility => ({
+    modality: "point_cloud",
+    assets,
+    annotations,
+    reason: "unused",
+  });
+  const report = (fields: Record<string, unknown>) => ({ compatibility: { classes: [], ...fields } });
+
+  it("says nothing more when nothing is left out whole", () => {
+    expect(describeTargetDrops(tags, [], lostAssets(report({ untagged_assets: 0, dropped_modalities: [] })))).toBe(
+      "Image folders accepts tags only.",
+    );
+  });
+
+  it("counts one untagged asset in the singular", () => {
+    expect(describeTargetDrops(tags, [], lostAssets(report({ untagged_assets: 1, dropped_modalities: [] })))).toBe(
+      "Image folders accepts tags only. 1 asset carries no tag and would be left out.",
+    );
+  });
+
+  it("counts many untagged assets in the plural", () => {
+    expect(describeTargetDrops(tags, [], lostAssets(report({ untagged_assets: 1204, dropped_modalities: [] })))).toBe(
+      "Image folders accepts tags only. 1,204 assets carry no tag and would be left out.",
+    );
+  });
+
+  it("names the modality and counts it, singular and plural", () => {
+    expect(describeTargetDrops(tags, [], { untagged: 0, modalities: [scans(1, 1)] })).toBe(
+      "Image folders accepts tags only. 1 point cloud would be left out, with its 1 annotation.",
+    );
+    expect(describeTargetDrops(tags, [], { untagged: 0, modalities: [scans(3, 0)] })).toBe(
+      "Image folders accepts tags only. 3 point clouds would be left out.",
+    );
+  });
+
+  it("says both counts together, after the class drops", () => {
+    const polylines = { label_class: "lane", geometry: "polyline", status: "dropped", annotations: 2, assets: 1, reason: null, cropped_by: null } as ClassCompatibility;
+    const detail = report({ untagged_assets: 7, dropped_modalities: [scans(4, 40)] });
+    expect(describeTargetDrops(tags, [polylines], lostAssets(detail))).toBe(
+      "Image folders accepts tags only — 2 polylines would be dropped. " +
+        "4 point clouds would be left out, with their 40 annotations. 7 assets carry no tag and would be left out.",
+    );
+  });
+
+  it("reads a report without the fields, or no report, as nothing left out", () => {
+    expect(lostAssets(report({}))).toEqual({ untagged: 0, modalities: [] });
+    expect(lostAssets(null)).toEqual({ untagged: 0, modalities: [] });
+    expect(describeTargetDrops(tags, [], lostAssets(report({})))).toBe("Image folders accepts tags only.");
+    expect(describeTargetDrops(tags, [])).toBe("Image folders accepts tags only.");
   });
 });
