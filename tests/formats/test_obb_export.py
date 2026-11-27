@@ -35,6 +35,9 @@ REDUCING = frozenset({"voc", "darknet", "yolov5-yaml"})
 #: The formats that write a rotated box as itself, and nothing else.
 NATIVE = frozenset({"yolo-obb", "dota"})
 
+#: The formats that write a rotated box as itself beside other geometries.
+CARRYING = frozenset({"cvat-images", "cvat-video"})
+
 
 def _ship(geometry: ObbGeometry = ROTATED) -> Annotation:
     return Annotation(
@@ -70,7 +73,10 @@ def test_every_writing_exporter_is_covered() -> None:
     for name in NATIVE:
         assert exporters()[name].supported_geometries == {GeometryType.OBB}
         assert exporters()[name].degraded_geometries == frozenset()
-    for name in set(COUNTERS) - REDUCING - NATIVE:
+    for name in CARRYING:
+        assert GeometryType.OBB in exporters()[name].supported_geometries
+        assert GeometryType.BBOX in exporters()[name].supported_geometries
+    for name in set(COUNTERS) - REDUCING - NATIVE - CARRYING:
         plugin = exporters()[name]
         assert GeometryType.OBB not in plugin.supported_geometries | plugin.degraded_geometries
 
@@ -94,6 +100,11 @@ def test_the_report_agrees_with_what_was_written(
         assert written["ship"] == 2
         # The one box beside the ships is the one thing a rotated-box format drops.
         assert (report.excluded_annotations, report.degraded_annotations) == (1, 0)
+        return
+    if format_name in CARRYING and not getattr(exporters()[format_name], "tracked_only", False):
+        assert ship.status is ClassExportStatus.SUPPORTED
+        assert written["ship"] == 2
+        assert (report.excluded_annotations, report.degraded_annotations) == (0, 0)
         return
     if format_name in REDUCING:
         assert ship.status is ClassExportStatus.DEGRADED

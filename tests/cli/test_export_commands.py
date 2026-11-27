@@ -208,7 +208,7 @@ def test_format_list_json_is_the_envelope() -> None:
         {
             "name": "cvat-images",
             "lossy": True,
-            "geometries": ["bbox", "classification_tag", "polygon", "polyline"],
+            "geometries": ["bbox", "classification_tag", "obb", "polygon", "polyline"],
             "degraded_geometries": [],
             "modalities": ["image"],
             "targets": ["cvat-images"],
@@ -216,7 +216,7 @@ def test_format_list_json_is_the_envelope() -> None:
         {
             "name": "cvat-video",
             "lossy": True,
-            "geometries": ["bbox", "polygon", "polyline"],
+            "geometries": ["bbox", "obb", "polygon", "polyline"],
             "degraded_geometries": [],
             "modalities": ["image"],
             "targets": ["cvat-video"],

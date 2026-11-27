@@ -36,7 +36,8 @@ non-negative integer keeps it; any other is numbered after the largest such id
 in its sequence. Each observation is a shape at ``keyframe="1" outside="0"``,
 and a track that does not continue to the next frame gets an ``outside="1"``
 keyframe there, so CVAT does not carry it across a gap or to the task's end. A
-track's observations must share one shape type, as a CVAT track's do. Nothing a
+track's observations must share one shape element, as a CVAT track's do; a box
+and a rotated box are both a ``<box>``. Nothing a
 track does not observe is written (``tracked_only``); ``lossy`` besides, for
 confidence, per-vertex visibility, the model behind a label, an attribute's
 ``required`` and an empty-string default; options are written as for
@@ -64,6 +65,7 @@ from visionset.formats.cvat._document import (
     IMAGES_DIRNAME,
     SHAPES,
     SOURCES,
+    TAGS,
     Document,
     Losses,
     Meta,
@@ -120,7 +122,9 @@ _TRACK_GROUP: Final = "a track's group_id is not carried; the track is kept"
 _TRACK_READ: Final = frozenset({"id", "label", "source", "group_id"})
 #: A bound on a task's frame count, so a document cannot ask for unbounded memory.
 MAX_FRAMES: Final = 1_000_000
-_SUPPORTED: Final = frozenset({GeometryType.BBOX, GeometryType.POLYGON, GeometryType.POLYLINE})
+_SUPPORTED: Final = frozenset(
+    {GeometryType.BBOX, GeometryType.OBB, GeometryType.POLYGON, GeometryType.POLYLINE}
+)
 
 
 @dataclass(frozen=True)
@@ -465,7 +469,7 @@ def _plan(
                     f"{held.asset_id} and {asset.asset_id}"
                 )
             shapes.append((observation.position, annotation))
-        kinds = {annotation.geometry.type for _, annotation in shapes}
+        kinds = {TAGS[GeometryType(annotation.geometry.type)] for _, annotation in shapes}
         if len(kinds) > 1:
             raise ExportSourceUnreadable(
                 f"track {track.id} observes {', '.join(sorted(kinds))}; "

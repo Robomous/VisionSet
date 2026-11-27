@@ -421,8 +421,9 @@ The fix is vocabulary rather than capability. `Exporter` declares two geometry s
 - **`degraded_geometries`** - written, having lost something the kernel could represent. `{obb,
   polygon}` for `yolov5-yaml`, `darknet` and `voc`, each written as its axis-aligned bounding box;
   `{polygon}` for `segmentation-png`, which rasterizes a polygon into its class map; and empty
-  for `coco`, which writes a polygon as a polygon and a mask as RLE and drops a rotated box, and
-  for `yolo-obb` and `dota`, which write a rotated box as itself and drop everything else. The two sets are disjoint, and `supported` wins if a plugin
+  for `coco`, which writes a polygon as a polygon and a mask as RLE and drops a rotated box,
+  for `yolo-obb` and `dota`, which write a rotated box as itself and drop everything else, and for
+  `cvat-images` and `cvat-video`, which write a rotated box as a CVAT box and its `rotation`. The two sets are disjoint, and `supported` wins if a plugin
   says both, because resolving a contradiction towards the weaker claim would report a loss that
   does not happen.
 
@@ -537,8 +538,8 @@ The catalog this build ships, generated from the declarations by
 | `coco` | coco | `other` | `coco` | — | bbox, mask, polygon | — | — |
 | `culane` | culane | `other` | `culane` | — | polyline | — | — |
 | `curvelanes` | curvelanes | `other` | `curvelanes` | — | polyline | — | — |
-| `cvat-images` | cvat-images | `other` | `cvat-images` | — | bbox, classification_tag, polygon, polyline | — | — |
-| `cvat-video` | cvat-video | `other` | `cvat-video` | — | bbox, polygon, polyline | — | — |
+| `cvat-images` | cvat-images | `other` | `cvat-images` | — | bbox, classification_tag, obb, polygon, polyline | — | — |
+| `cvat-video` | cvat-video | `other` | `cvat-video` | — | bbox, obb, polygon, polyline | — | — |
 | `dota` | dota | `other` | `dota` | — | obb | — | — |
 | `kitti` | kitti | `other` | `kitti` | — | cuboid_3d | — | — |
 | `mot` | mot | `other` | `mot` | — | bbox | — | — |
@@ -719,7 +720,8 @@ target is `yolov4`; `yolov3` stays with `ultralytics`.
 
 Two formats write rotated boxes (`obb`), and only rotated boxes: `yolo-obb` for the oriented-box
 models in the Ultralytics line (`yolo11n-obb` and its siblings) and `dota` for the DOTA benchmark
-and the toolkits that read it. **Ordinary YOLO detection is a different format**: a `class cx cy w
+and the toolkits that read it. The [CVAT XML formats](#the-cvat-xml-formats) also write a rotated
+box as itself, beside their other geometries. **Ordinary YOLO detection is a different format**: a `class cx cy w
 h` row has no angle, so `ultralytics`, `yolov5-yaml` and `darknet` either drop a rotated box or
 write its enclosing axis-aligned box and report it degraded. Here the rotated box is native -
 `supported_geometries` is `{obb}` and `degraded_geometries` is empty - and every other geometry is
@@ -1092,15 +1094,22 @@ several, and its attribute definitions: a `string` attribute as `text`, `number`
 range, `boolean` as `checkbox` and `select` as `select` with its options. A shape's attribute values
 are written as `<attribute name>` children, a boolean as `true` or `false`. Provenance survives only
 as CVAT's `source`: `human` as `manual`, `model` as `auto` and `import` as `file`. Every shape is
-`occluded="0"` and `z_order="0"`. A name or value holding a control character XML 1.0 cannot carry
+`occluded="0"` and `z_order="0"`. A rotated box (`obb`) is a `<box>` of its width and height
+about its centre, `xtl = cx - width / 2` and `ybr = cy + height / 2`, and a `rotation` of its angle
+in degrees in `[0, 360)`, clockwise on screen as CVAT turns a box (see
+[import](import.md#formats)); a rotated box at angle 0 writes no `rotation`, as CVAT does, so it
+reads back as an axis-aligned box. Read back by the importer, a rotated box keeps its centre and
+size to float rounding and its angle within `1e-9` radians, because it is written at full
+precision; CVAT itself rounds `rotation` and coordinates to two decimals, so a box re-saved by
+CVAT moves by up to `0.005` degrees and `0.005` pixels. A name or value holding a control character XML 1.0 cannot carry
 refuses the export with `ExportSourceUnreadable` before anything is written. Both declare `lossy = True`: confidence, a polyline's per-vertex
 visibility and the model behind a label have nowhere to go.
 
 `cvat-images` writes `annotations.xml` and the pictures under `images/`, named by content hash, as
 CVAT for images 1.1: one `<image>` per asset with its `id` in manifest order, its `name`, `width`
 and `height`, and a `subset` that is its fold under the release's split recipe or `default` without
-one. It writes boxes, polygons, polylines and classification tags (`<tag>`) whole, so its
-`supported_geometries` are those four and nothing is degraded.
+one. It writes boxes, rotated boxes, polygons, polylines and classification tags (`<tag>`) whole,
+so its `supported_geometries` are those five and nothing is degraded.
 
 `cvat-video` writes CVAT for video 1.1, one task per source a released track observes:
 `<source-id>/annotations.xml` and every frame the release holds of that source, observed or not, as
@@ -1117,8 +1126,9 @@ written. Attribute definitions are written
 it, and every other is numbered after the largest such id in its task. Each observation is a shape
 at `keyframe="1" outside="0"`; where a track does not continue to the next frame, an
 `outside="1"` keyframe follows, because CVAT otherwise carries a track across a gap and to the
-task's end. A CVAT track holds one shape type, so a track observing two refuses the export. It
-declares `{bbox, polygon, polyline}` and `tracked_only`, so a label no track observes, and every tag,
+task's end. A CVAT track holds one shape element, so a track observing two refuses the export; a
+box and a rotated box are both a `<box>` and may share a track. It
+declares `{bbox, obb, polygon, polyline}` and `tracked_only`, so a label no track observes, and every tag,
 is reported dropped. The split recipe is not applied, and augmented variants observe no track.
 
 ### The destination is the caller's

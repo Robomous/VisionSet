@@ -29,6 +29,7 @@ from visionset.kernel.domain import (
     ImportLossKind,
     LabelClass,
     ManifestAnnotation,
+    ObbGeometry,
     PolygonGeometry,
     PolylineGeometry,
 )
@@ -39,7 +40,8 @@ DOCUMENT_FILENAME: Final = "annotations.xml"
 IMAGES_DIRNAME: Final = "images"
 VERSION: Final = "1.1"
 
-#: The shape elements whose geometry the domain holds, and what each becomes.
+#: The shape elements whose geometry the domain holds, and what each becomes;
+#: a ``<box>`` with a ``rotation`` other than a whole turn becomes an ``obb``.
 DRAWN: Final[Mapping[str, GeometryType]] = {
     "box": GeometryType.BBOX,
     "polygon": GeometryType.POLYGON,
@@ -52,11 +54,21 @@ SHAPES: Final = frozenset(DRAWN) | UNDRAWN
 #: A label's ``<type>`` as CVAT names it, for each geometry the exporters write.
 LABEL_TYPES: Final[Mapping[GeometryType, str]] = {
     GeometryType.BBOX: "rectangle",
+    GeometryType.OBB: "rectangle",
     GeometryType.POLYGON: "polygon",
     GeometryType.POLYLINE: "polyline",
     GeometryType.CLASSIFICATION_TAG: "tag",
 }
-_TYPED: Final = {name: geometry for geometry, name in LABEL_TYPES.items()}
+_TYPED: Final = {
+    name: geometry for geometry, name in LABEL_TYPES.items() if geometry is not GeometryType.OBB
+}
+#: The CVAT shape element each written geometry becomes.
+TAGS: Final[Mapping[GeometryType, str]] = {
+    GeometryType.BBOX: "box",
+    GeometryType.OBB: "box",
+    GeometryType.POLYGON: "polygon",
+    GeometryType.POLYLINE: "polyline",
+}
 
 _INPUT_TYPES: Final = {
     "string": "text",
@@ -84,7 +96,7 @@ _SHAPE_ATTRIBUTES: Final = frozenset(
 )
 _FLAG: Final = re.compile(r"[01]")
 _INTEGER: Final = re.compile(r"[+-]?\d{1,9}", re.ASCII)
-_ROTATION: Final = "a rotated box has no canonical geometry; it is not imported"
+_ROTATION: Final = "its rotation is not a finite number of degrees; the box is not imported"
 _OCCLUDED: Final = "occluded is not carried; the shape is kept"
 _Z_ORDER: Final = "z_order is not carried; the shape is kept"
 _GROUP: Final = "group_id is not carried; the shape is kept"
@@ -370,10 +382,27 @@ def _points(document: Document, element: ElementTree.Element) -> list[tuple[floa
     return points
 
 
+def _rotation(element: ElementTree.Element) -> float | None:
+    """The box's ``rotation`` reduced into ``[0, 360)`` degrees, ``None`` when not finite."""
+    try:
+        degrees = float(element.get("rotation", "0").strip())
+    except ValueError:
+        return None
+    if not math.isfinite(degrees):
+        return None
+    turn = degrees % 360.0
+    return 0.0 if turn == 360.0 else turn
+
+
 def geometry(
     document: Document, element: ElementTree.Element, losses: Losses, label: str
-) -> BboxGeometry | PolygonGeometry | PolylineGeometry | None:
-    """The shape's canonical geometry, or ``None`` with its loss counted."""
+) -> BboxGeometry | ObbGeometry | PolygonGeometry | PolylineGeometry | None:
+    """The shape's canonical geometry, or ``None`` with its loss counted.
+
+    CVAT turns a ``<box>`` clockwise on screen by ``rotation`` degrees about its
+    centre, the same sense as an ``obb``'s angle, so the box before the turn is
+    the ``obb``'s size and centre and the angle is ``rotation`` in radians.
+    """
     if element.tag in UNDRAWN:
         losses[
             (
@@ -385,16 +414,24 @@ def geometry(
         return None
     try:
         if element.tag == "box":
-            rotation = element.get("rotation")
-            if rotation is not None and _coordinate(document, element, "rotation") % 360 != 0:
-                losses[(ImportLossKind.LABEL, label, _ROTATION)] += 1
-                return None
             left, top, right, bottom = (
                 _coordinate(document, element, name) for name in ("xtl", "ytl", "xbr", "ybr")
             )
             if right <= left or bottom <= top:
                 raise document.refuse(element, "the box has no area")
-            return BboxGeometry(x=left, y=top, width=right - left, height=bottom - top)
+            rotation = _rotation(element)
+            if rotation is None:
+                losses[(ImportLossKind.LABEL, label, _ROTATION)] += 1
+                return None
+            if rotation == 0.0:
+                return BboxGeometry(x=left, y=top, width=right - left, height=bottom - top)
+            return ObbGeometry(
+                cx=(left + right) / 2,
+                cy=(top + bottom) / 2,
+                width=right - left,
+                height=bottom - top,
+                angle=math.radians(rotation),
+            )
         points = _points(document, element)
         if element.tag == "polygon":
             if len(points) < 3:
@@ -569,7 +606,11 @@ def write_shape(
     *,
     with_attributes: bool = True,
 ) -> ElementTree.Element:
-    """One shape element of the annotation's geometry, after ``fields`` that lead it."""
+    """One shape element of the annotation's geometry, after ``fields`` that lead it.
+
+    An ``obb`` is a ``<box>`` of its size about its centre, turned by its angle
+    in degrees in ``[0, 360)``; a turn of zero writes no ``rotation``, as CVAT does.
+    """
     shape = annotation.geometry
     attributes = dict(fields)
     attributes["occluded"] = attributes.get("occluded", "0")
@@ -581,6 +622,18 @@ def write_shape(
             "xbr": format_number(shape.x + shape.width),
             "ybr": format_number(shape.y + shape.height),
         }
+    elif isinstance(shape, ObbGeometry):
+        tag_name = "box"
+        half_width, half_height = shape.width / 2, shape.height / 2
+        attributes |= {
+            "xtl": format_number(shape.cx - half_width),
+            "ytl": format_number(shape.cy - half_height),
+            "xbr": format_number(shape.cx + half_width),
+            "ybr": format_number(shape.cy + half_height),
+        }
+        rotation = math.degrees(shape.angle) % 360.0
+        if rotation not in (0.0, 360.0):
+            attributes["rotation"] = format_number(rotation)
     elif isinstance(shape, PolygonGeometry | PolylineGeometry):
         tag_name = "polygon" if isinstance(shape, PolygonGeometry) else "polyline"
         attributes["points"] = ";".join(

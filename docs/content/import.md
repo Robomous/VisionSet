@@ -91,7 +91,7 @@ computed from the content, and a commit that would drop something is refused wit
 | --- | --- |
 | `class` | A class the project's schema does not declare and no label uses; a CVAT label that names no geometry the domain holds. |
 | `geometry` | Part of a shape the kernel has no type for, such as YOLO keypoints, VOC parts, 3D lane points or an unusable per-vertex visibility, while the shape itself is kept; a `yolo-obb` or `dota` row whose corners are only near a rectangle, kept as the nearest rectangle; or a COCO polygon of several rings, kept as one mask rasterized at pixel centres. |
-| `label` | A whole label: a COCO RLE mask that is malformed or not its image's size, a `segmentation-png` mask with no picture or not the size of its picture, the pixels a `segmentation-png` ignore id marks, a label outside its image, a label lacking an attribute its class requires, a MOT row whose `conf` marks it ignored, a CVAT shape the domain has no geometry for (points, ellipse, cuboid, mask, skeleton, a rotated box), a `yolo-obb` or `dota` row whose four corners are not near a rectangle, or enclose no area. |
+| `label` | A whole label: a COCO RLE mask that is malformed or not its image's size, a `segmentation-png` mask with no picture or not the size of its picture, the pixels a `segmentation-png` ignore id marks, a label outside its image, a label lacking an attribute its class requires, a MOT row whose `conf` marks it ignored, a CVAT shape the domain has no geometry for (points, ellipse, cuboid, mask, skeleton) or a CVAT box whose `rotation` is not a finite number, a `yolo-obb` or `dota` row whose four corners are not near a rectangle, or enclose no area. |
 | `image` | An image the source names but does not hold, or one outside any sequence whose bytes repeat an earlier image; its labels go with it. A sequence frame that repeats one keeps its labels on that image's asset. A nuScenes camera frame, which is not read. A `segmentation-png` picture with no mask file, which is not imported. |
 | `scan` | A scan whose points repeat an earlier scan's, or one gone from the source; its labels go with it. A nuScenes sweep or radar frame, which is not read. |
 | `attribute` | An attribute value its class does not declare or does not accept, or one a label already on its asset holds otherwise, and extras the importer does not carry, such as a COCO attribute value that is not a string, a boolean or a number, COCO's `iscrowd` flag (the region is kept as an ordinary label), VOC difficult or pose flags, a DOTA `difficult` flag other than `0` or `1`, an OpenLane camera calibration, a track id outside a sequence or one a track cannot hold, a MOT box's visibility ratio or the absence of an identity (an `id` that is not positive), a CVAT attribute definition the domain has no kind for or a number's range, `occluded`, `z_order`, `group_id`, a `subset` and the interpolation CVAT would expand, KITTI truncation, occlusion, alpha and calibration, nuScenes attributes, visibility, instance tokens, point counts, poses and a scene's fields other than its name. |
@@ -138,8 +138,8 @@ naming the kinds to accept. See [mcp-tools.md](mcp-tools.md).
 | `classification` | `labels.csv` (`image`, `class`) and `classes.txt` beside `images/`; one tag per row | A row naming a class `classes.txt` does not declare, a second row of one class on one picture, a malformed row, a row with no picture or class |
 | `kitti` | A 3D object detection split: `velodyne/*.bin` scans, `label_2/*.txt` and `calib/*.txt`, at the top or in `training/` and `testing/` (or the `train/`, `val/`, `test/` the exporter writes); boxes as `cuboid_3d` in the `lidar_flu` frame | `DontCare` regions, each box's 2D image `bbox`, truncation, occlusion and alpha, the calibration itself, a score outside 0 to 1, a label with no scan, no usable calibration, a malformed line or a dimension that is not positive |
 | `mot` | MOTChallenge (MOT16/17/20) sequences: every directory holding a `seqinfo.ini`, its frames `<imDir>/<frame:06d><imExt>` for frames 1 to `seqLength`, and `gt/gt.txt` boxes with `gt/labels.txt` as the class table; each sequence as an image sequence and its ids as tracks | A row whose `conf` is `0` (ignored), each box's `visibility`, the identity of a row whose `id` is not positive (the box is kept untracked), frames the sequence names but does not hold; `det/det.txt` is not read. A malformed row or `seqinfo.ini` refuses the source |
-| `cvat-images` | CVAT for images 1.1: every `annotations.xml` holding `<image>` elements, its pictures under `images/` beside it; boxes, polygons, polylines and image-level tags | Points, ellipses, cuboids, masks, skeletons and rotated boxes, attribute definitions of an input type the domain has no kind for, `occluded`, a non-zero `z_order`, a `group_id`, a `subset` other than `default`, a second tag of one class on a picture. A malformed document refuses the source by file and line |
-| `cvat-video` | CVAT for video 1.1: every `annotations.xml` holding `<track>` elements, its frames `images/frame_<frame:06d><ext>` beside it; each task as an image sequence and its tracks' ids as tracks, with boxes, polygons and polylines per frame and `<tag frame>` as untracked tags | Tracks of shapes the domain has no geometry for, attribute definitions of an input type the domain has no kind for, `occluded`, `z_order`, `group_id`, the `keyframe="0"` mark of an interpolated frame, the frames CVAT interpolates between stored shapes or carries to the task's end, frames the task counts but does not hold. A malformed document refuses the source by file and line |
+| `cvat-images` | CVAT for images 1.1: every `annotations.xml` holding `<image>` elements, its pictures under `images/` beside it; boxes, rotated boxes, polygons, polylines and image-level tags | Points, ellipses, cuboids, masks, skeletons, a box whose `rotation` is not a finite number, attribute definitions of an input type the domain has no kind for, `occluded`, a non-zero `z_order`, a `group_id`, a `subset` other than `default`, a second tag of one class on a picture. A malformed document refuses the source by file and line |
+| `cvat-video` | CVAT for video 1.1: every `annotations.xml` holding `<track>` elements, its frames `images/frame_<frame:06d><ext>` beside it; each task as an image sequence and its tracks' ids as tracks, with boxes, rotated boxes, polygons and polylines per frame and `<tag frame>` as untracked tags | Tracks of shapes the domain has no geometry for, a box whose `rotation` is not a finite number, attribute definitions of an input type the domain has no kind for, `occluded`, `z_order`, `group_id`, the `keyframe="0"` mark of an interpolated frame, the frames CVAT interpolates between stored shapes or carries to the task's end, frames the task counts but does not hold. A malformed document refuses the source by file and line |
 | `nuscenes` | A data root: a version folder (`v1.0-mini`, `v1.0-trainval`, ...) of JSON tables beside `samples/LIDAR_TOP/*.pcd.bin`; the LIDAR_TOP keyframes, boxes as `cuboid_3d` in the `lidar_rfu` frame, and each keyframe's scene name as its group label | Attributes, visibility, instance tokens (tracking identity, because a track follows 2D labels only), `num_lidar_pts` and `num_radar_pts`, a scene's description, log and map, the ego pose and calibration themselves, a box leaning more than 6 degrees, a malformed box or a dimension that is not positive, an annotation whose sample has no LIDAR_TOP keyframe, the sweeps, and every other sensor's data |
 
 **COCO attributes.** A label's attribute values are read from the `"visionset"` object the
@@ -355,6 +355,19 @@ top-left corner as CVAT writes them, so a box is `x = xtl`, `width = xbr - xtl`,
 polyline `points` are `x,y;x,y;...`. Every label is written with `import` provenance, whatever its
 `source`.
 
+**CVAT rotated boxes.** CVAT draws a rotated box as the axis-aligned `<box>` before the turn and a
+`rotation` in degrees, turning it about its centre clockwise on screen (x right, y down): CVAT's
+canvas turns a point by `x' = dx cos r - dy sin r`, `y' = dy cos r + dx sin r` about the centre
+(`rotate2DPoints` in `cvat-canvas/src/typescript/shared.ts`), and its XML writer gives `rotation`
+two decimals and only when it is not zero (`cvat/apps/dataset_manager/formats/cvat.py`). That is
+the sense of an `obb`'s angle, so a box whose `rotation`, reduced modulo 360, is not zero becomes
+an `obb` of centre `((xtl + xbr) / 2, (ytl + ybr) / 2)`, width `xbr - xtl`, height `ybr - ytl`
+and angle `rotation` in radians, stored in its canonical form (see
+[annotations](annotations.md#a-rotated-box-is-a-centre-a-size-and-an-angle)). `390`, `-330` and
+`210` are the same box as `30`; `0`, `360` and `-360` are an axis-aligned box. A `rotation` that is
+not a finite number (`nan`, `inf`, text) is a `label` loss. The convention is taken from CVAT's
+source; it has not been checked against an export from a running CVAT.
+
 **CVAT attributes.** A label's `<attributes>` in the `<meta>` are its class's definitions: `text`
 is a `string`, `number` a `number`, `checkbox` a `boolean`, and `select` and `radio` a `select`
 whose options are the `<values>`, one per non-empty line, exactly as written. A non-empty
@@ -375,7 +388,8 @@ line of `<values>` and refuses the export before anything is written.
 | CVAT 1.1 | `cvat-images` | `cvat-video` |
 | --- | --- | --- |
 | `<box>` | bbox | bbox, tracked |
-| `<box rotation>` other than 0 | `label` loss | `label` loss |
+| `<box rotation>` not a whole turn | obb | obb, tracked |
+| `<box rotation>` not a finite number | `label` loss | `label` loss |
 | `<polygon>`, `<polyline>` | polygon, polyline | polygon, polyline, tracked |
 | `<points>`, `<ellipse>`, `<cuboid>`, `<mask>`, `<skeleton>` | `label` loss | `label` loss per stored shape |
 | `<tag>` | classification tag | `<tag frame>`: an untracked classification tag on that frame |

@@ -237,7 +237,9 @@ box around the corners, is **lossy** whenever the angle is not a multiple of `pi
 exporter that declares `obb` in `degraded_geometries` writes it; see
 [releases](releases.md#dropped-is-not-degraded-and-one-word-for-both-was-a-lie). `yolo-obb` and
 `dota` write a rotated box as its four corners and read one back through `obb_from_corners`; see
-[the rotated-box formats](releases.md#the-rotated-box-formats). Nothing projects a rotated box onto an
+[the rotated-box formats](releases.md#the-rotated-box-formats). `cvat-images` and `cvat-video` write
+one as a CVAT `<box>` and its `rotation` and read it back the same way; see
+[the CVAT XML formats](releases.md#the-cvat-xml-formats). Nothing projects a rotated box onto an
 axis-aligned one silently.
 
 **Against the frame**, a rotated box is judged by the rectangle itself, not its enclosing box:
