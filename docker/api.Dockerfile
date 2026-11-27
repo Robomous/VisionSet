@@ -13,10 +13,13 @@ WORKDIR /workspace
 
 COPY pyproject.toml uv.lock ./
 
+# One extra from uv.lock to add, e.g. `mlflow` (docker/compose.mlflow.yaml); none by default.
+ARG VISIONSET_EXTRA=""
+
 # `--frozen` so the build cannot disagree with CI; `--no-install-project` because the
 # project is installed below, in a layer a source edit may invalidate.
 RUN --mount=type=cache,target=/root/.cache/uv \
-    uv sync --frozen --no-install-project
+    uv sync --frozen --no-install-project ${VISIONSET_EXTRA:+--extra "$VISIONSET_EXTRA"}
 
 # The bind-mounted source is what runs.
 ENV PYTHONPATH=/workspace/src

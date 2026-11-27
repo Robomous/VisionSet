@@ -36,6 +36,8 @@ from pydantic import Field, StrictBool
 
 from visionset import wire
 from visionset.formats import registry
+from visionset.jobs import export as export_job
+from visionset.jobs.inline import Surface, tracked_run
 from visionset.kernel.domain import ExportTarget, SplitRecipe
 from visionset.kernel.ports import Exporter, resolve_target
 from visionset.kernel.services import (
@@ -278,15 +280,24 @@ def export_release(
             if recipe is None
             else PreprocessingRecipeService(workspace).for_release(release.id, recipe).spec
         )
-        result = ReleaseService(workspace).export(
+        payload = export_job.payload_for(
             release.id,
-            plugin,
-            Path(dest),
+            plugin.format_name,
+            target=None if addressed is None else addressed.name,
             allow_lossy=allow_lossy,
-            allow_non_empty=allow_non_empty,
-            target=addressed,
-            recipe=spec,
-            recipe_name=recipe,
-            drivers=None if spec is None else preprocessing_registry.drivers(),
+            recipe=None if spec is None else (recipe, spec),
         )
+        with tracked_run(Surface.MCP, export_job.JOB_TYPE, payload) as run:
+            result = ReleaseService(workspace).export(
+                release.id,
+                plugin,
+                Path(dest),
+                allow_lossy=allow_lossy,
+                allow_non_empty=allow_non_empty,
+                target=addressed,
+                recipe=spec,
+                recipe_name=recipe,
+                drivers=None if spec is None else preprocessing_registry.drivers(),
+            )
+            run.exported(result, workspace)
     return wire.export_result(result)

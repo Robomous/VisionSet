@@ -57,6 +57,8 @@ from visionset.cli._output import JsonOption, document, note, table
 from visionset.cli._resolve import ProjectOption
 from visionset.cli._workspace import WorkspaceOption, opened_workspace
 from visionset.formats import registry
+from visionset.jobs import export as export_job
+from visionset.jobs.inline import Surface, tracked_run
 from visionset.kernel.domain import ExportCompatibility, ExportTarget
 from visionset.kernel.ports import Exporter, resolve_target
 from visionset.kernel.services import (
@@ -194,17 +196,26 @@ def export(
         # `out` is not None here — the guard above is what makes that true, and
         # mypy cannot see through it across the `with`.
         assert out is not None
-        result = ReleaseService(service).export(
+        payload = export_job.payload_for(
             found.id,
-            plugin,
-            out.expanduser().absolute(),
+            plugin.format_name,
+            target=None if addressed is None else addressed.name,
             allow_lossy=allow_lossy,
-            allow_non_empty=allow_non_empty,
-            target=addressed,
-            recipe=spec,
-            recipe_name=recipe,
-            drivers=None if spec is None else preprocessing_registry.drivers(),
+            recipe=None if spec is None else (recipe, spec),
         )
+        with tracked_run(Surface.CLI, export_job.JOB_TYPE, payload) as run:
+            result = ReleaseService(service).export(
+                found.id,
+                plugin,
+                out.expanduser().absolute(),
+                allow_lossy=allow_lossy,
+                allow_non_empty=allow_non_empty,
+                target=addressed,
+                recipe=spec,
+                recipe_name=recipe,
+                drivers=None if spec is None else preprocessing_registry.drivers(),
+            )
+            run.exported(result, service)
     if json_out:
         document(wire.export_result(result))
         return

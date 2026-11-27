@@ -1,0 +1,21 @@
+# MLflow tracking for the dev stack (development only):
+#
+#   docker compose -f docker/compose.yaml -f docker/compose.mlflow.yaml --profile mlflow up --build
+#
+# The profile starts the `mlflow` service; this file installs the client into the api image
+# and turns tracking on there. `--build` on every switch in or out, because the image
+# differs. Stacks with docker/compose.cpu-inference.yaml or docker/compose.gpu.yaml, listed
+# before this file.
+# What is sent, and how to point at another server: docs/content/tracking.md.
+
+services:
+  api:
+    build:
+      args:
+        VISIONSET_EXTRA: mlflow
+    environment:
+      VISIONSET_MLFLOW_ENABLED: "true"
+      VISIONSET_MLFLOW_EXPERIMENT: ${VISIONSET_MLFLOW_EXPERIMENT:-visionset-dev}
+      # The compose network's name for the service, not the host's 127.0.0.1, which
+      # inside a container is the container itself.
+      MLFLOW_TRACKING_URI: http://mlflow:5000
