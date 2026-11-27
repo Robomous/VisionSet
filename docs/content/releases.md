@@ -779,8 +779,7 @@ records the original spelling. Two written classes that would share a category, 
 `small vehicle` and `small-vehicle`, refuse the export with `ExportSourceUnreadable` naming both,
 rather than merging them. `yolo-obb` keeps names as they are, since they live in `data.yaml`.
 `difficult` is `1` for a box carrying a boolean attribute named `difficult` set to true and `0`
-otherwise. An import cannot hold it back (see [import.md](import.md#formats)), so it survives only
-the export.
+otherwise, and an import reads it back into that attribute (see [import.md](import.md#formats)).
 
 ### The COCO format
 

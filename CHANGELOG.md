@@ -26,6 +26,10 @@ nothing was being distributed. This is the first version that is.
   exactly; every resize strategy refuses it, and the preview's size cap resamples it nearest-neighbour. No exporter
   writes a mask: every export reports it dropped. A release holding one is a version-10 manifest; every other
   release keeps its version, bytes and hash (#1162).
+- **DOTA's `difficult` flag imports as a boolean attribute.** `dota` import carries a row's `0` or `1` as the boolean
+  `difficult` attribute the exporter writes it from, so a DOTA dataset round-trips its flags with no `attribute` loss;
+  a class with a flagged box defines the attribute, a row with no flag carries no value, and any other flag is still
+  an `attribute` loss with the box kept (#1207).
 - **Rotated-box formats: `yolo-obb` and `dota`, import and export.** `yolo-obb` is the Ultralytics OBB layout - the
   `ultralytics` detection layout and `data.yaml` with rows of a class index and four normalized corners - and `dota`
   is the DOTA benchmark's `<fold>/images` and `<fold>/labelTxt`, rows of four pixel corners, a category and
@@ -37,7 +41,7 @@ nothing was being distributed. This is the first version that is.
   quadrilaterals (at most 0.131 of the shorter side on Ultralytics' DOTA8) - import as the nearest rectangle and a
   `geometry` loss; a trapezoid, a skewed parallelogram, a kite, a bow-tie, or corners enclosing no area are a
   `label` loss. `difficult` is written from a boolean
-  `difficult` attribute and, having nowhere to land on import, a `1` is an `attribute` loss. A DOTA row cannot quote
+  `difficult` attribute. A DOTA row cannot quote
   a category, so each whitespace run in a class name is written as one hyphen, DOTA's own spelling
   (`baseball diamond` as `baseball-diamond`), and a re-import names the class with the hyphen; two classes that would
   share a category refuse the export naming both. `yolo-obb` keeps names unchanged in `data.yaml`. The `ultralytics`
