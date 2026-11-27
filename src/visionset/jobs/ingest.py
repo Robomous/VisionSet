@@ -35,6 +35,7 @@ from pydantic import JsonValue
 
 from visionset.jobs.context import workspace_for
 from visionset.jobs.registry import HandlerRef, register
+from visionset.kernel.domain import IngestResult
 from visionset.kernel.ports import ProgressReporter
 from visionset.kernel.services import IngestService
 
@@ -76,9 +77,13 @@ def run(
     # Never a ``with``: the handle belongs to the worker and outlives this task.
     # See ``jobs/context.py``.
     workspace = workspace_for(workspace_root)
-    result = IngestService(workspace).resume(ingest_job_id)
+    return outcome_of(IngestService(workspace).resume(ingest_job_id))
+
+
+def outcome_of(result: IngestResult) -> dict[str, JsonValue]:
+    """What an ingest came to, as this handler's ``result`` records it."""
     return {
-        "ingest_job_id": str(result.job_id),
+        INGEST_JOB_KEY: str(result.job_id),
         "batch_id": None if result.batch_id is None else str(result.batch_id),
         "asset_count": len(result.assets),
         "created": result.created,
