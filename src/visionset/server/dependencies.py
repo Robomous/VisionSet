@@ -33,7 +33,7 @@ from starlette.requests import Request
 from visionset.formats.registry import exporters
 from visionset.inference.registry import registered
 from visionset.jobs import JobRunner
-from visionset.kernel.errors import VisionSetError
+from visionset.kernel.errors import TrackingUnavailable, VisionSetError
 from visionset.kernel.ports import AuthProvider, Exporter, PreprocessingDriver, Provider
 from visionset.kernel.services import (
     WORKSPACE_ENV_VAR as WORKSPACE_ENV_VAR,
@@ -48,6 +48,7 @@ from visionset.preprocessing.registry import drivers
 from visionset.server import session
 from visionset.server.errors import ERROR_RESPONSES, code_for
 from visionset.server.settings import job_settings
+from visionset.tracking import TrackingSettings, tracking_settings
 
 # ``WORKSPACE_ENV_VAR`` and ``resolve_workspace_root`` are re-exported above
 # rather than defined here — the redundant ``as`` aliases are the explicit
@@ -213,6 +214,7 @@ class DispatcherHandle:
             poll_interval_s=settings.job_poll_interval_s,
             progress_min_interval_s=settings.job_progress_min_interval_s,
             error_code=code_for,
+            tracking=_job_tracking(),
         )
         runner.start()
         self._runner = runner
@@ -233,6 +235,19 @@ class DispatcherHandle:
         runner, self._runner = self._runner, None
         if runner is not None:
             runner.stop()
+
+
+def _job_tracking() -> TrackingSettings | None:
+    """The tracking settings background jobs run with, or ``None`` to run them untracked.
+
+    A tracking flag VisionSet cannot read does not stop the dispatcher: the jobs
+    still run, and the warning names the variable to fix.
+    """
+    try:
+        return tracking_settings()
+    except TrackingUnavailable as exc:
+        _logger.warning("background jobs run untracked: %s", exc)
+        return None
 
 
 def get_job_runner(request: Request) -> DispatcherHandle:

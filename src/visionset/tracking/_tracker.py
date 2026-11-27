@@ -39,6 +39,15 @@ class Tracker(Protocol):
 
     def end_run(self, run_id: str | None, status: RunStatus = RunStatus.FINISHED) -> None: ...
 
+    def running_runs(self, tags: Mapping[str, str]) -> list[str]:
+        """Ids of the runs still running that carry every one of these tags.
+
+        Answers ``[]`` when nothing matches, when nothing was recorded, and when
+        the server could not be asked — a caller cannot tell those apart, and
+        never needs to: it is how an interrupted run is found and ended late.
+        """
+        ...
+
 
 class NoOpTracker:
     """Tracking turned off: imports nothing, opens nothing, records nothing."""
@@ -59,3 +68,6 @@ class NoOpTracker:
 
     def end_run(self, run_id: str | None, status: RunStatus = RunStatus.FINISHED) -> None:
         return None
+
+    def running_runs(self, tags: Mapping[str, str]) -> list[str]:
+        return []

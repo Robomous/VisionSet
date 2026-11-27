@@ -925,7 +925,8 @@ jobs:
   # present. Every other job runs a base install, where the tracking tests that
   # need the client skip and the base-install guarantees run instead; this is the
   # only place the adapter meets the real client. No server is needed: the tests
-  # run one of their own on loopback.
+  # run one of their own on loopback. The tracked-job tests (#1175) run here too,
+  # because their spawned-worker half needs the client in the workers.
   #
   # The oldest and newest Python the extra installs on. Not 3.15: `pyyaml`, which
   # the client requires, publishes no 3.15 wheel yet and its source build needs
@@ -964,6 +965,8 @@ jobs:
         run: |
           uv run pytest \
             tests/tracking \
+            tests/jobs/test_job_tracking.py \
+            tests/jobs/test_job_tracking_spawn.py \
             tests/architecture/test_optional_runtime.py \
             tests/architecture/test_kernel_purity.py \
             -rs

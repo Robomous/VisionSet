@@ -48,6 +48,12 @@ _STATUS: Final[Mapping[RunStatus, str]] = {
 
 _ERROR_CODE = re.compile(r"[A-Z][A-Z_]{0,63}")
 
+_SEARCHABLE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:-]{0,249}")
+"""What a tag key or value may be to appear in a search filter. Anything else is
+refused rather than quoted, so no caller's text is ever parsed as filter syntax."""
+
+MAX_RUNNING_RUNS: Final = 50
+
 _log = logging.getLogger("visionset.tracking")
 
 REDACTED: Final = "<tracking server>"
@@ -260,6 +266,25 @@ class MlflowTracker:
             self._client.set_terminated(run_id, status=_STATUS[status])
         except Exception as exc:
             self._warn("end a run", exc)
+
+    def running_runs(self, tags: Mapping[str, str]) -> list[str]:
+        if not tags or not all(
+            _SEARCHABLE.fullmatch(key) and _SEARCHABLE.fullmatch(value)
+            for key, value in tags.items()
+        ):
+            return []
+        clauses = [f"tags.`{key}` = '{value}'" for key, value in tags.items()]
+        clauses.append("attributes.status = 'RUNNING'")
+        try:
+            found = self._client.search_runs(
+                [self._experiment_id_for_runs()],
+                filter_string=" and ".join(clauses),
+                max_results=MAX_RUNNING_RUNS,
+            )
+            return [str(run.info.run_id) for run in found]
+        except Exception as exc:
+            self._warn("look up running runs", exc)
+            return []
 
 
 def build_mlflow_tracker(experiment: str) -> MlflowTracker:

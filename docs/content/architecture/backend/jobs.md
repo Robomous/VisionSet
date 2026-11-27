@@ -57,6 +57,11 @@ plugin, so `jobs` imports `formats`, and a kernel that could reach a handler cou
 reach a plugin through it. It is also what keeps `SqliteJobQueue` unable to resolve
 a job type, which is why `UnknownJobType` is raised outside the kernel.
 
+`visionset.jobs` imports `visionset.tracking` to record each execution attempt as a
+run, and never the reverse: tracking knows nothing about jobs, and what crosses into
+a worker is the tracking settings, not a client. See
+[experiment tracking](../../tracking.md#background-jobs).
+
 ## Related
 
 [`docs/content/background-jobs.md`](../../background-jobs.md) is the executor itself: the

@@ -52,6 +52,7 @@ def test_the_no_op_tracker_records_nothing_and_satisfies_the_interface() -> None
     tracker.log_metrics(run_id, {"m": 1.0}, step=2)
     tracker.set_tags(run_id, {"k": "v"})
     tracker.end_run(run_id, RunStatus.FAILED)
+    assert tracker.running_runs({"k": "v"}) == []
 
 
 @pytest.mark.parametrize("value", ["maybe", "2", "enabled"])

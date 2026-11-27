@@ -44,7 +44,16 @@ from collections.abc import Callable
 from concurrent.futures import BrokenExecutor, Executor, Future, ProcessPoolExecutor
 from pathlib import Path
 from typing import Final
+from uuid import UUID, uuid4
 
+from visionset.jobs._tracking import (
+    RECONCILED_SERVER_RESTART,
+    RECONCILED_WORKER_LOST,
+    TAG_EXECUTION_ID,
+    TAG_JOB_ID,
+    AttemptTracking,
+    reconcile,
+)
 from visionset.jobs._worker import WorkerResult, execute
 from visionset.jobs.context import initialize_worker
 from visionset.jobs.registry import resolve
@@ -57,6 +66,7 @@ from visionset.kernel.domain import (
 )
 from visionset.kernel.errors import UnknownJobType, VisionSetError
 from visionset.kernel.ports import EventBus, JobQueue
+from visionset.tracking import TrackingSettings
 
 _logger: Final = logging.getLogger(__name__)
 
@@ -105,6 +115,7 @@ class JobRunner:
         progress_min_interval_s: float = 0.5,
         executor_factory: Callable[[int], Executor] | None = None,
         error_code: Callable[[BaseException], str | None] | None = None,
+        tracking: TrackingSettings | None = None,
     ) -> None:
         self._queue = queue
         self._root = workspace_root
@@ -114,6 +125,9 @@ class JobRunner:
         #: up, because the table lives with the surface that publishes codes
         #: and this package imports no surface. ``None`` means nothing is named.
         self._error_code = error_code
+        #: Whether each execution attempt opens a tracking run. Settings, never a
+        #: tracker: a worker builds its own. ``None`` and disabled are the same.
+        self._tracking = tracking if tracking is not None and tracking.mlflow_enabled else None
         self._workers = max(1, workers)
         self._poll_interval_s = poll_interval_s
         self._progress_min_interval_s = progress_min_interval_s
@@ -150,6 +164,8 @@ class JobRunner:
         orphans = self._queue.sweep_orphans(reason=ORPHAN_REASON)
         if orphans:
             _logger.warning("settled %d job(s) left running by a previous process", len(orphans))
+            for orphan in orphans:
+                reconcile(self._tracking, {TAG_JOB_ID: str(orphan.id)}, RECONCILED_SERVER_RESTART)
         self._stopping.clear()
         self._executor = self._executor_factory(self._workers)
         self._thread = threading.Thread(target=self._loop, name="visionset-dispatcher", daemon=True)
@@ -287,6 +303,7 @@ class JobRunner:
         if executor is None:  # stopped between the claim and here
             self._slots.release()
             return
+        tracking = self._attempt_tracking(job, ref.type)
         try:
             future = executor.submit(
                 execute,
@@ -295,17 +312,36 @@ class JobRunner:
                 job.id,
                 dict(job.payload),
                 self._progress_min_interval_s,
+                tracking,
             )
         except (BrokenExecutor, RuntimeError) as exc:
             # RuntimeError is what an already-shut-down executor raises.
             self._settle_failure(job, f"the worker pool would not accept the job: {exc}")
             self._slots.release()
             return
-        future.add_done_callback(lambda done: self._settle(job, done))
+        execution_id = None if tracking is None else tracking.execution_id
+        future.add_done_callback(lambda done: self._settle(job, done, execution_id))
+
+    def _attempt_tracking(self, job: BackgroundJob, job_type: str) -> AttemptTracking | None:
+        if self._tracking is None:
+            return None
+        try:
+            return AttemptTracking(
+                settings=self._tracking,
+                execution_id=uuid4(),
+                job_id=job.id,
+                job_type=job_type,
+                attempt=job.attempt,
+            )
+        except Exception:  # noqa: BLE001 — the job runs untracked rather than not at all
+            _logger.warning("job %s runs untracked", job.id, exc_info=True)
+            return None
 
     # --- settling ----------------------------------------------------------
 
-    def _settle(self, job: BackgroundJob, future: Future[WorkerResult]) -> None:
+    def _settle(
+        self, job: BackgroundJob, future: Future[WorkerResult], execution_id: UUID | None = None
+    ) -> None:
         """Turn a resolved future into a terminal row, then free the slot.
 
         Runs on whichever thread the executor completes on, so it must not raise:
@@ -314,14 +350,16 @@ class JobRunner:
         with it. Hence the outer guard and the ``finally``.
         """
         try:
-            self._record(job, future)
+            self._record(job, future, execution_id)
         except Exception:  # noqa: BLE001 — see the docstring
             _logger.exception("could not settle job %s", job.id)
         finally:
             self._slots.release()
             self._nudge.set()
 
-    def _record(self, job: BackgroundJob, future: Future[WorkerResult]) -> None:
+    def _record(
+        self, job: BackgroundJob, future: Future[WorkerResult], execution_id: UUID | None = None
+    ) -> None:
         try:
             outcome = future.result()
         except Exception as exc:  # noqa: BLE001 — every failure is the job's
@@ -329,6 +367,11 @@ class JobRunner:
             # for a worker killed mid-flight: the future raises, and the job is
             # failed on its own row rather than left claiming to run.
             self._settle_failure(job, str(exc) or exc.__class__.__name__, self._code_for(exc))
+            if isinstance(exc, BrokenExecutor) and execution_id is not None:
+                # The worker died before it could close its own run.
+                reconcile(
+                    self._tracking, {TAG_EXECUTION_ID: str(execution_id)}, RECONCILED_WORKER_LOST
+                )
             return
 
         state = BackgroundJobState.CANCELLED if outcome.cancelled else BackgroundJobState.SUCCEEDED

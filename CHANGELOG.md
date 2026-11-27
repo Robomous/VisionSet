@@ -24,6 +24,17 @@ nothing was being distributed. This is the first version that is.
   `attributes`), defining each by its first value's type; `openlane-2d` carries a lane's `attribute` 1 to 4 as
   `position_role`, ignoring only the exporter's own echo of the category. `inspect_import` and
   `import --dry-run --json` list each class's attribute definitions (#1198).
+- **Background jobs are tracked in MLflow when tracking is on.** Each execution attempt of a background job opens
+  one run, named after the job type and correlated by `visionset.job_id`, `visionset.attempt` and a per-attempt
+  `visionset.execution_id`, so a retry or a re-queued orphan is a run of its own. A succeeded, failed or cancelled job
+  ends its run `FINISHED`, `FAILED` or `KILLED`; a failure records the exception's class and error code, never its
+  message. Every run carries `duration_seconds` (execution only, monotonic) and the job's final counts when it
+  reported them; pre-labeling adds its confidence, replace flag, requested shapes, the answering model's id and
+  revision when it is named as `<id>@<commit>`, and its written, replaced, skipped, discarded and out-of-bounds counts.
+  Values come from an allowlist and are omitted, never zeroed, when unknown. Delivery runs on a thread beside the job,
+  so a tracking server that is slow or down never delays or changes a job; a run left open by a dead worker or a
+  stopped server is failed late on a best-effort basis. `Tracker` gains `running_runs`. See
+  [tracking](docs/content/tracking.md#background-jobs) (#1175).
 - **Manifest version 9: sources' frames, and timing that may be unknown.** A release holding an asset of an
   image-sequence source lists that source under `sources` with every occurrence whose asset it holds -
   `position`, `timestamp`, `asset_id`, in position order - so `cvat-video` and `mot` write every held frame of a
@@ -49,7 +60,7 @@ nothing was being distributed. This is the first version that is.
   `MLFLOW_TRACKING_URI` alone never turns it on - and, when off, the client is not imported and nothing is sent.
   Enabled with no URI, a URI carrying credentials or a query string, or no client installed is refused as `TRACKING_UNAVAILABLE`; a
   server that is down is a sanitized warning with bounded timeouts, never a failure. Only the settings cross into a
-  worker. No operation is instrumented yet. See [tracking](docs/content/tracking.md) (#1174).
+  worker. See [tracking](docs/content/tracking.md) (#1174).
 - **Tracks in the annotation workspace.** On a frame of a video or image-sequence source, the side panel gains a
   Tracks region: the source's tracks with their class and frame count, the followed track's standing in this batch,
   and `‹` / `›` to its previous and next frame in the job, through the save-first path, passing over - and saying

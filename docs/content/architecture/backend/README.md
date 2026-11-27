@@ -37,6 +37,8 @@ flowchart TB
     Cli --> Preprocessing
     Mcp --> Preprocessing
     Jobs --> Preprocessing
+    Server --> Tracking
+    Jobs --> Tracking
     Server --> Kernel
     Cli --> Kernel
     Mcp --> Kernel
