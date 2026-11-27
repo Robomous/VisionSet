@@ -678,6 +678,30 @@ def test_the_excluded_classes_are_named_on_stderr_so_stdout_stays_the_path(
     assert (out / EXPORT_REPORT_FILENAME).is_file()
 
 
+def test_the_untagged_assets_a_single_tag_format_left_out_are_counted_on_stderr(
+    root: Path, tmp_path: Path
+) -> None:
+    name, out = _labeled_release(root, tmp_path)
+
+    result = run(
+        root,
+        "export",
+        "-p",
+        name,
+        "--release",
+        "v1.0",
+        "--format",
+        "classification-dir",
+        "--out",
+        str(out),
+        "--allow-lossy",
+    )
+
+    assert result.exit_code == 0, result.output
+    assert result.stdout.strip() == str(out)
+    assert "Left out by classification-dir: 6 asset(s)" in result.stderr
+
+
 # --- export --check ----------------------------------------------------------
 #
 # Without it, the report `ReleaseService.check_export` computes reaches REST and
@@ -806,6 +830,27 @@ def test_check_prints_the_table_on_stdout_and_the_prose_on_stderr(
     assert "would drop" in result.stderr
     assert "would drop" not in result.stdout
     assert "--allow-lossy" in result.stderr
+
+
+def test_check_counts_the_untagged_assets_a_single_tag_format_would_leave_out(
+    root: Path, tmp_path: Path
+) -> None:
+    name, _ = _labeled_release(root, tmp_path)
+
+    result = run(
+        root,
+        "export",
+        "-p",
+        name,
+        "--release",
+        "v1.0",
+        "--format",
+        "classification-dir",
+        "--check",
+    )
+
+    assert result.exit_code == 1, result.output
+    assert "would leave out 6 asset(s) that carry no classification tag" in result.stderr
 
 
 def test_the_refusal_names_the_flag_a_person_types(

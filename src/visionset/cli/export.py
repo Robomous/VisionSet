@@ -256,6 +256,11 @@ def export(
             cut = [one for one in rows if one.cropped_by == strategy]
             listed = ", ".join(f"{one.label_class} ({one.annotations})" for one in cut)
             note(f"{by_crop.format(strategy)}: {listed}. See {EXPORT_REPORT_FILENAME}.")
+    if result.compatibility.untagged_assets:
+        note(
+            f"Left out by {result.format_name}: {result.compatibility.untagged_assets} "
+            f"asset(s) that carry no classification tag. See {EXPORT_REPORT_FILENAME}."
+        )
     typer.echo(str(result.directory))
 
 
