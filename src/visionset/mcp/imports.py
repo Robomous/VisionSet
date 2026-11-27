@@ -75,8 +75,9 @@ def inspect_import(
     `creates_schema` is true when the project has no schema and the dataset's
     classes would become version 1. `new_assets` and `new_annotations` are what
     a commit would add; images already in the project are matched by content.
-    `sequences` counts the image sequences the dataset orders, such as OpenLane
-    segments, and `tracks` the tracks their labels carry.
+    `sequences` counts the image sequences a commit would write as sources, those
+    holding an asset it creates or labels (such as OpenLane segments), and
+    `tracks` the tracks over the labels it would write.
 
     Every image or scan is decoded, so expect it to take a while on a large dataset.
     """

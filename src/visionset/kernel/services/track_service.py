@@ -186,6 +186,7 @@ class TrackService:
             InvalidName: a class or an external id is blank.
             SourceNotFound: no such source in the batch's project.
             SourceNotSequence: a source is neither a video nor an image sequence.
+            SchemaNotFound: the project has no schema yet.
             LabelClassNotInSchema: the active schema version does not declare a class.
             TrackExternalIdTaken: another track of the source carries an external id.
             FrameOccurrenceNotFound: no such occurrence in this workspace.
