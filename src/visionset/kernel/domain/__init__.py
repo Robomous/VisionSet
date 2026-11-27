@@ -402,6 +402,7 @@ from visionset.kernel.domain.schema_diff import (
 )
 from visionset.kernel.domain.schema_draft import (
     DraftAttribute,
+    DraftKeypointIndex,
     DraftKeypointSpec,
     DraftLabelClass,
     SchemaDraft,
@@ -664,6 +665,7 @@ __all__ = [
     "DomainEvent",
     "DownloadSize",
     "DraftAttribute",
+    "DraftKeypointIndex",
     "DraftKeypointSpec",
     "DraftLabelClass",
     "ConnectionJob",

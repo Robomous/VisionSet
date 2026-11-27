@@ -24,7 +24,7 @@ catches the whole family and no caller has to know which of the two rules refuse
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Literal
+from typing import Annotated, Literal
 from uuid import UUID, uuid4
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
@@ -73,13 +73,17 @@ class DraftAttribute(BaseModel):
         )
 
 
+DraftKeypointIndex = Annotated[int, Field(strict=True)]
+"""A draft edge's end: an integer, never a coerced bool or float, though it may dangle."""
+
+
 class DraftKeypointSpec(BaseModel):
     """A keypoint spec being written: names may be blank and edges may dangle."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     names: tuple[str, ...] = ()
-    skeleton: tuple[tuple[int, int], ...] = ()
+    skeleton: tuple[tuple[DraftKeypointIndex, DraftKeypointIndex], ...] = ()
 
     def to_keypoint_spec(self) -> KeypointSpec:
         """This spec as the published contract would have it.

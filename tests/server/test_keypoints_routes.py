@@ -190,6 +190,18 @@ def test_a_draft_holds_an_unfinished_spec_and_publish_refuses_it(
     assert refused.json()["code"] == "INVALID_SCHEMA"
 
 
+@pytest.mark.parametrize("edge", [[True, 1], [1.0, 2], ["1", 2]])
+def test_a_draft_skeleton_index_is_an_integer_never_coerced(
+    client: TestClient, project: str, edge: list[object]
+) -> None:
+    face = {**FACE, "keypoints": {"names": ["left_eye", "right_eye"], "skeleton": [edge]}}
+
+    refused = client.put(f"/projects/{project}/schema/drafts/curated", json={"classes": [face]})
+
+    assert refused.status_code == 422, refused.text
+    assert refused.json()["code"] == "VALIDATION_ERROR"
+
+
 def test_a_draft_spec_round_trips_and_publishes(client: TestClient, project: str) -> None:
     widened = {"names": [*SPEC["names"]], "skeleton": [[0, 1]]}
     classes = [SIGN, {**FACE, "keypoints": widened}, POSE]
@@ -320,6 +332,24 @@ def test_a_class_without_a_spec_takes_any_count(
     assert written.json()["items"][0]["geometry"]["points"] == points
 
 
+def test_a_spec_added_over_labels_whose_count_fits_is_still_would_orphan(
+    client: TestClient, project: str, working: tuple[str, str, str]
+) -> None:
+    _, job_id, asset = working
+    fits = [[1.0, 1.0], [2.0, 2.0]]
+    client.post(f"/jobs/{job_id}/annotations", json=[_keypoints(asset, fits, label_class="pose")])
+    named = {**POSE, "keypoints": {"names": ["head", "tail"], "skeleton": []}}
+
+    refused = client.post(
+        f"/projects/{project}/schema/versions",
+        json={"classes": [SIGN, FACE, named]},
+        params={"allow_destructive": "true"},
+    )
+
+    assert refused.status_code == 409, refused.text
+    assert refused.json()["code"] == "SCHEMA_CHANGE_WOULD_ORPHAN"
+
+
 @pytest.mark.parametrize("literal", ["1e999", "-1e999", "NaN", "Infinity"])
 def test_a_nonfinite_coordinate_is_a_validation_error(
     client: TestClient, working: tuple[str, str, str], literal: str
@@ -412,14 +442,14 @@ def released(client: TestClient, project: str, working: tuple[str, str, str]) ->
     return _released(client, project, batch_id, job_id), asset
 
 
-def test_a_release_holding_keypoints_is_manifest_version_11_with_both_verbatim(
+def test_a_release_holding_keypoints_is_manifest_version_12_with_both_verbatim(
     client: TestClient, released: tuple[str, str]
 ) -> None:
     release_id, _ = released
 
     document = client.get(f"/releases/{release_id}/manifest").json()
 
-    assert document["manifest_version"] == KEYPOINTS_MANIFEST_VERSION == 11
+    assert document["manifest_version"] == KEYPOINTS_MANIFEST_VERSION == 12
     classes = {one["name"]: one for one in document["classes"]}
     assert classes["face"]["keypoints"] == SPEC
     assert "keypoints" not in classes["sign"]

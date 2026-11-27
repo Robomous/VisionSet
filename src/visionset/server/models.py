@@ -105,6 +105,7 @@ from visionset.kernel.domain import (
     DatasetStats,
     DownloadSize,
     DraftAttribute,
+    DraftKeypointIndex,
     DraftKeypointSpec,
     DraftLabelClass,
     ExportCompatibility,
@@ -675,7 +676,7 @@ class DraftKeypointSpecBody(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     names: tuple[str, ...] = ()
-    skeleton: tuple[tuple[int, int], ...] = ()
+    skeleton: tuple[tuple[DraftKeypointIndex, DraftKeypointIndex], ...] = ()
 
     def to_domain(self) -> DraftKeypointSpec:
         return DraftKeypointSpec(names=self.names, skeleton=self.skeleton)

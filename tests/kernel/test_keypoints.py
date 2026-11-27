@@ -106,6 +106,15 @@ def test_keypoints_land_on_the_frame_when_any_point_does() -> None:
     assert geometry_intersects_asset(outside, width=None, height=8)
 
 
+def test_an_unlabeled_point_inside_the_frame_still_lands_the_label() -> None:
+    unlabeled_inside = KeypointsGeometry(
+        points=[(-5.0, -5.0), (10.0, 8.0)],
+        visibility=(VertexVisibility.VISIBLE, VertexVisibility.UNLABELED),
+    )
+
+    assert geometry_intersects_asset(unlabeled_inside, width=10, height=8)
+
+
 def test_keypoints_belong_on_an_image_only() -> None:
     assert geometry_fits_modality(THREE, modality="image")
     assert not geometry_fits_modality(THREE, modality="point_cloud")
@@ -166,6 +175,14 @@ def test_a_draft_holds_an_unfinished_spec_and_converts_it_at_publish() -> None:
     )
     assert finished.to_label_class() == FACE
     assert "keypoints" not in DraftLabelClass(name="car").model_dump(mode="json")
+
+
+@pytest.mark.parametrize("edge", [(True, 1), (1.0, 2), ("1", 2)])
+def test_a_draft_skeleton_index_is_an_integer_never_coerced(edge: tuple[object, object]) -> None:
+    with pytest.raises(ValidationError):
+        DraftKeypointSpec.model_validate({"names": ["a", "b"], "skeleton": [edge]})
+    dangling = DraftKeypointSpec.model_validate({"names": ["a"], "skeleton": [(-1, 0), (3, 3)]})
+    assert dangling.skeleton == ((-1, 0), (3, 3))
 
 
 # --- the schema rule ---------------------------------------------------------------------
