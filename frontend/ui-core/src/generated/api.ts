@@ -2035,8 +2035,9 @@ export interface paths {
          *     `TRACK_NOT_FOUND`. 409: `BATCH_NOT_IN_ANNOTATION`, `JOB_FINISHED`,
          *     `ASSET_NOT_IN_JOB` (rendered as a 409 here: act through the job holding the
          *     track's observations), `ASSET_NOT_WRITABLE`, `STALE_WRITE`. 422:
-         *     `LABEL_CLASS_NOT_IN_SCHEMA`, `INVALID_ANNOTATION`, `INVALID_NAME`. 500:
-         *     `WORKSPACE_CORRUPT`.
+         *     `LABEL_CLASS_NOT_IN_SCHEMA`, `DISALLOWED_GEOMETRY`, `MISSING_REQUIRED_ATTRIBUTE`,
+         *     `UNKNOWN_ATTRIBUTE`, `INVALID_ATTRIBUTE_VALUE`, `DUPLICATE_CLASSIFICATION_TAG`,
+         *     `INVALID_ANNOTATION`, `INVALID_NAME`. 500: `WORKSPACE_CORRUPT`.
          */
         put: operations["set_track_class"];
         post?: never;

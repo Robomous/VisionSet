@@ -281,6 +281,15 @@ class TrackService:
             AssetNotInJob: the job does not carry an observed asset.
             AssetNotWritable: an observed asset's progress says its labeling is over.
             LabelClassNotInSchema: the batch's pinned version does not declare the class.
+            DisallowedGeometry: the class does not accept an observed annotation's geometry.
+            MissingRequiredAttribute: the class requires an attribute an observed
+                annotation does not carry.
+            UnknownAttribute: an observed annotation carries an attribute the class
+                does not declare.
+            InvalidAttributeValue: an observed annotation's attribute value does not
+                fit the class's declaration of it.
+            DuplicateClassificationTag: an observed tag's asset already carries a tag
+                of the class.
             InvalidAnnotation: a rewritten annotation does not satisfy the pinned version.
             StaleWrite: an asset moved between this call's read and its write.
             WorkspaceCorrupt: the open batch has no pinned schema version.

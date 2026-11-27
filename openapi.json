@@ -13885,7 +13885,7 @@
     },
     "/jobs/{job_id}/tracks/{track_id}/class": {
       "put": {
-        "description": "Give the track and every annotation it observes a new class.\n\nThe annotations are rewritten in one transaction with the track, against the\nbatch's pinned version, which must declare the class, even for a track with\nno observation; the same class again changes nothing. The job must\ncarry every observed asset at a writable progress. 404: `JOB_NOT_FOUND`,\n`TRACK_NOT_FOUND`. 409: `BATCH_NOT_IN_ANNOTATION`, `JOB_FINISHED`,\n`ASSET_NOT_IN_JOB` (rendered as a 409 here: act through the job holding the\ntrack's observations), `ASSET_NOT_WRITABLE`, `STALE_WRITE`. 422:\n`LABEL_CLASS_NOT_IN_SCHEMA`, `INVALID_ANNOTATION`, `INVALID_NAME`. 500:\n`WORKSPACE_CORRUPT`.",
+        "description": "Give the track and every annotation it observes a new class.\n\nThe annotations are rewritten in one transaction with the track, against the\nbatch's pinned version, which must declare the class, even for a track with\nno observation; the same class again changes nothing. The job must\ncarry every observed asset at a writable progress. 404: `JOB_NOT_FOUND`,\n`TRACK_NOT_FOUND`. 409: `BATCH_NOT_IN_ANNOTATION`, `JOB_FINISHED`,\n`ASSET_NOT_IN_JOB` (rendered as a 409 here: act through the job holding the\ntrack's observations), `ASSET_NOT_WRITABLE`, `STALE_WRITE`. 422:\n`LABEL_CLASS_NOT_IN_SCHEMA`, `DISALLOWED_GEOMETRY`, `MISSING_REQUIRED_ATTRIBUTE`,\n`UNKNOWN_ATTRIBUTE`, `INVALID_ATTRIBUTE_VALUE`, `DUPLICATE_CLASSIFICATION_TAG`,\n`INVALID_ANNOTATION`, `INVALID_NAME`. 500: `WORKSPACE_CORRUPT`.",
         "operationId": "set_track_class",
         "parameters": [
           {

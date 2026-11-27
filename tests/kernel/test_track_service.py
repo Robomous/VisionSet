@@ -20,11 +20,14 @@ from visionset.kernel import (
     BatchNotInAnnotation,
     ConstraintViolated,
     DisallowedGeometry,
+    DuplicateClassificationTag,
     FrameOccurrenceNotFound,
     InvalidAnnotation,
+    InvalidAttributeValue,
     InvalidName,
     JobFinished,
     LabelClassNotInSchema,
+    MissingRequiredAttribute,
     ObservationNotFound,
     OccurrenceAlreadyObserved,
     SourceNotSequence,
@@ -34,6 +37,7 @@ from visionset.kernel import (
     TrackNotFound,
     TrackSourceMismatch,
     TrackSplitEmpty,
+    UnknownAttribute,
 )
 from visionset.kernel.domain import (
     Annotation,
@@ -42,8 +46,10 @@ from visionset.kernel.domain import (
     AnnotationsWritten,
     Asset,
     AssetProgress,
+    Attribute,
     BboxGeometry,
     BySize,
+    ClassificationGeometry,
     Cuboid3DGeometry,
     FrameOccurrence,
     GeometryType,
@@ -417,6 +423,75 @@ def test_a_class_change_the_schema_refuses_changes_nothing(
     assert {world.annotations.get(f.annotation_id).label_class for f in detail.observations} == {
         "car"
     }
+
+
+@pytest.mark.parametrize(
+    "refusal",
+    [MissingRequiredAttribute, UnknownAttribute, InvalidAttributeValue, DuplicateClassificationTag],
+)
+def test_a_class_change_judges_attributes_and_tags_under_the_new_class(
+    world: World, refusal: type[Exception]
+) -> None:
+    shapes = (GeometryType.BBOX, GeometryType.CLASSIFICATION_TAG)
+    seats = Attribute(name="seats", kind="number", required=True)
+    SchemaService(world.workspace).create_version(
+        world.project.id,
+        [
+            LabelClass(
+                name="car",
+                geometries=shapes,
+                attributes=(
+                    Attribute(name="color", kind="string"),
+                    Attribute(name="kind", kind="select", options=("a",)),
+                ),
+            ),
+            LabelClass(
+                name="van",
+                geometries=shapes,
+                attributes=(
+                    Attribute(name="kind", kind="select", options=("b",)),
+                    *((seats,) if refusal is MissingRequiredAttribute else ()),
+                ),
+            ),
+        ],
+        allow_destructive=True,
+    )
+    clip = world.clip()
+    (job,) = world.working(clip.batch_id)
+    asset_id = clip.at(0).asset_id
+
+    def label(label_class: str, **fields: object) -> Annotation:
+        return Annotation.model_validate(
+            {
+                "asset_id": asset_id,
+                "label_class": label_class,
+                "schema_version": 2,
+                "geometry": BboxGeometry(x=1.0, y=1.0, width=5.0, height=5.0),
+                "provenance": "human",
+                **fields,
+            }
+        )
+
+    if refusal is DuplicateClassificationTag:
+        (observed, _) = world.annotations.add(
+            job.id,
+            [
+                label("car", geometry=ClassificationGeometry()),
+                label("van", geometry=ClassificationGeometry()),
+            ],
+        )
+    else:
+        attributes = {UnknownAttribute: {"color": "red"}, InvalidAttributeValue: {"kind": "a"}}
+        (observed,) = world.annotations.add(
+            job.id, [label("car", attributes=attributes.get(refusal, {}))]
+        )
+    track = world.tracks.create(clip.source_id, "car").track
+    detail = world.tracks.observe(job.id, track.id, clip.at(0).id, observed.id)
+
+    with pytest.raises(refusal):
+        world.tracks.change_class(job.id, track.id, "van")
+    assert world.tracks.get(track.id) == detail
+    assert world.annotations.get(observed.id).label_class == "car"
 
 
 # --- merge and split -----------------------------------------------------------
