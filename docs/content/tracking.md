@@ -6,8 +6,9 @@ database stays the record of what happened; a tracking server receives a copy of
 below, on a best-effort basis.
 
 This page covers the adapter, its configuration, and what it records today: one run for each time
-a [background job](background-jobs.md) is executed. Nothing else opens a run. Clicks and edits in
-the UI, and work the CLI or MCP runs in its own process, are not tracked.
+a [background job](background-jobs.md) is executed, and one for each pre-label, export, ingest or
+weight download the CLI or MCP runs in its own process ([see below](#command-line-and-mcp)).
+Nothing else opens a run. Clicks and edits in the UI are not tracked.
 
 ## Turning it on
 
