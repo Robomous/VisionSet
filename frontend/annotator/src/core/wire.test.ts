@@ -210,6 +210,11 @@ describe("keypoints, carried outside the image scene", () => {
     expect(() => parseStoredGeometry({ ...POSE, visibility: [2, 2, 2, 2] })).toThrow(/names 4 states for 3 points/);
   });
 
+  it("refuses an empty set of points, as the kernel does", () => {
+    expect(() => parseStoredGeometry({ ...POSE, points: [] })).toThrow(/geometry\.points must be a non-empty array/);
+    expect(parseStoredGeometry({ ...POSE, points: [[40, 30]] })).toStrictEqual({ ...POSE, points: [[40, 30]], visibility: undefined });
+  });
+
   it("refuses a missing points key and an undeclared one", () => {
     expect(() => parseStoredGeometry({ type: "keypoints" })).toThrow(/missing points/);
     expect(() => parseStoredGeometry({ ...POSE, names: ["a"] })).toThrow(/does not declare/);

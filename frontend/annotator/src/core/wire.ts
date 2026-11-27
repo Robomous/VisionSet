@@ -471,8 +471,8 @@ function parsePolyline3D(value: Record<string, unknown>): Polyline3DGeometry {
 function parseKeypoints(value: Record<string, unknown>): KeypointsGeometry {
   requireExactKeys(value, POLYLINE_KEYS, "keypoints geometry", POLYLINE_OPTIONAL_KEYS);
   const points = value["points"];
-  if (!Array.isArray(points)) {
-    throw new WireFormatError("geometry.points must be an array");
+  if (!Array.isArray(points) || points.length === 0) {
+    throw new WireFormatError("geometry.points must be a non-empty array");
   }
   const parsed = points.map((point, index) => requirePoint(point, `geometry.points[${index}]`));
   return {
