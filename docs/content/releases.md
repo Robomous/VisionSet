@@ -426,7 +426,7 @@ The fix is vocabulary rather than capability. `Exporter` declares two geometry s
   for `coco`, which writes a polygon as a polygon and a mask as RLE and drops a rotated box,
   for `yolo-obb` and `dota`, which write a rotated box as itself and drop everything else, for
   `labelme`, which writes boxes and polygons as themselves and drops everything else, for
-  `createml`, which writes boxes as themselves and drops everything else, and for
+  `createml` and `open-images`, which write boxes as themselves and drop everything else, and for
   `cvat-images` and `cvat-video`, which write a rotated box as a CVAT box and its `rotation`. The two sets are disjoint, and `supported` wins if a plugin
   says both, because resolving a contradiction towards the weaker claim would report a loss that
   does not happen.
@@ -550,6 +550,7 @@ The catalog this build ships, generated from the declarations by
 | `kitti` | kitti | `other` | `kitti` | — | cuboid_3d | — | — |
 | `labelme` | labelme | `other` | `labelme` | — | bbox, polygon | — | — |
 | `mot` | mot | `other` | `mot` | — | bbox | — | — |
+| `open-images` | open-images | `other` | `open-images` | — | bbox | — | — |
 | `openlane-2d` | openlane-2d | `other` | `openlane-2d` | — | polyline | — | — |
 | `segmentation-png` | segmentation-png | `other` | `segmentation-png` | — | mask, polygon | — | — |
 | `tusimple` | tusimple | `other` | `tusimple` | — | polyline | — | — |
@@ -1013,6 +1014,43 @@ boxes, polylines, masks, tags and 3D geometry are dropped and reported, and attr
 confidence and provenance have nowhere to go. The file records no picture size, which a reader
 takes from the picture itself. The output was checked against the documented schema, not opened
 in Create ML itself, which runs only on macOS.
+
+### The Open Images format
+
+`open-images` writes the **box annotations** of Open Images, as V4 to V7 publish them, and nothing
+else of that dataset: no image-level labels, segmentation masks or visual relationships. The
+export holds `class-descriptions-boxable.csv`, one `<split>-annotations-bbox.csv` per split that
+holds pictures, and the pictures as `<split>/<hash>.<ext>`, the content hash being the `ImageID`.
+A release without a split recipe is all `train`; with one, `val` is written `validation`, as Open
+Images names it. The [`open-images` importer](import.md#formats) reads it back.
+
+```text
+LabelName,DisplayName
+sign,sign
+```
+
+```text
+ImageID,Source,LabelName,Confidence,XMin,XMax,YMin,YMax,IsOccluded,IsTruncated,IsGroupOf,IsDepiction,IsInside
+<hash>,,sign,1,0.25,0.75,0.25,0.75,1,-1,0,-1,-1
+```
+
+VisionSet holds no Open Images MID, so `LabelName` and `DisplayName` are both the class's name.
+`XMin` and `XMax` are the box's left and right edges divided by the picture's recorded width, `YMin`
+and `YMax` its top and bottom divided by its height, `y` growing downward; the far edge is first
+rounded to ten decimal places of a pixel and each fraction written as the shortest decimal that
+reads back as the same float, so the importer, rounding again to ten decimals of a pixel, recovers
+a box stored with at most ten decimals exactly. A box that crosses its picture's border is written
+as it stands, with fractions below `0` or above `1`, never clamped.
+
+`Source` is blank, because it names how Google drew a box. `Confidence` is the label's confidence,
+or `1` - ground truth - when it has none. `IsOccluded`, `IsTruncated`, `IsGroupOf`, `IsDepiction`
+and `IsInside` are `1` or `0` from a boolean attribute of exactly that name, which the importer
+also creates, and `-1`, Open Images' unknown, otherwise.
+
+`lossy = True` and `supported_geometries` is `{bbox}`, with nothing degraded: polygons, rotated
+boxes, polylines, masks, tags and 3D geometry are dropped and reported, and every other attribute
+and the provenance have nowhere to go. A test reads the export with Python's `csv` module and
+Pillow alone, by the published column spec; no Open Images tool was run against it.
 
 ### The classification format
 

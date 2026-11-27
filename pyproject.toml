@@ -186,6 +186,9 @@ coco-panoptic-import = "visionset.formats.coco_panoptic:CocoPanopticImporter"
 # Create ML object detection: one JSON array per folder, centre-based boxes in pixels.
 createml = "visionset.formats.createml:CreatemlExporter"
 createml-import = "visionset.formats.createml:CreatemlImporter"
+# Open Images boxes: one normalized-corner CSV per split and a class descriptions file.
+open-images = "visionset.formats.open_images:OpenImagesExporter"
+open-images-import = "visionset.formats.open_images:OpenImagesImporter"
 
 # Inference driver discovery. A third-party distribution registers its own
 # provider in this same group, and pins the VisionSet it was built for in its

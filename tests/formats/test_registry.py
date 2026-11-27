@@ -156,6 +156,7 @@ def test_every_installed_exporter_stays_discovered() -> None:
         "segmentation-png",
         "labelme",
         "createml",
+        "open-images",
     }
 
 

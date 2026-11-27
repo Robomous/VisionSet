@@ -115,7 +115,7 @@ def test_format_list_names_the_installed_exporters() -> None:
     rows = result.stdout.splitlines()
     assert rows[0].split() == ["NAME", "LOSSY"]
     # Sorted by name, so `bdd100k-lane` leads and `yolov5-yaml` closes. Five of
-    # the twenty-one are the lane family, and every one of them is lossy — a lane file has
+    # the twenty-two are the lane family, and every one of them is lossy — a lane file has
     # fields for a lane and none for an annotation's attributes or confidence.
     assert [row.split() for row in rows[1:]] == [
         ["bdd100k-lane", "yes"],
@@ -133,6 +133,7 @@ def test_format_list_names_the_installed_exporters() -> None:
         ["kitti", "yes"],
         ["labelme", "yes"],
         ["mot", "yes"],
+        ["open-images", "yes"],
         ["openlane-2d", "yes"],
         ["segmentation-png", "yes"],
         ["tusimple", "yes"],
@@ -299,6 +300,14 @@ def test_format_list_json_is_the_envelope() -> None:
             "degraded_geometries": [],
             "modalities": ["image"],
             "targets": ["mot"],
+        },
+        {
+            "name": "open-images",
+            "lossy": True,
+            "geometries": ["bbox"],
+            "degraded_geometries": [],
+            "modalities": ["image"],
+            "targets": ["open-images"],
         },
         {
             "name": "openlane-2d",

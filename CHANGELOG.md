@@ -13,6 +13,17 @@ nothing was being distributed. This is the first version that is.
 
 ### Added
 
+- **Open Images box CSV import and export as `open-images`.** Only the box annotations of Open Images V4 to V7:
+  `<split>-annotations-bbox.csv` rows of `ImageID`, `LabelName`, normalized `XMin`/`XMax`/`YMin`/`YMax`,
+  `Confidence` and the `IsOccluded`, `IsTruncated`, `IsGroupOf`, `IsDepiction` and `IsInside` flags, beside a
+  `class-descriptions-boxable.csv` and the pictures under `<split>/`. The exporter writes the class name as both
+  `LabelName` and `DisplayName`, the far corner rounded to ten decimals of a pixel before it is normalized, so a stored
+  box reads back exactly, the flags from boolean attributes of those names (`-1` without one), and `val` as
+  `validation`. The importer measures each picture, names each class by its `DisplayName` and reports a MID other than
+  it, a `Source`, extreme-click points and unknown columns as losses, and an `ImageID` with no picture as an `image`
+  loss; a malformed row, an undescribed or doubly-described `LabelName`, two used MIDs sharing a `DisplayName`, an
+  `ImageID` in two splits or matching two pictures, and an unreadable picture refuse it. Masks, relationships and
+  image-level labels are not read (#1169).
 - **Apple Create ML object-detection JSON import and export as `createml`.** Only the object-detection annotation
   schema: an array of `{"image", "annotations": [{"label", "coordinates": {"x", "y", "width", "height"}}]}` with
   `x` and `y` the box's centre in pixels. The exporter writes the pictures and one `annotations.json` per folder, under
