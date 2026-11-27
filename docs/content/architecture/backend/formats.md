@@ -27,10 +27,11 @@ target - never through a dict, so a typo answers a `VisionSetError` rather than 
 
 ## What ships
 
-Thirty-seven plugins in [`pyproject.toml`](../../../../pyproject.toml)'s
-`[project.entry-points."visionset.formats"]`: the twenty exporters below and seventeen importers,
+Thirty-nine plugins in [`pyproject.toml`](../../../../pyproject.toml)'s
+`[project.entry-points."visionset.formats"]`: the twenty-one exporters below and eighteen importers,
 `ultralytics-import`, `yolov5-yaml-import`, `darknet-import`, `yolo-obb-import`, `dota-import`,
-`coco-import`, `segmentation-png-import`, `voc-import`, `labelme-import`, `createml-import`,
+`coco-import`, `coco-panoptic-import`, `segmentation-png-import`, `voc-import`, `labelme-import`,
+`createml-import`,
 `classification-import`, `openlane-2d-import`, `kitti-import`, `mot-import`, `cvat-images-import`,
 `cvat-video-import` and `nuscenes-import` (see [Importers](#importers)).
 
@@ -42,6 +43,7 @@ Thirty-seven plugins in [`pyproject.toml`](../../../../pyproject.toml)'s
 | `yolo-obb` | [`yolo_obb/`](../../../../src/visionset/formats/yolo_obb/) - Ultralytics OBB rows, four normalized corners per rotated box, under the `ultralytics` layout and `data.yaml`; shares [`_yolo_writer.py`](../../../../src/visionset/formats/_yolo_writer.py) and the corner rules in [`_obb.py`](../../../../src/visionset/formats/_obb.py) |
 | `dota` | [`dota/`](../../../../src/visionset/formats/dota/) - `<fold>/images` and `<fold>/labelTxt`, four pixel corners, a category and `difficult` per rotated box; shares [`_obb.py`](../../../../src/visionset/formats/_obb.py) with `yolo-obb` |
 | `coco` | [`coco/`](../../../../src/visionset/formats/coco/) - boxes, polygons and masks as compressed RLE |
+| `coco-panoptic` | [`coco_panoptic/`](../../../../src/visionset/formats/coco_panoptic/) - `panoptic_<fold>.json` and one RGB segment PNG per picture; masks whole, polygons rasterized, overlaps refused |
 | `segmentation-png` | [`segmentation_png/`](../../../../src/visionset/formats/segmentation_png/) - one class-index PNG per picture and the `segmentation.json` descriptor its importer requires; masks whole, polygons rasterized |
 | `voc` | [`voc/`](../../../../src/visionset/formats/voc/) |
 | `labelme` | [`labelme/`](../../../../src/visionset/formats/labelme/) - one LabelMe JSON document beside each picture, rectangles and polygons in pixels |
@@ -77,6 +79,8 @@ takes an exporter. The built-ins are seventeen, sixteen of them answering to the
 [`dota-import`](../../../../src/visionset/formats/dota/reader.py), which with `yolo-obb-import`
 reads corners through [`_obb.py`](../../../../src/visionset/formats/_obb.py);
 [`coco-import`](../../../../src/visionset/formats/coco/reader.py),
+[`coco-panoptic-import`](../../../../src/visionset/formats/coco_panoptic/reader.py), which
+refuses a segment map that contradicts its `segments_info`,
 [`segmentation-png-import`](../../../../src/visionset/formats/segmentation_png/reader.py), which
 reads masks only as its descriptor states them,
 [`voc-import`](../../../../src/visionset/formats/voc/reader.py),
@@ -118,12 +122,15 @@ part:
   `degraded_detect_rows`, so the `ultralytics` dialect, which does not declare
   it, writes none.
 
-Two exporters write a `mask`: `coco` and `segmentation-png` declare it supported, and
-`segmentation-png` declares `polygon` degraded because it rasterizes one into its class map. Every
-other export reports each mask annotation as dropped through the same compatibility and loss
-report. A class map holds one class per pixel, so `segmentation-png` writes several masks of one
-class as their union and gives a contested pixel the lower id; the export report cannot see that
-per picture, so the descriptor it writes lists those pictures under `visionset.overlaps`.
+Three exporters write a `mask`: `coco`, `coco-panoptic` and `segmentation-png` declare it
+supported, and `coco-panoptic` and `segmentation-png` declare `polygon` degraded because they
+rasterize one into their pixel maps. Every other export reports each mask annotation as dropped
+through the same compatibility and loss report. A class map holds one class per pixel, so
+`segmentation-png` writes several masks of one class as their union and gives a contested pixel
+the lower id; the export report cannot see that per picture, so the descriptor it writes lists
+those pictures under `visionset.overlaps`. A panoptic map holds one segment per pixel and keeps
+each mask apart, so `coco-panoptic` refuses an asset where two masks claim one pixel instead,
+naming both annotations.
 
 The last two are disjoint, and a geometry in neither is not written at all. An optional
 `tracked_only` says the format writes a label only as an observation of a released track, as `mot`

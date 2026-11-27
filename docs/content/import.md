@@ -91,10 +91,10 @@ computed from the content, and a commit that would drop something is refused wit
 | --- | --- |
 | `class` | A class the project's schema does not declare and no label uses; a CVAT label that names no geometry the domain holds. |
 | `geometry` | Part of a shape the kernel has no type for, such as YOLO keypoints, VOC parts, 3D lane points or an unusable per-vertex visibility, while the shape itself is kept; a `yolo-obb` or `dota` row whose corners are only near a rectangle, kept as the nearest rectangle; or a COCO polygon of several rings, kept as one mask rasterized at pixel centres; or a Create ML `coordinates` key other than `x`, `y`, `width` and `height`, the box kept. |
-| `label` | A whole label: a COCO RLE mask that is malformed or not its image's size, a `segmentation-png` mask with no picture or not the size of its picture, the pixels a `segmentation-png` ignore id marks, a label outside its image, a label lacking an attribute its class requires, a MOT row whose `conf` marks it ignored, a CVAT shape the domain has no geometry for (points, ellipse, cuboid, mask, skeleton) or a CVAT box whose `rotation` is not a finite number, a LabelMe shape other than a rectangle or a polygon, or one with the wrong number of points, a Create ML annotation with no label, a `yolo-obb` or `dota` row whose four corners are not near a rectangle, or enclose no area. |
+| `label` | A whole label: a COCO RLE mask that is malformed or not its image's size, a `segmentation-png` mask with no picture or not the size of its picture, the pixels a `segmentation-png` ignore id marks, a COCO panoptic picture's void pixels, a panoptic segment map not the size of its picture or a segment naming no declared category, a label outside its image, a label lacking an attribute its class requires, a MOT row whose `conf` marks it ignored, a CVAT shape the domain has no geometry for (points, ellipse, cuboid, mask, skeleton) or a CVAT box whose `rotation` is not a finite number, a LabelMe shape other than a rectangle or a polygon, or one with the wrong number of points, a Create ML annotation with no label, a `yolo-obb` or `dota` row whose four corners are not near a rectangle, or enclose no area. |
 | `image` | An image the source names but does not hold, or one outside any sequence whose bytes repeat an earlier image; its labels go with it. A sequence frame that repeats one keeps its labels on that image's asset. A nuScenes camera frame, which is not read. A `segmentation-png` picture with no mask file, which is not imported. A LabelMe picture held only as embedded `imageData`. |
 | `scan` | A scan whose points repeat an earlier scan's, or one gone from the source; its labels go with it. A nuScenes sweep or radar frame, which is not read. |
-| `attribute` | An attribute value its class does not declare or does not accept, or one a label already on its asset holds otherwise, and extras the importer does not carry, such as a COCO attribute value that is not a string, a boolean or a number, COCO's `iscrowd` flag (the region is kept as an ordinary label), VOC difficult or pose flags, a DOTA `difficult` flag other than `0` or `1`, an OpenLane camera calibration, a track id outside a sequence or one a track cannot hold, a MOT box's visibility ratio or the absence of an identity (an `id` that is not positive), a CVAT attribute definition the domain has no kind for or a number's range, `occluded`, `z_order`, `group_id`, a `subset` and the interpolation CVAT would expand, a LabelMe `group_id`, picture flags, a shape flag that is not a boolean and keys LabelMe does not define, keys a Create ML entry or annotation does not define, KITTI truncation, occlusion, alpha and calibration, nuScenes attributes, visibility, instance tokens, point counts, poses and a scene's fields other than its name. |
+| `attribute` | An attribute value its class does not declare or does not accept, or one a label already on its asset holds otherwise, and extras the importer does not carry, such as a COCO attribute value that is not a string, a boolean or a number, COCO's `iscrowd` flag (the region is kept as an ordinary label), VOC difficult or pose flags, a DOTA `difficult` flag other than `0` or `1`, an OpenLane camera calibration, a track id outside a sequence or one a track cannot hold, a MOT box's visibility ratio or the absence of an identity (an `id` that is not positive), a CVAT attribute definition the domain has no kind for or a number's range, `occluded`, `z_order`, `group_id`, a `subset` and the interpolation CVAT would expand, a LabelMe `group_id`, picture flags, a shape flag that is not a boolean and keys LabelMe does not define, keys a Create ML entry or annotation does not define, a COCO panoptic segment's `iscrowd` `1`, a category's `isthing` `0`, a `supercategory` other than its name, its `color` and any other panoptic field the schema has no place for, KITTI truncation, occlusion, alpha and calibration, nuScenes attributes, visibility, instance tokens, point counts, poses and a scene's fields other than its name. |
 
 The refusal carries the full report in its `detail.losses`. Inspecting the source first returns
 the same report and writes nothing; its `loss_kinds` is exactly what the commit has to consent to,
@@ -127,6 +127,7 @@ naming the kinds to accept. See [mcp-tools.md](mcp-tools.md).
 | Format | Reads | Reported as lost |
 | --- | --- | --- |
 | `coco` | `annotations/instances_*.json` with images under `images/<fold>/` or `images/`, the layout the COCO exporter writes; boxes, single-ring polygons, and RLE `segmentation` objects (compressed string or uncompressed list `counts`, `size` `[height, width]`) as masks | `iscrowd` (the region is kept), a polygon of several rings (kept as one rasterized mask), an RLE mask that is malformed or not its image's size, keypoints, captions and other non-instances files, an attribute value that is not a string, a boolean or a number. Panoptic files are not read |
+| `coco-panoptic` | `panoptic_*.json` under `annotations/` or at the top, each picture's RGB segment PNG in the directory named after the JSON (beside it or at the top), pictures under `images/<split>/`, `images/`, `<split>/` or the top; each segment as one mask of its category | Void pixels, a PNG not the size of its picture, a segment of an undeclared category (`label`); `iscrowd` 1, `isthing` 0, `supercategory`, `color` and other fields (`attribute`) |
 | `segmentation-png` | Pictures and name-matched class-index PNG masks laid out as a `segmentation.json` descriptor at the top states: `images/` + `masks/`, with split directories when it names them, or Pascal VOC's `JPEGImages/` + `SegmentationClass/`; one mask per class present in each picture | Ignored pixels, a picture with no mask (not imported), a mask with no picture or not the size of its picture. No descriptor, a PNG mode the encoding does not read, an id the descriptor does not declare or a colour outside its palette refuses the source |
 | `openlane-2d` | `labels/**/*.json`, one document per image naming it in `file_path`, the layout the OpenLane 2D exporter writes; lanes as polylines with their per-vertex `visibility`; each `segment-*` directory as an image sequence and its lanes' `track_id` as tracks | 3D points (`xyz`), a camera calibration, a track id outside a `segment-*` sequence, a lane `attribute` other than `1` to `4` or the exporter's own, a `visibility` that is not one `0` or `1` per point (the lane is kept without it), malformed lanes |
 | `ultralytics` | `data.yaml` with `names` and pictures under any `images/` directory, labels at the matching `labels/` path, the layout the exporter writes; boxes (four values) and polygons (six or more, an even count); or a class tree (`train`/`val`/`test` directories of class directories) as tags | Keypoints of a pose dataset (`kpt_shape`), malformed rows, an unknown class index, a zero-area or wholly outside box, a label file with no picture, the labels of a picture whose size cannot be read |
@@ -174,6 +175,38 @@ polygons by its own rule, so the mask can differ from `annToMask` along the edge
 exactly. VisionSet has no crowd flag: a row with `iscrowd` `1` keeps its shape - a crowd RLE becomes
 an ordinary mask, a crowd polygon an ordinary polygon - and the flag is an `attribute` loss. Holes,
 disconnected regions and an all-background mask are pixels like any other and read as they are.
+
+**COCO panoptic** (`coco-panoptic`). Independent of `coco`: the source holds
+`panoptic_<split>.json` files under `annotations/` or at its top, and nothing else is read as one.
+Each lists `images`, `categories` and, per picture, an annotation naming its PNG in `file_name`
+and its segments in `segments_info`. The PNGs are in the directory named after the JSON file,
+beside it (`annotations/panoptic_val2017/`) or at the top of the source, and the pictures under
+`images/<split>/`, `images/`, `<split>/` or the top, the first that exists, so COCO's own
+`annotations/panoptic_val2017.json` beside `val2017/` reads as it is downloaded. A PNG is RGB, each
+pixel's segment id `R + 256 × G + 65536 × B`, and `0` is void; it is never read as a class-index
+mask.
+
+Each segment becomes one `mask` label of its category, exactly the pixels holding its id, so a
+segment wrapped around another keeps its hole and two segments never share a pixel. Every declared
+category is imported as a mask class, used or not. VisionSet has no thing/stuff or crowd flag and
+keeps no segment or image ids: a category with `isthing` `0` is an ordinary class, an `attribute`
+loss once per category, as are a `supercategory` other than its own name, a `color` and any other
+category field; a segment with `iscrowd` `1` is kept as an ordinary mask, an `attribute` loss, as
+is any segment field beyond `id`, `category_id`, `area`, `bbox` and `iscrowd`. `bbox` and `area`
+are read off the pixels, not from the file. Void pixels are a `label` loss once per picture: they
+mark an area left unlabelled or ambiguous, which no geometry holds, and they read back as
+unlabelled. A segment whose `category_id` is not declared is a `label` loss and its pixels stay
+unlabelled; a PNG of another size than its image entry is a `label` loss and the picture is
+imported unlabelled, as is a picture with no annotation.
+
+The JSON and the PNG must agree, and the import is refused, by file and id, when they do not: an
+id `segments_info` lists that the PNG does not hold, an id the PNG holds that `segments_info` does
+not list, a segment id given twice in one picture or `0`, a PNG that is missing, unreadable or not
+RGB, an image or category id given twice, an annotation naming an image the file does not list,
+and a picture annotated twice. `file_name` paths may not leave the source.
+
+No external panoptic reader is run in the tests; fixtures built in the tests and the round trip
+through the exporter are what has been checked.
 
 **LabelMe JSON** (`labelme`). The documents LabelMe 3.x to 7.x writes are read: the top-level
 `version`, `flags`, `shapes`, `imagePath`, `imageData`, `imageHeight` and `imageWidth`, and each
@@ -277,8 +310,8 @@ by default), so VOC reads with `"images": "JPEGImages", "masks": "SegmentationCl
 and a `palette` listing VOC's colours - VOC's masks are indexed PNGs, and its void border is the
 `ignore` id `255`. A picture with no mask is not imported, an `image` loss; a mask with no picture,
 or of another size than its picture, is a `label` loss, and the second's picture is imported
-unlabelled. COCO panoptic layouts and colour-encoded masks without an explicit palette are not
-read.
+unlabelled. Colour-encoded masks without an explicit palette are not read, and COCO panoptic
+segment maps are read by `coco-panoptic`, never as class-index masks.
 
 **YOLO family** (`ultralytics`, `yolov5-yaml`, `darknet`). A picture is any file under an `images/`
 directory; its label is at the same path with the last `images` segment swapped for `labels` and

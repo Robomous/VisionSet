@@ -23,6 +23,21 @@ nothing was being distributed. This is the first version that is.
   non-finite coordinates and a width or height that is not positive. An annotation with no label or wholly outside
   its picture is a `label` loss, unknown keys `attribute` losses and unknown `coordinates` keys `geometry` losses
   (#1167).
+- **COCO panoptic import and export as `coco-panoptic`.** Independent of the `coco` instances format, and its PNGs
+  are never read as class-index masks. The importer reads `panoptic_<split>.json` under `annotations/` or at the
+  source's top, its RGB segment PNGs (id = R + 256 × G + 65536 × B, `0` void) from the directory named after the
+  JSON, and the pictures from `images/<split>/`, `images/`, `<split>/` or the top, so COCO's own
+  `annotations/panoptic_val2017.json` + `val2017/` layout reads. Each segment becomes one mask of its category,
+  holes kept. A missing, unreadable or non-RGB PNG, an id in `segments_info` the PNG lacks or one in the PNG
+  `segments_info` does not list, a repeated segment, image or category id, and an annotation naming an unlisted
+  image refuse the import by file and id. Void pixels, a PNG not the size of its picture and a segment of an
+  undeclared category are `label` losses; `iscrowd` 1, `isthing` 0, `supercategory`, `color` and other fields
+  with no place in the schema are `attribute` losses. The exporter writes `annotations/panoptic_<fold>.json`, a PNG
+  per picture and the pictures: every class declaring a mask or polygon is a category with `isthing` 1, each mask
+  or polygon (rasterized, declared degraded) is one segment numbered 1 upward per picture with `bbox` and `area`
+  read off its pixels and `iscrowd` 0. Two masks claiming one pixel refuse the export, naming the asset and both
+  annotations (#1164).
+
 - **LabelMe JSON import and export as `labelme`.** The importer reads every JSON object holding `shapes` as one
   picture's document: a `rectangle` (two opposite corners, either order) as a box and a `polygon` as a polygon, in
   pixels as written, never rounded or normalized; shape `flags` as boolean attributes and a non-empty `description`
