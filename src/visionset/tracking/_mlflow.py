@@ -13,14 +13,14 @@ import os
 import re
 import threading
 import time
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from importlib import import_module
 from types import ModuleType
 from typing import Any, Final, NoReturn
 from urllib.parse import urlsplit
 
 from visionset.kernel.errors import TrackingUnavailable
-from visionset.tracking._tracker import ParamValue, RunStatus
+from visionset.tracking._tracker import DatasetInput, ParamValue, RunStatus
 
 EXTRA: Final = "mlflow"
 INSTALL_COMMAND: Final = f'pip install "visionset[{EXTRA}]"'
@@ -53,6 +53,8 @@ _SEARCHABLE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:-]{0,249}")
 refused rather than quoted, so no caller's text is ever parsed as filter syntax."""
 
 MAX_RUNNING_RUNS: Final = 50
+
+DATASET_CONTEXT_TAG: Final = "mlflow.data.context"
 
 _log = logging.getLogger("visionset.tracking")
 
@@ -258,6 +260,30 @@ class MlflowTracker:
             self._client.log_batch(run_id, tags=batch)
         except Exception as exc:
             self._warn("record tags", exc)
+
+    def log_inputs(self, run_id: str | None, datasets: Sequence[DatasetInput]) -> None:
+        if run_id is None or not datasets:
+            return
+        entities = self._entities
+        try:
+            inputs = [
+                entities.DatasetInput(
+                    entities.Dataset(
+                        name=dataset.name,
+                        digest=dataset.digest,
+                        source_type=dataset.source_type,
+                        source=dataset.source,
+                        profile=dataset.profile,
+                    ),
+                    tags=[]
+                    if dataset.context is None
+                    else [entities.InputTag(DATASET_CONTEXT_TAG, dataset.context)],
+                )
+                for dataset in datasets
+            ]
+            self._client.log_inputs(run_id, datasets=inputs)
+        except Exception as exc:
+            self._warn("record dataset inputs", exc)
 
     def end_run(self, run_id: str | None, status: RunStatus = RunStatus.FINISHED) -> None:
         if run_id is None:

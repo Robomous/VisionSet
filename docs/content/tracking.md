@@ -94,7 +94,9 @@ in the same process does.
 Each run carries the name, parameters, metrics and tags VisionSet passes to it, and nothing MLflow
 adds on its own beyond its client version header and a start time. The requests are a lookup of the
 experiment by name (and its creation, the first time), the run's creation, one batch per call that
-records parameters, metrics or tags, and, to end the run, a read of the run followed by its update:
+records parameters, metrics or tags, one request that records the run's dataset inputs when it
+has any ([release lineage](#release-lineage)), and, to end the run, a read of the run followed by
+its update:
 MLflow's client reads a run back before marking it finished. Closing a run its worker left open
 ([runs left open](#runs-left-open)) adds one search of the experiment for running runs carrying a
 given VisionSet id; the search names only that id, `visionset.execution_source`, and the `RUNNING`
@@ -158,12 +160,12 @@ in: there are no zero counts standing in for unknowns.
 | Tag | `visionset.attempt` | Always. How many times the job's row has been claimed. |
 | Tag | `visionset.execution_source` | Always `background_job`. |
 | Tag | `visionset.version` | The installed VisionSet version. No build commit is recorded: the package does not carry one. |
-| Tag | `visionset.batch_id`, `visionset.connection_id`, `visionset.annotation_job_id` | When the job names them, and only as ids. |
+| Tag | `visionset.batch_id`, `visionset.connection_id`, `visionset.annotation_job_id`, `visionset.release_id`, `visionset.ingest_job_id` | When the job names them, and only as ids. |
 | Tag | `visionset.job_state` | When the attempt ends. |
 | Tag | `visionset.error_class`, `visionset.error_code` | When it fails: the exception's class name and its [error code](error-codes.md) if it has one. Never the message. |
 | Tag | `visionset.reconciled` | When the run was ended by someone other than its worker; see below. |
 | Metric | `duration_seconds` | Always. How long the worker spent on the job, on a monotonic clock. It excludes time spent queued and time spent talking to the tracking server. |
-| Metric | `processed_count`, `failures_count`, `total_count` | When the attempt returns and the job reported progress. `total_count` only when the total was known. Not sent for a failed attempt, whose job row keeps no counts either. |
+| Metric | `processed_count`, `failures_count`, `total_count` | When the attempt returns and the job reported progress. `total_count` only when the total was known. Not sent for a failed attempt, whose job row keeps no counts either. A weight download reports bytes instead; see below. |
 
 Pre-labeling adds what it was asked for and what it did:
 
@@ -176,6 +178,80 @@ Pre-labeling adds what it was asked for and what it did:
 | Metric | `annotations_written_count`, `annotations_replaced_count`, `assets_skipped_count`, `regions_discarded_count`, `regions_out_of_bounds_count` | When the run returns. |
 
 These counts are what the job did, not how good the model is: none of them is an accuracy figure.
+
+"When the run succeeded" below means the row behind it was read, which happens only for an attempt
+that returned without being cancelled; see [reading the rows behind a run](#reading-the-rows-behind-a-run).
+
+#### Export
+
+An export (`export.release`) adds what it was asked for, the release it read, and what it wrote. The
+archive is never uploaded, and neither its path nor the release's tag or dataset name is sent.
+
+| Kind | Key | When |
+| --- | --- | --- |
+| Tag | `visionset.release_id` | Always, from the job. |
+| Tag | `visionset.dataset_id` | When the run succeeded. The dataset the release belongs to, as an id. |
+| Parameter | `export_format`, `export_target` | The format's and the target's own names, when they are plain lower-case names. `export_target` only when the export named a target. |
+| Parameter | `allow_lossy` | `True` or `False`. |
+| Parameter | `recipe_applied` | `True` when the export ran a pre-processing recipe. The recipe's name is not sent. |
+| Parameter | `recipe_hash` | When the attempt returns after running a recipe: the 64-character hash of the recipe's content. |
+| Parameter | `release_manifest_hash`, `release_schema_version` | When the run succeeded: the release's manifest hash (64 hexadecimal characters) and the label schema version it was published under. |
+| Metric | `processed_count`, `total_count`, `failures_count` | When the attempt returns. Files written, counted after the format plugin returned. |
+| Metric | `output_bytes` | When the attempt returns. The bytes of those files, before archiving. |
+| Metric | `source_image_count`, `augmented_image_count` | When the attempt returns. Images the plugin was handed from the release, and augmented variants a recipe added. |
+| Dataset input | the release | When the run succeeded; see [release lineage](#release-lineage). |
+
+#### Ingest
+
+An ingest (`ingest.resume`) adds the counters of its ingest run as that run's own record holds them,
+read once when the job returns. The batch name, the source's location, file names and per-file errors
+are not sent.
+
+| Kind | Key | When |
+| --- | --- | --- |
+| Tag | `visionset.ingest_job_id` | Always, from the job. |
+| Tag | `visionset.source_id`, `visionset.batch_id` | When the run succeeded, as ids. `visionset.batch_id` only when the run reached a batch. |
+| Metric | `processed_count`, `total_count`, `failures_count` | When the run succeeded. Entries dealt with, entries in the source, and files that could not be read. `total_count` only when it was known. |
+| Metric | `asset_count`, `created_asset_count` | When the attempt returns. Assets this run put in its batch, and how many of them were new to the project. |
+
+#### Model weight download
+
+A weight download (`inference.download_weights`) records which model was fetched, never the weights,
+the cache directory, the connection's name or an address the files came from. No model is
+registered with MLflow.
+
+| Kind | Key | When |
+| --- | --- | --- |
+| Tag | `visionset.connection_id` | Always, from the job. |
+| Parameter | `model_id` | When the attempt returns and the id is `<name>` or `<owner>/<name>`. A path or an address is left out. |
+| Parameter | `model_revision` | With `model_id`, when the revision is a 40-character commit. |
+| Parameter | `model_provider` | When the run succeeded and the connection records which installed driver serves it. |
+| Parameter | `model_family` | When the run succeeded and the downloaded configuration declared the kind of model. |
+| Metric | `bytes_done`, `bytes_total` | When the attempt returns and reported progress. Bytes of the revision on disk at the end, and its published size when it could be read. These replace `processed_count`, `total_count` and `failures_count` for this job type. |
+
+#### Release lineage
+
+Publishing a release is not a background job, so it opens no run. A release appears in the runs that
+consume it: a succeeded export records it as an MLflow dataset input, which the MLflow UI lists under
+the run's datasets. It is an identity, not a copy: nothing in the release, its manifest, its images
+or its labels is uploaded.
+
+| Field | Value |
+| --- | --- |
+| Name | `visionset-release-<release id>` |
+| Digest | The first 32 characters of the manifest hash. MLflow does not accept a longer digest; the whole hash is the `release_manifest_hash` parameter. |
+| Source type | `visionset_release` |
+| Source | `{"dataset_id": "<id>", "release_id": "<id>"}` |
+| Profile | `{"annotation_count": n, "asset_count": n, "manifest_hash": "<hash>", "schema_version": n}` |
+| Input tag | `mlflow.data.context` = `export` |
+
+#### Reading the rows behind a run
+
+Export, ingest and weight-download runs read one row each, by the id their job names, when the job
+returns: the release, the ingest run, or the connection. The worker reads it from its own workspace
+after the job's clock has stopped, so it is not part of `duration_seconds`, and nothing is scanned. A
+row that cannot be read is left out of the run with a warning, and the job's result is unchanged.
+Nothing is read for a failed or cancelled attempt.
 
 ### Delivery never holds a job
 

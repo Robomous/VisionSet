@@ -9,17 +9,25 @@ from __future__ import annotations
 
 import contextlib
 import threading
-from collections.abc import Iterator, Mapping
+from collections.abc import Iterator
 from concurrent.futures import Executor, Future
 from concurrent.futures.process import BrokenProcessPool
-from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 from uuid import UUID, uuid4
 
 import pytest
+from tests.fixtures.tracking import (
+    ENABLED,
+    SECRET,
+    CancellingExecutor,
+    FakeTracker,
+    InlineExecutor,
+    runner_for,
+    settled,
+)
 
-from visionset.jobs import HandlerRef, JobRunner, _tracking, register
+from visionset.jobs import HandlerRef, _tracking, register
 from visionset.jobs._tracking import (
     AttemptTracking,
     attempt_params,
@@ -33,10 +41,7 @@ from visionset.jobs._worker import execute
 from visionset.kernel.domain import PRE_LABEL_JOB_TYPE, BackgroundJobSpec, BackgroundJobState
 from visionset.kernel.errors import BatchNotFound, TrackingUnavailable
 from visionset.kernel.services import WorkspaceService
-from visionset.tracking import ParamValue, RunStatus, TrackingSettings
-
-SECRET = "/home/someone/secret-dir https://user:hunter2@mlflow.example:5000"
-ENABLED = TrackingSettings(mlflow_enabled=True, mlflow_experiment="visionset")
+from visionset.tracking import RunStatus, TrackingSettings
 
 ALLOWED_TAGS = {
     "visionset.job_id",
@@ -92,122 +97,11 @@ register(HandlerRef(type=TYPE, func=f"{__name__}:handler", idempotent=True))
 PRE_LABEL_REF = HandlerRef(type=PRE_LABEL_JOB_TYPE, func=f"{__name__}:handler")
 
 
-class InlineExecutor(Executor):
-    """Runs now, on this thread, capturing an exception on the future like a pool does."""
-
-    def submit(self, fn: Any, /, *args: Any, **kwargs: Any) -> Future[Any]:  # type: ignore[override]
-        future: Future[Any] = Future()
-        try:
-            future.set_result(fn(*args, **kwargs))
-        except BaseException as exc:  # noqa: BLE001 — mirrors a real pool
-            future.set_exception(exc)
-        return future
-
-
-@dataclass
-class Recorded:
-    name: str
-    tags: dict[str, str]
-    params: dict[str, ParamValue] = field(default_factory=dict)
-    metrics: dict[str, float] = field(default_factory=dict)
-    status: RunStatus | None = None
-    ends: int = 0
-
-
-class FakeTracker:
-    """Records runs by id; raises where told to, and can be held at ``start_run``."""
-
-    def __init__(self) -> None:
-        self.runs: dict[str, Recorded] = {}
-        self.fail: set[str] = set()
-        self.hold: threading.Event | None = None
-        self.lock = threading.Lock()
-
-    def _maybe_fail(self, name: str) -> None:
-        if name in self.fail:
-            raise RuntimeError(f"{name} failed: {SECRET}")
-
-    def start_run(self, name: str, *, tags: Mapping[str, str] | None = None) -> str | None:
-        if self.hold is not None:
-            self.hold.wait(timeout=10)
-        self._maybe_fail("start")
-        with self.lock:
-            run_id = f"run-{len(self.runs) + 1}"
-            self.runs[run_id] = Recorded(name, dict(tags or {}))
-        return run_id
-
-    def log_params(self, run_id: str | None, params: Mapping[str, ParamValue]) -> None:
-        self._maybe_fail("params")
-        if run_id is not None:
-            self.runs[run_id].params.update(params)
-
-    def log_metrics(
-        self, run_id: str | None, metrics: Mapping[str, float], *, step: int | None = None
-    ) -> None:
-        self._maybe_fail("metrics")
-        if run_id is not None:
-            self.runs[run_id].metrics.update(metrics)
-
-    def set_tags(self, run_id: str | None, tags: Mapping[str, str]) -> None:
-        self._maybe_fail("tags")
-        if run_id is not None:
-            self.runs[run_id].tags.update(tags)
-
-    def end_run(self, run_id: str | None, status: RunStatus = RunStatus.FINISHED) -> None:
-        self._maybe_fail("end")
-        if run_id is not None:
-            self.runs[run_id].status = status
-            self.runs[run_id].ends += 1
-
-    def running_runs(self, tags: Mapping[str, str]) -> list[str]:
-        self._maybe_fail("search")
-        return [
-            run_id
-            for run_id, run in self.runs.items()
-            if run.status is None and all(run.tags.get(k) == v for k, v in tags.items())
-        ]
-
-
-@pytest.fixture()
-def tracker(monkeypatch: pytest.MonkeyPatch) -> Iterator[FakeTracker]:
-    fake = FakeTracker()
-    built: list[TrackingSettings] = []
-
-    def build(settings: TrackingSettings) -> FakeTracker:
-        built.append(settings)
-        return fake
-
-    monkeypatch.setattr(_tracking, "build_tracker", build)
-    _tracking._TRACKERS.clear()
-    fake.built = built  # type: ignore[attr-defined]
-    yield fake
-    if fake.hold is not None:
-        fake.hold.set()
-    assert _tracking.flush(10)
-    _tracking._TRACKERS.clear()
-
-
 @pytest.fixture()
 def workspace(tmp_path: Path) -> Iterator[WorkspaceService]:
     made = WorkspaceService.init(tmp_path / "ws")
     yield made
     made.close()
-
-
-def runner_for(
-    workspace: WorkspaceService,
-    tracking: TrackingSettings | None = ENABLED,
-    executor: Executor | None = None,
-) -> JobRunner:
-    return JobRunner(
-        workspace.job_queue,
-        workspace.root,
-        workers=1,
-        progress_min_interval_s=0,
-        executor_factory=lambda _: executor or InlineExecutor(),
-        error_code=lambda exc: "BATCH_NOT_FOUND" if isinstance(exc, BatchNotFound) else None,
-        tracking=tracking,
-    )
 
 
 def queued(workspace: WorkspaceService, **payload: Any) -> Any:
@@ -216,16 +110,12 @@ def queued(workspace: WorkspaceService, **payload: Any) -> Any:
     )
 
 
-def settled(workspace: WorkspaceService, job_id: UUID) -> Any:
-    assert _tracking.flush(10)
-    stored = workspace.job_queue.get(job_id)
-    assert stored is not None
-    return stored
-
-
 def everything_sent(fake: FakeTracker) -> str:
     return repr(
-        [(run.name, run.tags, run.params, run.metrics, run.status) for run in fake.runs.values()]
+        [
+            (run.name, run.tags, run.params, run.metrics, run.datasets, run.status)
+            for run in fake.runs.values()
+        ]
     )
 
 
@@ -319,17 +209,6 @@ class _NoStore:
 class _NoReporter:
     def __init__(self, *_: Any, **__: Any) -> None:
         pass
-
-
-class CancellingExecutor(InlineExecutor):
-    """Asks the job to stop before its handler runs, as a person pressing cancel would."""
-
-    def __init__(self, workspace: WorkspaceService) -> None:
-        self.workspace = workspace
-
-    def submit(self, fn: Any, /, *args: Any, **kwargs: Any) -> Future[Any]:  # type: ignore[override]
-        self.workspace.job_queue.request_cancel(args[2])
-        return super().submit(fn, *args, **kwargs)
 
 
 def test_a_cooperatively_cancelled_job_is_a_killed_run(
@@ -452,7 +331,9 @@ def test_a_handler_failure_is_not_reconciled_twice(
 # --- tracking never changes a job -----------------------------------------------
 
 
-@pytest.mark.parametrize("fail_at", ["start", "params", "metrics", "tags", "end", "search"])
+@pytest.mark.parametrize(
+    "fail_at", ["start", "params", "metrics", "tags", "inputs", "end", "search"]
+)
 def test_a_tracker_failing_anywhere_leaves_every_outcome_as_it_was(
     workspace: WorkspaceService, tracker: FakeTracker, fail_at: str, tmp_path: Path
 ) -> None:

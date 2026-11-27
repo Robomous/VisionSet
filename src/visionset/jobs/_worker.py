@@ -94,11 +94,13 @@ def execute(
     if run is not None:
         run.close_returned(
             ref.type,
+            payload=payload,
             result=outcome.result,
             cancelled=outcome.cancelled,
             processed=outcome.processed,
             total=outcome.total,
             failures=len(outcome.failures),
             duration_s=time.monotonic() - started,
+            workspace=workspace,
         )
     return outcome

@@ -13,6 +13,17 @@ nothing was being distributed. This is the first version that is.
 
 ### Added
 
+- **Export, ingest and weight-download runs carry their own facts, and releases their lineage.** When tracking is
+  on, an export run records its format, target, lossy consent, whether a recipe ran and the recipe's content hash,
+  the files and bytes it wrote and the source and augmented image counts; a succeeded export also records the
+  release it read as an MLflow dataset input, named by release id with the manifest hash as its digest and the label
+  schema version, asset and annotation counts as its profile. An ingest run records its ingest run's own processed,
+  total and failure counters, the assets it put in its batch and how many were new, and the source and batch ids. A
+  weight download records the model id, commit, serving driver and declared family, and its progress as
+  `bytes_done`/`bytes_total` rather than as counts. Each operation's exact allowlist is documented; nothing is
+  uploaded, and no archive, weights, manifest, image, label, path, address, batch name, release tag or connection
+  name is sent. `Tracker` gains `log_inputs`. See
+  [tracking](docs/content/tracking.md#export) (#1176).
 - **Imports carry attribute values and definitions.** An importer may define attributes on a class and give each
   label values. With no schema, the version an import creates declares the source's definitions; every value is
   judged against the class it lands under, so a value the class does not declare or does not accept is an

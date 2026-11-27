@@ -3,11 +3,24 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
+from dataclasses import dataclass
 from enum import StrEnum
 from typing import Protocol, runtime_checkable
 
 ParamValue = str | int | float | bool
+
+
+@dataclass(frozen=True)
+class DatasetInput:
+    """A dataset a run consumed, named by identity. It carries no data."""
+
+    name: str
+    digest: str
+    source_type: str
+    source: str
+    profile: str | None = None
+    context: str | None = None
 
 
 class RunStatus(StrEnum):
@@ -37,6 +50,8 @@ class Tracker(Protocol):
 
     def set_tags(self, run_id: str | None, tags: Mapping[str, str]) -> None: ...
 
+    def log_inputs(self, run_id: str | None, datasets: Sequence[DatasetInput]) -> None: ...
+
     def end_run(self, run_id: str | None, status: RunStatus = RunStatus.FINISHED) -> None: ...
 
     def running_runs(self, tags: Mapping[str, str]) -> list[str]:
@@ -64,6 +79,9 @@ class NoOpTracker:
         return None
 
     def set_tags(self, run_id: str | None, tags: Mapping[str, str]) -> None:
+        return None
+
+    def log_inputs(self, run_id: str | None, datasets: Sequence[DatasetInput]) -> None:
         return None
 
     def end_run(self, run_id: str | None, status: RunStatus = RunStatus.FINISHED) -> None:
