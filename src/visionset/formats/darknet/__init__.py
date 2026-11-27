@@ -91,6 +91,8 @@ class DarknetExporter:
         assignment: SplitAssignment | None,
     ) -> None:
         folds = write_label_layout(manifest, dest, content, assignment, degraded_detect_rows)
+        if not folds:
+            return
         names = class_names(manifest)
         (dest / NAMES_FILENAME).write_text("".join(f"{name}\n" for name in names), encoding="utf-8")
 

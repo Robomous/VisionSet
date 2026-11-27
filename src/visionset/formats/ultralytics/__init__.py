@@ -208,7 +208,8 @@ class UltralyticsExporter:
             return
         rows = segment_rows if task is Task.SEGMENT else detect_rows
         folds = write_label_layout(manifest, dest, content, assignment, rows)
-        write_data_yaml(dest / DATA_FILENAME, class_names(manifest), folds)
+        if folds:
+            write_data_yaml(dest / DATA_FILENAME, class_names(manifest), folds)
 
 
 def _write_class_tree(
