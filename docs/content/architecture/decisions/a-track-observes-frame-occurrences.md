@@ -11,6 +11,11 @@ and [releases](../../releases.md#the-manifests-own-format-version); the rest is 
 [#1170](https://github.com/Robomous/VisionSet/issues/1170) and the video variant of
 [#1171](https://github.com/Robomous/VisionSet/issues/1171) stay blocked until the slices below ship.
 
+**Amended for slice 5 on 2026-11-26.** Neither imported identity had anything to land on: OpenLane
+frames are stills with no source, and nuScenes keyframes are point-cloud scans with 3D boxes. The
+amendment adds an ordered image-sequence source that an importer writes, so OpenLane's `track_id`
+lands as a track, and keeps tracking 2D: nuScenes' `instance_token` stays a declared import loss.
+
 ## The rule
 
 **An asset is bytes. A frame occurrence is a position in a source. A track is a set of
@@ -22,9 +27,16 @@ substitute for one another.
   same ordinal the video importer already writes into the asset URI. Gaps and selected ranges are
   simply absent positions. Two positions that decode to identical bytes are two occurrences of
   one asset; `store_assets` keeps collapsing the bytes and the occurrence keeps the position.
-- **Sequence scope.** A sequence is a `Source` of kind `video` and its occurrences. Every video
-  import is a new source, so two imports of one clip are two sequences. A track belongs to
-  exactly one source and never spans two.
+- **Sequence scope.** A sequence is a `Source` of kind `video` or `image_sequence` and its
+  occurrences. Every video import is a new source, so two imports of one clip are two sequences. A
+  track belongs to exactly one source and never spans two.
+- **Image sequences.** An `image_sequence` source is written only by an import, for stills the
+  dataset itself orders, such as one OpenLane segment. Every import writes its own, so two imports
+  of one segment are two sequences and equal external ids in them never merge. `position` is the
+  frame's ordinal in the dataset's order and `timestamp` its time since the sequence's first frame;
+  a frame the dataset names but does not hold is an absent position, and a frame whose bytes repeat
+  another is an occurrence of that asset. It is not a directory this process reads, so nothing
+  ingests from it, and it carries no video provenance and no scan frame.
 - **Track.** `Track(id, source_id, label_class, external_id?)`. `external_id` carries an imported
   identity (`instance_token`, `track_id`) and is unique per source. A track has at most one
   observation per occurrence.
@@ -51,7 +63,8 @@ animations are excluded because two files share frame 0. That is the first-seen 
 origins `store_assets` discarded are not recoverable, and the migration does not invent them. A
 historical source may therefore have fewer occurrences than frames it was extracted with, and a
 track can only observe an occurrence that exists. New video imports write every occurrence.
-`batch_asset` membership is unchanged and stays asset-based.
+`batch_asset` membership is unchanged and stays asset-based. Image-sequence sources need no
+backfill: none existed before the amendment.
 
 ## Work, correction and review
 
@@ -74,7 +87,8 @@ track can only observe an occurrence that exists. New video imports write every 
   added for the purpose. It is never classified as `human` or `model` by omission, and paste never
   triggers it.
 - **Video and image sequences with 2D geometry only.** Point-cloud and calibrated 3D tracking is
-  deferred. A `group_label` is not an ordering, a timestamp or an ego pose.
+  deferred, so a nuScenes `instance_token`, which follows a 3D box through lidar keyframes, stays a
+  declared import loss. A `group_label` is not an ordering, a timestamp or an ego pose.
 
 ## Surfaces
 
@@ -88,7 +102,8 @@ introduces no server-side video decoder.
 2. Track and observation kernel, REST, CLI and MCP.
 3. Browser read and edit of tracks.
 4. Release manifest bump.
-5. nuScenes and OpenLane identity landing, then #1170 and #1171.
+5. OpenLane identity landing over image-sequence sources; nuScenes identity waits for 3D
+   tracking. Then #1170 and #1171.
 
 Each slice needs tests for duplicate-content frames, missing frames, multi-source imports,
 independent copy and paste, id collisions, partial correction batches, stable releases and
@@ -101,6 +116,7 @@ import loss.
 - a track that spans sources, or a stored track status;
 - a restructuring track operation that touches an asset the actor may not write;
 - a server-side video decoder;
+- an `image_sequence` source written by anything but an import;
 - a manifest that changes shape without a `MANIFEST_VERSION` bump.
 
 ## Why
