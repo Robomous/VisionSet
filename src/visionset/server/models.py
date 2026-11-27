@@ -2505,8 +2505,8 @@ class FrameOccurrenceOut(BaseModel):
     id: UUID
     source_id: UUID
     position: int
-    #: Seconds into the clip.
-    timestamp: float
+    #: Seconds into the clip; null when the source recorded no timing, which is not 0.
+    timestamp: float | None
     asset_id: UUID
 
     @classmethod
@@ -2529,7 +2529,7 @@ class TrackObservationOut(BaseModel):
 
     occurrence_id: UUID
     position: int
-    timestamp: float
+    timestamp: float | None
     asset_id: UUID
     annotation_id: UUID
 

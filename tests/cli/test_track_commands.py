@@ -8,8 +8,13 @@ from typing import Any
 from uuid import uuid4
 
 import pytest
-from tests.cli._flow import ok, payload, run, workspace
+from tests.cli._flow import ok, payload, project, run, workspace
 from tests.fixtures.tracks import FRAMES, TrackWorld, track_world
+from tests.formats.test_cvat import TRACKS, _video_source
+
+from visionset.kernel.domain import ImportLossKind
+
+_EVERY_CONSENT = [arg for kind in ImportLossKind for arg in ("--consent-lossy", kind.value)]
 
 
 @pytest.fixture()
@@ -164,3 +169,19 @@ def test_an_unknown_track_exits_one(root: Path, world: TrackWorld) -> None:
     result = run(root, "track", "show", str(uuid4()))
     assert result.exit_code == 1
     assert "no track" in result.output
+
+
+def test_unknown_timing_reads_as_a_dash_and_as_null(root: Path, tmp_path: Path) -> None:
+    src = _video_source(tmp_path / "task", TRACKS)
+    name = project(root, "cvat")
+    imported = payload(root, "import", "cvat-video", str(src), "--project", name, *_EVERY_CONSENT)
+    (source,) = imported["source_ids"]
+
+    listed = payload(root, "track", "occurrences", "--source", source)
+    assert {o["timestamp"] for o in listed["items"]} == {None}
+    shown = payload(root, "track", "list", "--source", source)
+    assert {o["timestamp"] for t in shown["items"] for o in t["observations"]} == {None}
+
+    rows = ok(root, "track", "occurrences", "--source", source).splitlines()[1:]
+    assert rows
+    assert all(row.split()[2] == "-" for row in rows)

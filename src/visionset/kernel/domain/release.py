@@ -125,7 +125,15 @@ from visionset.kernel.errors import UnserializableManifest
 #: geometry union. A release with no rotated box keeps the version, the bytes
 #: and the hash it had before, and only a release holding one is one a
 #: version-7 build refuses.
-MANIFEST_VERSION: int = 8
+#:
+#: **9** since #1199, which let a manifest carry ``sources``: each released
+#: image-sequence source with the occurrences whose asset the release holds, so
+#: an exporter writes every held frame and leaves only absent positions as gaps.
+#: A ``timestamp`` there or on an observation may be ``null``, timing the source
+#: never recorded, which is not the same as ``0``. The key is omitted when no
+#: released asset occurs in an image sequence, so such a release keeps the
+#: version, the bytes and the hash it had before.
+MANIFEST_VERSION: int = 9
 
 CALIBRATED_MANIFEST_VERSION: int = 4
 """The first manifest version that can carry a calibration, and so a 3D label."""
@@ -141,6 +149,9 @@ TRACKED_MANIFEST_VERSION: int = 7
 
 OBB_MANIFEST_VERSION: int = 8
 """The first manifest version that can carry a rotated box."""
+
+SEQUENCED_MANIFEST_VERSION: int = 9
+"""The first manifest version that can carry sources' occurrences and unknown timing."""
 
 
 class ManifestAnnotation(BaseModel):
@@ -266,15 +277,48 @@ class ManifestObservation(BaseModel):
     """One frame occurrence a track observes, and the annotation drawn there.
 
     ``position`` and ``timestamp`` are the occurrence's, copied, so the document
-    says where in its source the frame sat without the workspace.
+    says where in its source the frame sat without the workspace. ``timestamp``
+    is ``None`` where the source recorded no timing.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid", allow_inf_nan=False)
 
     position: int = Field(ge=0)
-    timestamp: float = Field(ge=0)
+    timestamp: float | None = Field(ge=0)
     asset_id: UUID
     annotation_id: UUID
+
+
+class ManifestOccurrence(BaseModel):
+    """One position of a source, its time, and the released asset drawn there."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid", allow_inf_nan=False)
+
+    position: int = Field(ge=0)
+    timestamp: float | None = Field(ge=0)
+    asset_id: UUID
+
+
+class ManifestSource(BaseModel):
+    """An image-sequence source, with every occurrence whose asset the release holds.
+
+    A position the release holds no asset for is absent, never a row.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    source_id: UUID
+    occurrences: tuple[ManifestOccurrence, ...] = Field(min_length=1)
+
+    @field_validator("occurrences")
+    @classmethod
+    def _in_position_order(
+        cls, value: tuple[ManifestOccurrence, ...]
+    ) -> tuple[ManifestOccurrence, ...]:
+        ordered = tuple(sorted(value, key=lambda occurrence: occurrence.position))
+        if len({one.position for one in ordered}) != len(ordered):
+            raise ValueError("a source lists each of its positions at most once")
+        return ordered
 
 
 class ManifestTrack(BaseModel):
@@ -331,6 +375,27 @@ def _track_order(track: ManifestTrack) -> tuple[str, int, str]:
     return (str(track.source_id), track.observations[0].position, str(track.id))
 
 
+def manifest_within(manifest: Manifest, assets: tuple[ManifestAsset, ...]) -> Manifest:
+    """``manifest`` holding ``assets``, its tracks and sources cut to what they hold.
+
+    A source left with no occurrence is dropped, like a track left with no
+    observation.
+    """
+    held = {asset.asset_id for asset in assets}
+    sources = []
+    for source in manifest.sources:
+        kept = tuple(one for one in source.occurrences if one.asset_id in held)
+        if kept:
+            sources.append(source.model_copy(update={"occurrences": kept}))
+    return manifest.model_copy(
+        update={
+            "assets": assets,
+            "tracks": tracks_within(manifest.tracks, assets),
+            "sources": tuple(sources),
+        }
+    )
+
+
 class Manifest(BaseModel):
     """The frozen inventory of a Release: the contract, the bytes, the labels.
 
@@ -358,6 +423,11 @@ class Manifest(BaseModel):
     **omitted** when there is none. Every observation names an annotation on
     the asset it names, here in this document.
 
+    ``sources`` sort by id, and each source's occurrences by position. The key
+    is **omitted** when there is none. Every occurrence names an asset this
+    document holds, and an observation in a listed source agrees with the
+    occurrence listed at its position.
+
     ``classes`` is **not** sorted, unlike the two collections around it. A
     schema's class order is authored — it drives how a labeling surface lists
     them — so it is part of the frozen contract rather than incidental, and it
@@ -371,6 +441,7 @@ class Manifest(BaseModel):
     classes: tuple[LabelClass, ...] = ()
     assets: tuple[ManifestAsset, ...] = ()
     tracks: tuple[ManifestTrack, ...] = Field(default=(), exclude_if=lambda value: not value)
+    sources: tuple[ManifestSource, ...] = Field(default=(), exclude_if=lambda value: not value)
 
     @field_validator("assets")
     @classmethod
@@ -387,6 +458,40 @@ class Manifest(BaseModel):
         if len(set(ids)) != len(ids):
             raise ValueError("a track is listed at most once")
         return tuple(sorted(value, key=_track_order))
+
+    @field_validator("sources")
+    @classmethod
+    def _sources_in_canonical_order(
+        cls, value: tuple[ManifestSource, ...]
+    ) -> tuple[ManifestSource, ...]:
+        if len({source.source_id for source in value}) != len(value):
+            raise ValueError("a source is listed at most once")
+        return tuple(sorted(value, key=lambda source: str(source.source_id)))
+
+    @model_validator(mode="after")
+    def _occurrences_name_what_the_release_holds(self) -> Manifest:
+        held = {asset.asset_id for asset in self.assets}
+        listed: dict[tuple[UUID, int], ManifestOccurrence] = {}
+        for source in self.sources:
+            for occurrence in source.occurrences:
+                if occurrence.asset_id not in held:
+                    raise ValueError(
+                        f"source {source.source_id} lists asset {occurrence.asset_id} at "
+                        f"position {occurrence.position}, which this manifest does not hold"
+                    )
+                listed[(source.source_id, occurrence.position)] = occurrence
+        for track in self.tracks:
+            for observation in track.observations:
+                at = listed.get((track.source_id, observation.position))
+                if at is not None and (at.asset_id, at.timestamp) != (
+                    observation.asset_id,
+                    observation.timestamp,
+                ):
+                    raise ValueError(
+                        f"track {track.id} observes position {observation.position} of source "
+                        f"{track.source_id} otherwise than the source lists it"
+                    )
+        return self
 
     @model_validator(mode="after")
     def _observations_name_what_the_release_holds(self) -> Manifest:
@@ -443,6 +548,13 @@ class Manifest(BaseModel):
                 f"a version-{self.manifest_version} manifest carries no rotated boxes; "
                 f"an obb label needs version {OBB_MANIFEST_VERSION}"
             )
+        if self.manifest_version < SEQUENCED_MANIFEST_VERSION and (
+            self.sources or _unknown_timing(self.tracks)
+        ):
+            raise ValueError(
+                f"a version-{self.manifest_version} manifest carries no sources and no unknown "
+                f"timing; they need version {SEQUENCED_MANIFEST_VERSION}"
+            )
         return self
 
     @property
@@ -451,14 +563,22 @@ class Manifest(BaseModel):
         return sum(len(asset.annotations) for asset in self.assets)
 
 
+def _unknown_timing(tracks: Sequence[ManifestTrack]) -> bool:
+    return any(one.timestamp is None for track in tracks for one in track.observations)
+
+
 def manifest_version_for(
-    assets: Sequence[ManifestAsset], tracks: Sequence[ManifestTrack] = ()
+    assets: Sequence[ManifestAsset],
+    tracks: Sequence[ManifestTrack] = (),
+    sources: Sequence[ManifestSource] = (),
 ) -> int:
-    """The lowest manifest version that can express these assets and tracks.
+    """The lowest manifest version that can express these assets, tracks and sources.
 
     Publishing writes this rather than :data:`MANIFEST_VERSION`, so content a
     version-3 build can read is still written as version 3 and keeps its hash.
     """
+    if sources or _unknown_timing(tracks):
+        return SEQUENCED_MANIFEST_VERSION
     if _holds_obb(assets):
         return OBB_MANIFEST_VERSION
     if tracks:

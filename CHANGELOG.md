@@ -13,6 +13,16 @@ nothing was being distributed. This is the first version that is.
 
 ### Added
 
+- **Manifest version 9: sources' frames, and timing that may be unknown.** A release holding an asset of an
+  image-sequence source lists that source under `sources` with every occurrence whose asset it holds -
+  `position`, `timestamp`, `asset_id`, in position order - so `cvat-video` and `mot` write every held frame of a
+  tracked source, observed or not, and only a position the release holds nothing for is a gap; a CVAT task
+  released whole no longer shifts its frame numbers. A frame occurrence's `timestamp` is now nullable end to end
+  (`ImportedFrame`, `FrameOccurrence` through migration 26, manifest observations, REST, CLI and MCP): the
+  `cvat-video` importer writes `null` where CVAT records no timing instead of `0`, and a `mot` export refuses
+  unknown timing with its own message, apart from timing that is all `0`. Migration 26 keeps every stored value,
+  so a sequence imported from CVAT earlier keeps its `0`. `sources` is omitted when no released asset belongs to an
+  image sequence, so such a release keeps its version and hash (#1199).
 - **Rotated boxes: the `obb` geometry.** A class may declare `obb`, a rectangle turned in the image plane: centre
   `cx`, `cy`, sides `width`, `height` and the width side's `angle` in radians, y down. Every box is stored in one
   canonical spelling - `width >= height`, `angle` in `[-pi/2, pi/2)`, a square's in `[-pi/4, pi/4)` - and a zero or

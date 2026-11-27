@@ -19,6 +19,7 @@ from visionset.formats.cvat import (
     CvatVideoExporter,
     CvatVideoImporter,
 )
+from visionset.formats.mot import MotExporter
 from visionset.kernel import ExportSourceUnreadable, ImportSourceUnreadable
 from visionset.kernel.domain import (
     TRACKED_MANIFEST_VERSION,
@@ -315,7 +316,7 @@ def test_a_video_task_is_a_sequence_and_its_tracks_keep_their_ids(tmp_path: Path
     assert [str(frame.path) for frame in sequence.frames] == [
         f"images/frame_00000{n}.png" for n in range(5)
     ]
-    assert {frame.timestamp for frame in sequence.frames} == {0.0}
+    assert {frame.timestamp for frame in sequence.frames} == {None}
     assert {(image.width, image.height) for image in dataset.images} == {SIZE}
     polygon = PolygonGeometry(points=[(0, 0), (4, 0), (4, 4)])
     assert _tracks_by_frame(dataset) == {
@@ -650,8 +651,8 @@ def test_a_video_task_round_trips_through_a_release(world: World) -> None:
     tasks = _read_video(dest)
     assert list(tasks) == [source_id]
     task = tasks[source_id]
-    assert task["size"] == 4
-    assert task["frames"] == [f"frame_00000{n}.png" for n in (0, 1, 3)]
+    assert task["size"] == 5
+    assert task["frames"] == [f"frame_00000{n}.png" for n in range(5)]
     assert task["labels"] == ["car", "road", "lane", "sunny", "spare"]
     assert task["tracks"] == {
         "0": (
@@ -660,6 +661,7 @@ def test_a_video_task_round_trips_through_a_release(world: World) -> None:
                 (0, "0", "1", "0,0;4,0;4,4"),
                 (1, "1", "1", "0,0;4,0;4,4"),
                 (3, "0", "1", "1,0;5,0;5,4"),
+                (4, "1", "1", "1,0;5,0;5,4"),
             ],
         ),
         "4": (
@@ -669,6 +671,7 @@ def test_a_video_task_round_trips_through_a_release(world: World) -> None:
                 (1, "0", "1", (2.0, 2.0, 12.0, 10.0)),
                 (2, "1", "1", (2.0, 2.0, 12.0, 10.0)),
                 (3, "0", "1", (3.0, 2.0, 13.0, 10.0)),
+                (4, "1", "1", (3.0, 2.0, 13.0, 10.0)),
             ],
         ),
     }
@@ -681,7 +684,41 @@ def test_a_video_task_round_trips_through_a_release(world: World) -> None:
 
     _, again = world.run("again", CvatVideoImporter(), dest)
     assert world.sequences(again) == {source_id: world.sequences(run)["drive"]}
-    assert {loss.kind for loss in again.losses} == {ImportLossKind.IMAGE}
+    assert not again.losses
+
+
+def test_an_absent_frame_stays_a_gap_and_later_frames_keep_their_numbers(world: World) -> None:
+    src = _video_source(world.root / "src", TRACKS, absent=(2,))
+    project_id, run = world.run("cvat", CvatVideoImporter(), src)
+    release_id = world.release(project_id, run)
+    manifest = world.releases.manifest(release_id)
+    (listed,) = manifest.sources
+    assert [(o.position, o.timestamp) for o in listed.occurrences] == [
+        (0, None),
+        (1, None),
+        (3, None),
+        (4, None),
+    ]
+
+    dest = world.root / "out"
+    world.releases.export(release_id, CvatVideoExporter(), dest, allow_lossy=True)
+    (task,) = _read_video(dest).values()
+    assert task["size"] == 5
+    assert task["frames"] == [f"frame_00000{n}.png" for n in (0, 1, 3, 4)]
+    _, again = world.run("again", CvatVideoImporter(), dest)
+    (source_id,) = (str(one) for one in run.source_ids)
+    assert world.sequences(again) == {source_id: world.sequences(run)["drive"]}
+    (reread,) = again.source_ids
+    assert [o.position for o in world.sources.occurrences(reread)] == [0, 1, 3, 4]
+
+
+def test_unknown_timing_refuses_a_mot_export_by_name(world: World) -> None:
+    project_id, run = world.run(
+        "cvat", CvatVideoImporter(), _video_source(world.root / "src", TRACKS)
+    )
+    release_id = world.release(project_id, run)
+    with pytest.raises(ExportSourceUnreadable, match="timing of frame 1 is unknown"):
+        world.releases.export(release_id, MotExporter(), world.root / "out", allow_lossy=True)
 
 
 def _read_images(dest: Path) -> tuple[list[str], list[tuple[object, ...]]]:

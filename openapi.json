@@ -3846,8 +3846,15 @@
             "type": "string"
           },
           "timestamp": {
-            "title": "Timestamp",
-            "type": "number"
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Timestamp"
           }
         },
         "required": [
@@ -7645,8 +7652,15 @@
             "type": "integer"
           },
           "timestamp": {
-            "title": "Timestamp",
-            "type": "number"
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Timestamp"
           }
         },
         "required": [
@@ -10838,7 +10852,7 @@
         ]
       },
       "post": {
-        "description": "Freeze the trunk as it stands into an immutable, named snapshot.\n\nWhat is frozen is the content: every member asset, every annotation on it as\nit was, and the schema version those labels were judged against. Deleting an\nannotation afterwards cannot reach backwards into a published release.\n\nPublishing twice from an unchanged dataset produces byte-identical manifests\nand therefore the same `manifest_hash`, because nothing time-, machine- or\nidentity-specific goes inside the document. The tag, the timestamp and the\nbuild live on the release row instead.\n\n`split` is stored as a recipe, not materialized. `GET\n/releases/{release_id}/assignment` cuts the folds on demand, deterministically\nand from the frozen asset set. Fractions must sum to 1.0.\n\nTags are unique per dataset and **case-sensitive**, like a git tag: `v1.0` and\n`V1.0` are two releases, and reusing one is 409 `RELEASE_TAG_TAKEN`; a blank\ntag is 422 `INVALID_NAME`. A dataset\nwith no assets is 409 `EMPTY_RELEASE`; zero *annotations* is fine, since\nunlabeled images are legitimate training data. A project with no schema is 404\n`SCHEMA_NOT_FOUND`, because there is no version to pin, and an unknown dataset\nis 404 `DATASET_NOT_FOUND`.\n\nOne refusal is about the labels rather than about the request: an annotation\ncarrying a coordinate canonical JSON cannot express \u2014 a NaN or an infinity \u2014\nis 409 `UNSERIALIZABLE_MANIFEST`, and the message names it. Nothing is\npublished, because writing that value as `null` would lose it silently and\nwriting it as `NaN` would produce a manifest no other tool can read. The\nremedy is to correct the annotation and publish again.\n\nThe active schema must also describe every annotation the release would\nfreeze. Otherwise publishing is 409\n`RELEASE_CONTENT_WOULD_VIOLATE_SCHEMA`, with per-class blockers in `detail`.\nReconcile those annotations or restore a compatible active schema, then\npublish again.\n\nEvery asset carrying a 3D label must have a calibration \u2014 its own, else its\nsource's \u2014 which the release embeds beside it. Without one publishing is\n409 `CALIBRATION_MISSING`, and with one measured at another size than the\nasset it is 422 `CALIBRATION_RESOLUTION_MISMATCH`. A release with no 3D\nlabel embeds no calibration and is written as manifest version 3.\n\nA track observing an annotation the release copies is listed with those\nobservations only, in source position order, and makes the release a\nmanifest version 7. A release no track observes omits `tracks`.",
+        "description": "Freeze the trunk as it stands into an immutable, named snapshot.\n\nWhat is frozen is the content: every member asset, every annotation on it as\nit was, and the schema version those labels were judged against. Deleting an\nannotation afterwards cannot reach backwards into a published release.\n\nPublishing twice from an unchanged dataset produces byte-identical manifests\nand therefore the same `manifest_hash`, because nothing time-, machine- or\nidentity-specific goes inside the document. The tag, the timestamp and the\nbuild live on the release row instead.\n\n`split` is stored as a recipe, not materialized. `GET\n/releases/{release_id}/assignment` cuts the folds on demand, deterministically\nand from the frozen asset set. Fractions must sum to 1.0.\n\nTags are unique per dataset and **case-sensitive**, like a git tag: `v1.0` and\n`V1.0` are two releases, and reusing one is 409 `RELEASE_TAG_TAKEN`; a blank\ntag is 422 `INVALID_NAME`. A dataset\nwith no assets is 409 `EMPTY_RELEASE`; zero *annotations* is fine, since\nunlabeled images are legitimate training data. A project with no schema is 404\n`SCHEMA_NOT_FOUND`, because there is no version to pin, and an unknown dataset\nis 404 `DATASET_NOT_FOUND`.\n\nOne refusal is about the labels rather than about the request: an annotation\ncarrying a coordinate canonical JSON cannot express \u2014 a NaN or an infinity \u2014\nis 409 `UNSERIALIZABLE_MANIFEST`, and the message names it. Nothing is\npublished, because writing that value as `null` would lose it silently and\nwriting it as `NaN` would produce a manifest no other tool can read. The\nremedy is to correct the annotation and publish again.\n\nThe active schema must also describe every annotation the release would\nfreeze. Otherwise publishing is 409\n`RELEASE_CONTENT_WOULD_VIOLATE_SCHEMA`, with per-class blockers in `detail`.\nReconcile those annotations or restore a compatible active schema, then\npublish again.\n\nEvery asset carrying a 3D label must have a calibration \u2014 its own, else its\nsource's \u2014 which the release embeds beside it. Without one publishing is\n409 `CALIBRATION_MISSING`, and with one measured at another size than the\nasset it is 422 `CALIBRATION_RESOLUTION_MISMATCH`. A release with no 3D\nlabel embeds no calibration and is written as manifest version 3.\n\nA track observing an annotation the release copies is listed with those\nobservations only, in source position order, and makes the release a\nmanifest version 7. A release no track observes omits `tracks`.\n\nA release holding an asset of an image-sequence source lists that source\nwith every occurrence whose asset it holds, as `sources`, and is a manifest\nversion 9; so is one whose observed timing is unknown (`null`, not `0`).\nA release holding no image-sequence asset omits `sources`.",
         "operationId": "publish_release",
         "parameters": [
           {

@@ -187,12 +187,15 @@ class ImportedScan(BaseModel):
 
 
 class ImportedFrame(BaseModel):
-    """One still of a sequence, and its time since the sequence's first frame."""
+    """One still of a sequence, and its time since the sequence's first frame.
+
+    ``timestamp`` is ``None`` when the dataset records no timing for it.
+    """
 
     model_config = ConfigDict(frozen=True, extra="forbid", allow_inf_nan=False)
 
     path: PurePosixPath
-    timestamp: float = Field(ge=0)
+    timestamp: float | None = Field(ge=0)
 
     @field_validator("path", mode="before")
     @classmethod
@@ -226,7 +229,9 @@ class ImportedSequence(BaseModel):
     def _ordered(self) -> ImportedSequence:
         if len({frame.path for frame in self.frames}) != len(self.frames):
             raise ValueError(f"sequence {self.name!r} lists a frame twice")
-        times = [frame.timestamp for frame in self.frames]
+        times = [frame.timestamp for frame in self.frames if frame.timestamp is not None]
+        if times and len(times) != len(self.frames):
+            raise ValueError(f"sequence {self.name!r} times some frames and not others")
         if times != sorted(times):
             raise ValueError(f"sequence {self.name!r} is not in time order")
         return self

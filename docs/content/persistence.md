@@ -196,11 +196,12 @@ MIGRATIONS: list[Migration] = [
     Migration(version=23, name="group_labels", upgrade=_add_group_labels),
     Migration(version=24, name="frame_occurrences", upgrade=_add_frame_occurrences),
     Migration(version=25, name="tracks", upgrade=_add_tracks),
+    Migration(version=26, name="unknown_frame_timing", upgrade=_allow_unknown_frame_timing),
 ]
-FORMAT_VERSION: int = MIGRATIONS[-1].version  # 25
+FORMAT_VERSION: int = MIGRATIONS[-1].version  # 26
 ```
 
-**Generation 1 is the baseline, and the twenty-four entries after it are ordinary migrations.** A long
+**Generation 1 is the baseline, and the twenty-five entries after it are ordinary migrations.** A long
 chain of generations got this schema to its present shape while VisionSet was unreleased.
 Every database they could have upgraded was disposable test data inside this repository, so
 what they actually bought was an idempotency argument and an undo line per generation, plus
@@ -259,6 +260,13 @@ Migration 25 creates `track` and `track_observation` whole and backfills nothing
 before it. Every key of an observation cascades - from its track, its occurrence and its annotation -
 so `annotation` and `frame_occurrence` join `asset` as tables a later migration may not rebuild
 without counting those rows first - see [annotations.md](annotations.md#a-track-observes-annotations-an-annotation-knows-nothing-of-tracks).
+Migration 26 lets `frame_occurrence.timestamp` be NULL, timing a source never recorded. SQLite
+cannot relax `NOT NULL` in place, so it copies every `frame_occurrence` and `track_observation` row
+into temporary tables, drops and recreates both tables from `_tables.py`, and copies the rows back,
+so the rebuild cascades nothing. Pending migrations run inside an explicit `BEGIN`, because pysqlite
+opens a transaction only before DML: without it a failure after the drops would have left the file
+without its tables, and now it rolls the whole generation back. It rewrites no value: a `0` an earlier CVAT import gave a frame cannot be told
+from a recorded one, so it stays `0`.
 
 **There are no downgrade paths, deliberately.** Nothing walks a file backwards and the
 tests no longer do either. A downgrade is a compatibility promise and a promise is owed
