@@ -104,6 +104,7 @@ export const sidebar = [
       { slug: "preprocessing" },
       { slug: "events" },
       { slug: "background-jobs" },
+      { slug: "tracking" },
       { slug: "persistence" },
     ],
   },
