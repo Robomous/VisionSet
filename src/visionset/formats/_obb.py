@@ -5,14 +5,21 @@ Both spell a rotated box as four corners in order round the rectangle, and both
 read one back through :func:`obb_from_corners`, so a row naming any start
 corner, in either direction, is the same canonical box.
 
-A file writes each coordinate to a fixed number of decimals, so rounding moves
-each corner up to half a unit of the row's last decimal off its rectangle. Four
-corners that are not a rectangle to :data:`OBB_CORNER_TOLERANCE` are fitted to
-the nearest rectangle, which is kept when every corner lies within twice that,
-one whole unit, of it on each axis: the half unit of rounding, and the fit's own
-error, which reaches about 1.7 half units on rounded rectangles of any shape.
-The caller counts a kept fit as a degraded geometry. Farther than that, the
-corners are refused and the caller counts a lost label.
+Four corners that are not a rectangle to :data:`OBB_CORNER_TOLERANCE` are
+fitted to the nearest rectangle. Rounding to a file's decimals moves a corner
+off its rectangle, and DOTA's corners are drawn by hand on whole pixels of the
+source picture, so a real box is seldom a rectangle. The fit is kept when every
+corner lies within :data:`FIT_TOLERANCE`, a sixth of the fit's shorter side, of
+its fitted corner, or within one whole unit of the row's last decimal on each
+axis, for a box too small to tell rounding from shape. The caller counts a kept
+fit as a degraded geometry. Farther than that, the corners are refused and the
+caller counts a lost label.
+
+A sixth is chosen from data. On the 133 rows of Ultralytics' DOTA8, the
+farthest corner lies at most 0.131 of the shorter side from the fit (median
+0.035, 99th percentile 0.107), while a clear trapezoid lies at 0.30, a
+parallelogram skewed 30 degrees at 0.20 to 0.32, a kite at 0.35 or more, a
+dart at 0.85 and a bow-tie has no fit at all.
 
 Corners are written with enough digits that a box reads back within that
 tolerance, and never clamped into the image: clamping one corner bends the
@@ -39,9 +46,10 @@ Corners = tuple[tuple[float, float], ...]
 NOT_FINITE: Final = "its coordinates are not finite numbers"
 NO_AREA: Final = "its rotated box has no area"
 NOT_A_RECTANGLE: Final = "its four corners are not a rectangle"
-ROUNDED: Final = (
-    "its corners are a rectangle only to the file's precision; the nearest rectangle is kept"
-)
+FITTED: Final = "its four corners are only near a rectangle; the nearest rectangle is kept"
+
+FIT_TOLERANCE: Final = 1 / 6
+"""How far a corner may lie from the nearest rectangle, relative to its shorter side."""
 
 
 def obb_of(annotation: ManifestAnnotation) -> ObbGeometry | None:
@@ -69,8 +77,8 @@ def read_corners(
     """The rectangle four corners describe and why it is not exact, or ``None`` and the loss.
 
     ``quantum`` is how far rounding may have moved a corner on each axis, in
-    pixels. An exact rectangle comes back with an empty reason; corners within
-    twice ``quantum`` of the nearest rectangle bring it back with :data:`ROUNDED`.
+    pixels. An exact rectangle comes back with an empty reason; corners near
+    the nearest rectangle, as the module says, bring it back with :data:`FITTED`.
     """
     if not all(isfinite(value) for point in points for value in point):
         return None, NOT_FINITE
@@ -90,10 +98,15 @@ def read_corners(
     floor = OBB_CORNER_TOLERANCE * scale
     allowance = (max(2 * quantum[0], floor), max(2 * quantum[1], floor))
     fitted = nearest_rectangle(points)
-    if fitted is None or not _within(points, fitted, allowance):
+    if fitted is None:
         return None, NOT_A_RECTANGLE
     cx, cy, width, height, angle = _shape(fitted)
-    return ObbGeometry(cx=cx, cy=cy, width=width, height=height, angle=angle), ROUNDED
+    reach = FIT_TOLERANCE * min(width, height)
+    pairs = zip(points, fitted, strict=True)
+    near = all(hypot(x - fx, y - fy) <= reach for (x, y), (fx, fy) in pairs)
+    if not near and not _within(points, fitted, allowance):
+        return None, NOT_A_RECTANGLE
+    return ObbGeometry(cx=cx, cy=cy, width=width, height=height, angle=angle), FITTED
 
 
 def nearest_rectangle(points: Corners) -> Corners | None:

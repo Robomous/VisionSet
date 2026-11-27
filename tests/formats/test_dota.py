@@ -21,7 +21,7 @@ from tests.formats.test_yolo_obb import (
     same_box,
 )
 
-from visionset.formats._obb import ROUNDED
+from visionset.formats._obb import FITTED
 from visionset.formats.dota import DotaExporter, DotaImporter
 from visionset.formats.registry import exporters, importers
 from visionset.kernel import ExportSourceUnreadable, ImportSourceUnreadable
@@ -277,7 +277,7 @@ def test_whole_pixel_corners_off_a_rectangle_are_its_nearest_rectangle_and_degra
     drawn = [(round(x), round(y)) for x, y in obb_corners(truth)]
     dataset = _read(_source(tmp_path, f"{_corners(drawn)} ship 0\n"))
 
-    assert _losses(dataset) == [(ImportLossKind.GEOMETRY, "ship", ROUNDED, 1)]
+    assert _losses(dataset) == [(ImportLossKind.GEOMETRY, "ship", FITTED, 1)]
     (label,) = dataset.images[0].labels
     fitted = label.geometry
     assert isinstance(fitted, ObbGeometry)
@@ -289,7 +289,20 @@ def test_whole_pixel_corners_off_a_rectangle_are_its_nearest_rectangle_and_degra
 
     tenths = [(float(x), float(y)) for x, y in drawn]
     claimed = _read(_source(tmp_path / "tenths", f"{_corners(tenths)} ship 0\n"))
-    assert [kind for kind, *_ in _losses(claimed)] == [ImportLossKind.LABEL]
+    assert _losses(claimed) == [(ImportLossKind.GEOMETRY, "ship", FITTED, 1)]
+    assert claimed.images[0].labels[0].geometry == fitted
+
+
+def test_a_box_too_small_to_judge_by_shape_is_judged_by_the_rows_precision(
+    tmp_path: Path,
+) -> None:
+    whole = _read(_source(tmp_path, "20 10 24 10 24 12 21 12 ship 0\n"))
+    tenths = _read(_source(tmp_path / "tenths", "20.0 10.0 24.0 10.0 24.0 12.0 21.0 12.0 ship 0\n"))
+
+    assert _losses(whole) == [(ImportLossKind.GEOMETRY, "ship", FITTED, 1)]
+    assert [(kind, why) for kind, _, why, _ in _losses(tenths)] == [
+        (ImportLossKind.LABEL, "its four corners are not a rectangle")
+    ]
 
 
 def test_a_difficult_flag_other_than_0_or_1_is_an_attribute_loss(tmp_path: Path) -> None:

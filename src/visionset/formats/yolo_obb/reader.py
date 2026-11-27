@@ -5,8 +5,8 @@ The inverse of :class:`YoloObbExporter`. The descriptor and the layout are read
 as the ``ultralytics`` importer reads them; each row must be a class index and
 exactly eight numbers, the corners of a rectangle in order round it from any
 start, in either direction, scaled out of the picture's oriented size. Each
-becomes a canonical rotated box; corners that are a rectangle only to the row's
-own decimals become the nearest one and a degraded geometry. A row of any other
+becomes a canonical rotated box; corners only near a rectangle become the nearest
+one and a degraded geometry, by the rule in :mod:`visionset.formats._obb`. A row of any other
 length, four corners farther than that from a rectangle or enclosing no area, a
 class the descriptor does not name and a box wholly outside its picture are each
 a lost label. The split is not imported.

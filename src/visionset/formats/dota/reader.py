@@ -8,9 +8,9 @@ benchmark's ``<fold>/images`` layout reads. ``imagesource:`` and ``gsd:`` header
 lines are skipped. A row is eight pixel coordinates, the corners of a rectangle
 in order round it from any start in either direction, then a category and an
 optional ``difficult`` flag; each becomes a canonical rotated box of the class
-the category names. Corners that are a rectangle only to the row's own
-decimals, as whole-pixel hand-drawn ones usually are, become the nearest
-rectangle and a degraded geometry. The classes are the categories the kept
+the category names. Corners only near a rectangle, as whole-pixel
+hand-drawn ones usually are, become the nearest rectangle and a degraded
+geometry, by the rule in :mod:`visionset.formats._obb`. The classes are the categories the kept
 boxes name, in the order they first appear.
 
 A row of any other length, four corners farther than that from a rectangle or

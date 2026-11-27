@@ -19,7 +19,7 @@ from tests.fixtures.media import write_image
 from tests.formats.test_report_agreement import _yolo_counts
 from tests.formats.test_ultralytics import CLASSES, IMAGE_SIZE, Fixture, _box
 
-from visionset.formats._obb import ROUNDED
+from visionset.formats._obb import FITTED
 from visionset.formats.registry import exporters, importers
 from visionset.formats.ultralytics import UltralyticsImporter
 from visionset.formats.yolo_obb import YoloObbExporter, YoloObbImporter
@@ -338,7 +338,7 @@ def test_corners_rounded_to_the_rows_decimals_are_the_nearest_rectangle(
     )
     dataset = _read(_source(tmp_path, f"0 {row}\n"))
 
-    assert set(_losses(dataset)) <= {(ImportLossKind.GEOMETRY, "ship", ROUNDED, 1)}
+    assert set(_losses(dataset)) <= {(ImportLossKind.GEOMETRY, "ship", FITTED, 1)}
     (label,) = dataset.images[0].labels
     fitted = label.geometry
     assert isinstance(fitted, ObbGeometry)
@@ -347,7 +347,7 @@ def test_corners_rounded_to_the_rows_decimals_are_the_nearest_rectangle(
         assert abs(found[0] - expected[0]) <= unit * SIZE[0]
         assert abs(found[1] - expected[1]) <= unit * SIZE[1]
     if decimals == 3:
-        assert _losses(dataset) == [(ImportLossKind.GEOMETRY, "ship", ROUNDED, 1)]
+        assert _losses(dataset) == [(ImportLossKind.GEOMETRY, "ship", FITTED, 1)]
 
 
 @pytest.mark.parametrize(
