@@ -264,7 +264,7 @@ frame of the task is listed whether the directory holds it or not, so a
 missing frame is an `image` loss whose position stays a gap. `<original_size>`, when given, is
 every frame's size. The task is one image sequence named by its `<name>`, or by its directory when
 it has none; two tasks naming one sequence refuse the source. CVAT records no frame timing, so
-every frame's timestamp is `0` and its order lives in its position. Each `<track id>` is a track of
+every frame's timestamp is `0` and its order lives in its position. Frames whose pictures are byte-identical share one asset, and the labels on a repeat are an `image` loss, so a task whose frames are all identical keeps only the first frame's tracks (#1197). Each `<track id>` is a track of
 that sequence whose external id is the decimal `id`, and each of its shapes at `outside="0"` an
 observation at its `frame`; a shape at `outside="1"` says the object is absent, so that frame is a
 gap and nothing is written. Interpolation is not expanded: a stored shape at `keyframe="0"` is kept
