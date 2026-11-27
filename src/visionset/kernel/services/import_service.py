@@ -27,7 +27,9 @@ scan is stored as a binary PCD of its own bytes, so the point-cloud processor
 that decodes an ingested scan decodes it too. The commit's transaction also
 writes the point-cloud source at the import root that declares the dataset's
 frame, unless one already declares it there. And a label has no image to fall
-outside of, so none is dropped for its position.
+outside of, so none is dropped for its position. Its sequences become
+point-cloud-sequence sources, and a scan whose points repeat an earlier one is
+an occurrence of that scan's asset, its own labels lost.
 
 A dataset of images may order some of them into sequences. Each sequence
 holding an asset the run creates or labels becomes a new image-sequence source
@@ -118,6 +120,7 @@ _OUTSIDE = "it lies wholly outside its image"
 _STALE = "it is already on its asset with other attribute values; the values are not updated"
 _OTHER_CLASS = "its track id names a track of another class; the label is kept untracked"
 _REPEATED = "its track id repeats within one frame; the label is kept untracked"
+_OTHER_GEOMETRY = "its track id names a track of another geometry type; the label is kept untracked"
 
 
 @dataclass(frozen=True)
@@ -148,6 +151,18 @@ class _Planned:
     repeats: dict[PurePosixPath, list[ImportedImage]] | None = None
     opener: Callable[[PurePosixPath], BinaryIO] | None = None
     opened: frozenset[PurePosixPath] = frozenset()
+
+    @property
+    def content_of(self) -> dict[PurePosixPath, str]:
+        """The content hash each held image or scan path stores as, a repeat's its original's."""
+        hashes = {path: probe.content_hash for path, probe in self.probes.items()}
+        hashes.update(
+            {path: probe.content_hash for path, probe in (self.scan_probes or {}).items()}
+        )
+        for path, original in (self.duplicates or {}).items():
+            if original in hashes:
+                hashes[path] = hashes[original]
+        return hashes
 
 
 class ImportService:
@@ -279,6 +294,14 @@ class ImportService:
                     candidate.model_copy(update={"source_id": source.id})
                     for candidate in candidates
                 ]
+                sequences = [
+                    (
+                        sequence,
+                        self._sources.add_point_cloud_sequence_in(uow, project_id, sequence.name),
+                    )
+                    for sequence in plan.dataset.sequences
+                    if any(one.path in planned.writes for one in sequence.frames)
+                ]
             else:
                 sequences = [
                     (sequence, self._sources.add_image_sequence_in(uow, project_id, sequence.name))
@@ -342,6 +365,7 @@ class ImportService:
                 )
             )
             written = self._annotations.add_imported_in(uow, batch.id, proposed)
+            content_of = planned.content_of
             tracks = self._tracks.add_imported_in(
                 uow,
                 batch.id,
@@ -349,7 +373,7 @@ class ImportService:
                     track
                     for sequence, source in sequences
                     for track in self._sequence_tracks(
-                        uow, planned, sequence, source, by_hash, tracked
+                        uow, content_of, sequence, source, by_hash, tracked
                     )
                 ],
             )
@@ -373,19 +397,18 @@ class ImportService:
     def _sequence_tracks(
         self,
         uow: UnitOfWork,
-        planned: _Planned,
+        content_of: dict[PurePosixPath, str],
         sequence: ImportedSequence,
         source: Source,
         by_hash: dict[str, Asset],
         tracked: dict[PurePosixPath, list[tuple[str, Annotation]]],
     ) -> list[tuple[Track, list[TrackObservation]]]:
         """Write the sequence's occurrences; answer its tracks over the labels this run wrote."""
-        duplicates = planned.duplicates or {}
         held: list[tuple[int, ImportedFrame, Asset]] = []
-        for position, one in enumerate(sequence.frames):
-            probe = planned.probes.get(duplicates.get(one.path, one.path))
-            if probe is not None:
-                held.append((position, one, by_hash[probe.content_hash]))
+        for position, one in sequence.positioned():
+            content = content_of.get(one.path)
+            if content is not None:
+                held.append((position, one, by_hash[content]))
         occurrences = self._sources.add_occurrences_in(
             uow, source, [(position, one.timestamp, asset.id) for position, one, asset in held]
         )
@@ -548,15 +571,8 @@ class ImportService:
                         )
                     )
 
-        touched = [
-            sequence
-            for sequence in dataset.sequences
-            if any(one.path in writes for one in sequence.frames)
-        ]
-        tracks = sum(
-            len(set().union(*(tracked.get(one.path, set()) for one in sequence.frames)))
-            for sequence in touched
-        )
+        touched = _touched(dataset, writes)
+        tracks = _track_count(touched, tracked)
         losses.extend(_stale_losses(stale))
         members = bool(new_assets or new_annotations)
         refusals: list[VisionSetError] = []
@@ -620,21 +636,29 @@ class ImportService:
             probes[scan.path] = self._probe_scan(path, scan)
 
         kept: list[ImportedScan] = []
+        duplicates: dict[PurePosixPath, PurePosixPath] = {}
         first_with: dict[str, PurePosixPath] = {}
+        order = _listing_order(dataset)
         for scan in sorted(
-            (scan for scan in dataset.scans if scan.path in probes), key=lambda s: str(s.path)
+            (scan for scan in dataset.scans if scan.path in probes),
+            key=lambda s: order.get(s.path, (str(s.path), 0)),
         ):
             original = first_with.setdefault(probes[scan.path].content_hash, scan.path)
             if original != scan.path:
                 del probes[scan.path]
+                duplicates[scan.path] = original
                 losses.append(_scan_loss(scan, f"its points are those of {str(original)!r}"))
                 continue
             kept.append(scan)
 
+        writes: set[PurePosixPath] = set()
+        tracked: dict[PurePosixPath, set[str]] = {}
         with self._workspace.unit_of_work() as uow:
             active = self._schemas.active(uow, project_id)
             kept, attribute_losses = _judged_attributes(kept, _target_classes(dataset, active))
             losses.extend(attribute_losses)
+            kept, track_losses = _consistent_tracks(dataset, kept)
+            losses.extend(track_losses)
             known = {asset.content_hash: asset for asset in uow.assets.list(project_id)}
             trunk = member_asset_ids_of(
                 uow, ProjectService(self._workspace).require_dataset(uow, project_id)
@@ -653,6 +677,8 @@ class ImportService:
                 if asset is None:
                     new_assets += 1
                     new_annotations += len(scan.labels)
+                    writes.add(scan.path)
+                    tracked[scan.path] = {one.track for one in scan.labels if one.track}
                     continue
                 new, repeated, differing = _new_labels(
                     _present(uow.annotations.list(asset.id)), scan.labels
@@ -660,6 +686,9 @@ class ImportService:
                 already += repeated
                 stale.update(differing)
                 new_annotations += len(new)
+                if new:
+                    writes.add(scan.path)
+                    tracked[scan.path] = {one.track for one in new if one.track}
                 if any(
                     geometry_needs_scan_frame(one.geometry, modality=asset.modality) for one in new
                 ):
@@ -684,6 +713,7 @@ class ImportService:
                     )
 
         losses.extend(_stale_losses(stale))
+        touched = _touched(dataset, writes)
         members = bool(new_assets or new_annotations)
         refusals: list[VisionSetError] = []
         if members and registered is not None and registered.frame != frame:
@@ -720,6 +750,8 @@ class ImportService:
             annotations_already_present=already,
             scans=tuple(kept),
             missing_scans=tuple(missing),
+            sequences=len(touched),
+            tracks=_track_count(touched, tracked),
         )
         return _Planned(
             plan=plan,
@@ -729,6 +761,8 @@ class ImportService:
             active=active,
             root=root,
             scan_probes=probes,
+            duplicates=duplicates,
+            writes=frozenset(writes),
         )
 
     def _probe_scan(self, path: Path, scan: ImportedScan) -> _ScanProbe:
@@ -942,32 +976,50 @@ def _image_loss(image: ImportedImage, why: str) -> ImportLoss:
 
 
 def _listing_order(dataset: ImportedDataset) -> dict[PurePosixPath, tuple[str, int]]:
-    """Where a sequenced image sorts: at its sequence's first path, then by position.
+    """Where a sequenced image or scan sorts: at its sequence's first path, then by position.
 
-    The first of two images with equal bytes wins, so a sequence's frames are
-    ranked in its own order rather than by how their paths happen to sort.
+    The first of two with equal bytes wins, so a sequence's frames are ranked
+    in its own order rather than by how their paths happen to sort.
     """
     return {
         one.path: (str(sequence.frames[0].path), position)
         for sequence in dataset.sequences
-        for position, one in enumerate(sequence.frames)
+        for position, one in sequence.positioned()
     }
 
 
-def _consistent_tracks(
-    dataset: ImportedDataset, kept: list[ImportedImage]
-) -> tuple[list[ImportedImage], list[ImportLoss]]:
-    """The kept images with every track id a track cannot hold taken off its label.
+def _touched(dataset: ImportedDataset, writes: set[PurePosixPath]) -> list[ImportedSequence]:
+    """The sequences holding an image or scan a commit creates or labels."""
+    return [
+        sequence
+        for sequence in dataset.sequences
+        if any(one.path in writes for one in sequence.frames)
+    ]
 
-    A track takes the class of its first label in sequence order. A later label
-    of another class, or a second label of the same track in one frame, stays a
-    label and loses its track id, counted as an ``attribute`` loss. Answers the
-    images and those losses.
+
+def _track_count(
+    sequences: Sequence[ImportedSequence], tracked: dict[PurePosixPath, set[str]]
+) -> int:
+    return sum(
+        len(set().union(*(tracked.get(one.path, set()) for one in sequence.frames)))
+        for sequence in sequences
+    )
+
+
+def _consistent_tracks(
+    dataset: ImportedDataset, kept: list[_Item]
+) -> tuple[list[_Item], list[ImportLoss]]:
+    """The kept images or scans with every track id a track cannot hold taken off its label.
+
+    A track takes the class and geometry type of its first label in sequence
+    order. A later label of another class or geometry type, or a second label of
+    the same track in one frame, stays a label and loses its track id, counted
+    as an ``attribute`` loss. Answers the items and those losses.
     """
-    by_path = {image.path: image for image in kept}
+    by_path = {item.path: item for item in kept}
     dropped: Counter[tuple[str, str]] = Counter()
     for sequence in dataset.sequences:
-        classes: dict[str, str] = {}
+        owners: dict[str, tuple[str, str]] = {}
         for one in sequence.frames:
             image = by_path.get(one.path)
             if image is None:
@@ -976,10 +1028,14 @@ def _consistent_tracks(
             labels: list[ImportedLabel] = []
             for label in image.labels:
                 if label.track is not None:
-                    owner = classes.setdefault(label.track, label.class_name)
+                    owner_class, owner_geometry = owners.setdefault(
+                        label.track, (label.class_name, label.geometry.type.value)
+                    )
                     reason = (
                         _OTHER_CLASS
-                        if owner != label.class_name
+                        if owner_class != label.class_name
+                        else _OTHER_GEOMETRY
+                        if owner_geometry != label.geometry.type.value
                         else _REPEATED
                         if label.track in here
                         else None
@@ -995,7 +1051,7 @@ def _consistent_tracks(
         ImportLoss(kind=ImportLossKind.ATTRIBUTE, subject=name, count=count, reason=reason)
         for (name, reason), count in dropped.items()
     ]
-    return [by_path[image.path] for image in kept], losses
+    return [by_path[item.path] for item in kept], losses
 
 
 def _derived_classes(dataset: ImportedDataset) -> list[LabelClass]:
