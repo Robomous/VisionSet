@@ -28,8 +28,8 @@ from visionset.server.models import (
     ProjectListItemOut,
     ProjectOut,
     ProjectPage,
-    ProjectRename,
     ProjectStatsOut,
+    ProjectUpdate,
 )
 
 router = protected_router(prefix="/projects", tags=["projects"])
@@ -98,10 +98,15 @@ def get_project_progress(workspace: WorkspaceDep, project_id: UUID) -> ProgressC
 
 
 @router.patch("/{project_id}", responses=documented(404, 409))
-def rename_project(workspace: WorkspaceDep, project_id: UUID, body: ProjectRename) -> ProjectOut:
-    """Rename a project, and its dataset with it. The only field that moves."""
+def update_project(workspace: WorkspaceDep, project_id: UUID, body: ProjectUpdate) -> ProjectOut:
+    """Rename a project, change its description, or both.
+
+    An omitted or null field is left alone. A new name renames the project's
+    dataset with it; a blank description clears it.
+    """
     service = ProjectService(workspace)
-    return ProjectOut.of(service.rename(project_id, body.name), service.preview(project_id))
+    updated = service.update(project_id, name=body.name, description=body.description)
+    return ProjectOut.of(updated, service.preview(project_id))
 
 
 @router.delete(

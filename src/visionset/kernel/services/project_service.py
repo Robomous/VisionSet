@@ -395,16 +395,43 @@ class ProjectService:
             InvalidName: the name is blank once stripped.
             ProjectNameTaken: a *different* project in this workspace holds it.
         """
+        return self.update(project_id, name=name)
+
+    def update(
+        self,
+        project_id: UUID,
+        *,
+        name: str | None = None,
+        description: str | None = None,
+    ) -> Project:
+        """Edit a project's name, description, or both, in one unit of work.
+
+        ``None`` means *leave this alone*. A description blank once stripped
+        clears it, being the one shape an emptied form field can send; any other
+        is kept as written. A new name renames the dataset with it, as
+        :meth:`rename` does; the dataset's own description is not touched.
+
+        Raises:
+            ProjectNotFound: no such project in this workspace.
+            InvalidName: the name is blank once stripped.
+            ProjectNameTaken: a *different* project in this workspace holds it.
+        """
         try:
             with self._workspace.unit_of_work() as uow:
                 project = self._require(uow, project_id)
-                resolved = self._workspace.require_project_name(uow, name, exclude=project.id)
-                dataset = self.require_dataset(uow, project.id)
-                renamed = uow.projects.update(project.model_copy(update={"name": resolved}))
-                uow.datasets.update(dataset.model_copy(update={"name": resolved}))
-                return renamed
+                changes: dict[str, str | None] = {}
+                if name is not None:
+                    resolved = self._workspace.require_project_name(uow, name, exclude=project.id)
+                    dataset = self.require_dataset(uow, project.id)
+                    uow.datasets.update(dataset.model_copy(update={"name": resolved}))
+                    changes["name"] = resolved
+                if description is not None:
+                    changes["description"] = description if description.strip() else None
+                if not changes:
+                    return project
+                return uow.projects.update(project.model_copy(update=changes))
         except ConstraintViolated as exc:
-            raise self._as_name_collision(exc, name) from exc
+            raise self._as_name_collision(exc, name or "") from exc
 
     def delete(self, project_id: UUID, *, confirm: bool = False) -> None:
         """Remove a project and everything downstream of it. Metadata only.

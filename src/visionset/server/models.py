@@ -108,6 +108,8 @@ from visionset.kernel.domain import (
     DraftKeypointIndex,
     DraftKeypointSpec,
     DraftLabelClass,
+    ExecutorStatus,
+    ExecutorVariable,
     ExportCompatibility,
     ExportTarget,
     FrameOccurrence,
@@ -180,6 +182,9 @@ from visionset.kernel.domain import (
     Task,
     TimeRange,
     TrackDetail,
+    TrackingAuth,
+    TrackingServer,
+    TrackingStatus,
     TrackStatus,
     TransformedAnnotation,
     VertexVisibilities,
@@ -188,6 +193,7 @@ from visionset.kernel.domain import (
     VideoMetadata,
     VideoProvenance,
     WeightDownload,
+    WorkspaceSettings,
     WorkspaceSummary,
     WorkspaceTotals,
     asset_actions,
@@ -471,14 +477,114 @@ class ProjectCreate(BaseModel):
     description: str | None = None
 
 
-# The description is not here because ``ProjectService`` has no way to update it.
-# The API does not grow a field the SDK cannot honour.
-class ProjectRename(BaseModel):
-    """The one field of a project that moves."""
+class ProjectUpdate(BaseModel):
+    """A partial edit. A field omitted or null means *leave this alone*.
+
+    `name` renames the project's dataset with it. `description` set to a blank
+    string clears it.
+    """
 
     model_config = ConfigDict(extra="forbid")
 
+    name: str | None = None
+    description: str | None = None
+
+
+# --- workspace settings ------------------------------------------------------
+
+
+class TrackingServerOut(BaseModel):
+    """The tracking server's scheme, host and port. Never its path, query or credentials.
+
+    `host` is null for a scheme that names no host, such as a local store;
+    `port` is null unless the address names one.
+    """
+
+    scheme: str
+    host: str | None
+    port: int | None
+
+    @classmethod
+    def of(cls, server: TrackingServer) -> Self:
+        return cls(scheme=server.scheme, host=server.host, port=server.port)
+
+
+class TrackingStatusOut(BaseModel):
+    """Whether MLflow tracking is on, and what it would need to run — never a secret.
+
+    With tracking off only the flag is read, so `experiment`, `server` and `auth`
+    are null and both certificate flags are false. `auth` names which
+    authentication is configured, in MLflow's precedence: basic needs both a
+    username and a password, and wins over a token. `problem` is the refusal a
+    run would meet, worded as its remedy; null when there is none.
+    """
+
+    enabled: bool
+    experiment: str | None
+    server: TrackingServerOut | None
+    auth: TrackingAuth | None
+    ca_bundle_configured: bool
+    client_certificate_configured: bool
+    client_installed: bool
+    problem: str | None
+
+    @classmethod
+    def of(cls, status: TrackingStatus) -> Self:
+        return cls(
+            enabled=status.enabled,
+            experiment=status.experiment,
+            server=None if status.server is None else TrackingServerOut.of(status.server),
+            auth=status.auth,
+            ca_bundle_configured=status.ca_bundle_configured,
+            client_certificate_configured=status.client_certificate_configured,
+            client_installed=status.client_installed,
+            problem=status.problem,
+        )
+
+
+class ExecutorVariableOut(BaseModel):
+    """One executor knob: the environment variable, its value here, and its default."""
+
     name: str
+    value: int | float | None
+    default: int | float
+
+    @classmethod
+    def of(cls, variable: ExecutorVariable) -> Self:
+        return cls(name=variable.name, value=variable.value, default=variable.default)
+
+
+class ExecutorStatusOut(BaseModel):
+    """How the job executor is tuned. Every `value` is null when `problem` is set."""
+
+    variables: list[ExecutorVariableOut]
+    problem: str | None
+
+    @classmethod
+    def of(cls, status: ExecutorStatus) -> Self:
+        return cls(
+            variables=[ExecutorVariableOut.of(variable) for variable in status.variables],
+            problem=status.problem,
+        )
+
+
+class WorkspaceSettingsOut(BaseModel):
+    """The read-only settings of the process answering, read once when it started.
+
+    Changing any of them takes a restart. Nothing here is editable over HTTP.
+    """
+
+    version: str
+    tracking: TrackingStatusOut
+    executor: ExecutorStatusOut
+
+    @classmethod
+    def of(cls, settings: WorkspaceSettings) -> Self:
+        return cls(
+            version=settings.version,
+            tracking=TrackingStatusOut.of(settings.tracking),
+            executor=ExecutorStatusOut.of(settings.executor),
+        )
 
 
 # --- annotation schemas ------------------------------------------------------

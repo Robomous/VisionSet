@@ -23,6 +23,7 @@ from visionset.tracking.settings import (
     load_tracking_settings,
     tracking_settings,
 )
+from visionset.tracking.status import tracking_status
 
 
 def build_tracker(settings: TrackingSettings) -> Tracker:
@@ -48,4 +49,5 @@ __all__ = [
     "build_tracker",
     "load_tracking_settings",
     "tracking_settings",
+    "tracking_status",
 ]

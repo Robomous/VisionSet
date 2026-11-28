@@ -30,6 +30,7 @@ SHIPPED = {
     "create_project",
     "list_projects",
     "get_project",
+    "update_project",
     "get_schema",
     "compare_schema_versions",
     "preview_schema_change",
@@ -107,6 +108,7 @@ SHIPPED = {
     "check_connection_integrity",
     "test_inference_connection",
     "update_inference_connection",
+    "get_workspace_settings",
 }
 """Every tool this server offers by default.
 

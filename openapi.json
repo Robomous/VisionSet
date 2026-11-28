@@ -3695,6 +3695,76 @@
         "title": "ErrorBody",
         "type": "object"
       },
+      "ExecutorStatusOut": {
+        "description": "How the job executor is tuned. Every `value` is null when `problem` is set.",
+        "properties": {
+          "problem": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Problem"
+          },
+          "variables": {
+            "items": {
+              "$ref": "#/components/schemas/ExecutorVariableOut"
+            },
+            "title": "Variables",
+            "type": "array"
+          }
+        },
+        "required": [
+          "variables",
+          "problem"
+        ],
+        "title": "ExecutorStatusOut",
+        "type": "object"
+      },
+      "ExecutorVariableOut": {
+        "description": "One executor knob: the environment variable, its value here, and its default.",
+        "properties": {
+          "default": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "number"
+              }
+            ],
+            "title": "Default"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "value": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Value"
+          }
+        },
+        "required": [
+          "name",
+          "value",
+          "default"
+        ],
+        "title": "ExecutorVariableOut",
+        "type": "object"
+      },
       "ExportCompatibilityOut": {
         "description": "What one format would drop from one release, worked out before writing.\n\n`target` names the trainer the release was judged for, and is null when it\nwas judged against the format alone.",
         "properties": {
@@ -6565,21 +6635,6 @@
         "title": "ProjectPreLabelRequest",
         "type": "object"
       },
-      "ProjectRename": {
-        "additionalProperties": false,
-        "description": "The one field of a project that moves.",
-        "properties": {
-          "name": {
-            "title": "Name",
-            "type": "string"
-          }
-        },
-        "required": [
-          "name"
-        ],
-        "title": "ProjectRename",
-        "type": "object"
-      },
       "ProjectStage": {
         "description": "Where a project is in the road from images to a released dataset.\n\nA **description**, derived per call by ``ProjectService.digests`` from facts\nthe kernel already holds, and nothing more. It is not a state the project\nis *in*: there is no ``project.stage`` column, no transition table and no\ntransition to refuse, and it must never be consulted to gate an action \u2014\nwhat may be done is decided by ``capabilities.py`` and the transition tables\nin the domain, never by a label that summarises them. A client that\ndisabled a button because a project reads ``annotating`` would be a second\nlegality table that the first one never heard of.\n\nEvaluated **first match wins**, in this order, which is the whole of the\nrule and why the members are listed in it:\n\n1. ``empty`` - the project holds no assets.\n2. ``in_review`` - some frame in an ``in_annotation`` batch is waiting on a\n   reviewer (``AssetProgress.REVIEW_PENDING``).\n3. ``annotating`` - some frame in an ``in_annotation`` batch is neither\n   settled nor waiting on review: labeling an annotator still has to do.\n4. ``to_promote`` - a ``completed`` batch holds an asset ``promote`` would\n   still add: one in ``PROMOTABLE_PROGRESS`` that is not in the trunk.\n5. ``unreleased`` - the trunk is non-empty and either no release exists or\n   the trunk was changed after the newest release was cut.\n6. ``not_started`` - assets exist but none of the above holds: only draft or\n   approved batches, or nothing promoted.\n7. ``up_to_date`` - otherwise: the newest release is the trunk as it stands.\n\nReview outranks labeling because a reviewer's frame is finished work waiting\non somebody else, and naming it first tells that somebody there is a queue.",
         "enum": [
@@ -6683,6 +6738,36 @@
           "annotated_fraction"
         ],
         "title": "ProjectSummaryOut",
+        "type": "object"
+      },
+      "ProjectUpdate": {
+        "additionalProperties": false,
+        "description": "A partial edit. A field omitted or null means *leave this alone*.\n\n`name` renames the project's dataset with it. `description` set to a blank\nstring clears it.",
+        "properties": {
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          }
+        },
+        "title": "ProjectUpdate",
         "type": "object"
       },
       "ProviderOut": {
@@ -8398,6 +8483,130 @@
         "title": "TrackStatusOut",
         "type": "object"
       },
+      "TrackingAuth": {
+        "description": "Which authentication the MLflow client would send, in MLflow's own precedence.",
+        "enum": [
+          "none",
+          "basic",
+          "token",
+          "client_certificate"
+        ],
+        "title": "TrackingAuth",
+        "type": "string"
+      },
+      "TrackingServerOut": {
+        "description": "The tracking server's scheme, host and port. Never its path, query or credentials.\n\n`host` is null for a scheme that names no host, such as a local store;\n`port` is null unless the address names one.",
+        "properties": {
+          "host": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Host"
+          },
+          "port": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Port"
+          },
+          "scheme": {
+            "title": "Scheme",
+            "type": "string"
+          }
+        },
+        "required": [
+          "scheme",
+          "host",
+          "port"
+        ],
+        "title": "TrackingServerOut",
+        "type": "object"
+      },
+      "TrackingStatusOut": {
+        "description": "Whether MLflow tracking is on, and what it would need to run \u2014 never a secret.\n\nWith tracking off only the flag is read, so `experiment`, `server` and `auth`\nare null and both certificate flags are false. `auth` names which\nauthentication is configured, in MLflow's precedence: basic needs both a\nusername and a password, and wins over a token. `problem` is the refusal a\nrun would meet, worded as its remedy; null when there is none.",
+        "properties": {
+          "auth": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TrackingAuth"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "ca_bundle_configured": {
+            "title": "Ca Bundle Configured",
+            "type": "boolean"
+          },
+          "client_certificate_configured": {
+            "title": "Client Certificate Configured",
+            "type": "boolean"
+          },
+          "client_installed": {
+            "title": "Client Installed",
+            "type": "boolean"
+          },
+          "enabled": {
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "experiment": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Experiment"
+          },
+          "problem": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Problem"
+          },
+          "server": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TrackingServerOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "enabled",
+          "experiment",
+          "server",
+          "auth",
+          "ca_bundle_configured",
+          "client_certificate_configured",
+          "client_installed",
+          "problem"
+        ],
+        "title": "TrackingStatusOut",
+        "type": "object"
+      },
       "VertexVisibility": {
         "description": "What is known about one vertex of a path: COCO keypoint visibility's three states.\n\nThe integers are COCO's own ``v`` values, so a keypoint exporter writes them\nunchanged. ``UNLABELED`` is a vertex nobody judged, which is not the same\nclaim as ``OCCLUDED`` (judged, and hidden) \u2014 a format with a binary flag has\nto decide what an unjudged vertex becomes, and each one says so where it\nwrites it.\n\nClosed and integer on the wire: it is accepted in requests, so it can never\nbe an open vocabulary, and a client switching on three numbers needs no\nstring table.",
         "enum": [
@@ -8771,6 +8980,28 @@
           "actions"
         ],
         "title": "WithheldActionsOut",
+        "type": "object"
+      },
+      "WorkspaceSettingsOut": {
+        "description": "The read-only settings of the process answering, read once when it started.\n\nChanging any of them takes a restart. Nothing here is editable over HTTP.",
+        "properties": {
+          "executor": {
+            "$ref": "#/components/schemas/ExecutorStatusOut"
+          },
+          "tracking": {
+            "$ref": "#/components/schemas/TrackingStatusOut"
+          },
+          "version": {
+            "title": "Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "version",
+          "tracking",
+          "executor"
+        ],
+        "title": "WorkspaceSettingsOut",
         "type": "object"
       },
       "WorkspaceTotalsOut": {
@@ -15725,8 +15956,8 @@
         ]
       },
       "patch": {
-        "description": "Rename a project, and its dataset with it. The only field that moves.",
-        "operationId": "rename_project",
+        "description": "Rename a project, change its description, or both.\n\nAn omitted or null field is left alone. A new name renames the project's\ndataset with it; a blank description clears it.",
+        "operationId": "update_project",
         "parameters": [
           {
             "in": "path",
@@ -15743,7 +15974,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/ProjectRename"
+                "$ref": "#/components/schemas/ProjectUpdate"
               }
             }
           },
@@ -15826,7 +16057,7 @@
             "HTTPBearer": []
           }
         ],
-        "summary": "Rename Project",
+        "summary": "Update Project",
         "tags": [
           "projects"
         ]
@@ -20414,6 +20645,73 @@
         "summary": "Verify Release",
         "tags": [
           "releases"
+        ]
+      }
+    },
+    "/settings": {
+      "get": {
+        "description": "The version, the MLflow tracking status and the job executor's values.\n\nRead-only, and read once when the process started, so a change takes a\nrestart. No secret is returned: tracking reports which authentication mode\nis configured and whether certificates are, never their values, and the\ntracking server only as scheme, host and port.",
+        "operationId": "get_workspace_settings",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkspaceSettingsOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Missing or invalid bearer token"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The request payload is not processable"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unhandled server error, with an incident id"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The workspace is busy; retry after the header says"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Workspace Settings",
+        "tags": [
+          "settings"
         ]
       }
     },

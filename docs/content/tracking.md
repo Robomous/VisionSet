@@ -152,6 +152,30 @@ A configuration VisionSet cannot use is refused with `TRACKING_UNAVAILABLE`
 With tracking off, nothing but the flag is read, so nothing else can be refused. The message never
 repeats the URI.
 
+## Reading the status
+
+The tracking configuration can be read without starting a run, on every surface, as part of one
+read-only settings document: `GET /settings`, `visionset settings --json` and the MCP tool
+`get_workspace_settings` publish the same object, built once below the surfaces. Each describes the
+process answering - the server, the command or the MCP server - read once when it started, so a
+change takes a restart. Nothing on any surface edits it.
+
+| Field | What it says |
+| --- | --- |
+| `enabled` | Whether `VISIONSET_MLFLOW_ENABLED` turns tracking on. False when the flag cannot be read. |
+| `experiment` | The experiment runs are recorded under. Null with tracking off, or when the name is refused. |
+| `server` | The tracking server's `scheme`, `host` and `port`. Null with tracking off, or when the URI is unset, malformed or has no scheme. `host` is null for a local store, and `port` unless the URI names one. |
+| `auth` | `none`, `basic`, `token` or `client_certificate`: which authentication MLflow would send, in its own precedence. `basic` needs both a username and a password, and wins over a token. Null with tracking off. |
+| `ca_bundle_configured`, `client_certificate_configured` | Whether `MLFLOW_TRACKING_SERVER_CERT_PATH` and `MLFLOW_TRACKING_CLIENT_CERT_PATH` are set. |
+| `client_installed` | Whether the `mlflow` extra is importable here. Reported with tracking off too. |
+| `problem` | The `TRACKING_UNAVAILABLE` message a run would meet ([above](#when-it-is-misconfigured)), or null. A store MLflow itself refuses is found only when a run starts. |
+
+**No secret is returned.** The status never carries a username, password, token, certificate path,
+or the URI's userinfo, path, query or fragment - only the scheme, host and port, and booleans and
+an enumeration for the rest. With tracking off, `MLFLOW_TRACKING_URI` and the other `MLFLOW_*`
+variables are not read at all, the same rule a run follows. A test asserts that a configured
+token, password and URI credentials appear in none of the three outputs.
+
 ## When the server is down
 
 Once tracking has started, delivery is best-effort. A server that is down, slow or refusing

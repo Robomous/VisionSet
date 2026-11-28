@@ -15,6 +15,7 @@ import threading
 import time
 from collections.abc import Mapping, Sequence
 from importlib import import_module
+from importlib.util import find_spec
 from types import ModuleType
 from typing import Any, Final, NoReturn
 from urllib.parse import urlsplit
@@ -131,14 +132,24 @@ def _install_redaction(uri: str) -> None:
             handler.addFilter(_redaction)
 
 
+def not_installed() -> TrackingUnavailable:
+    """The refusal a run meets when tracking is on and the client is absent."""
+    return TrackingUnavailable(
+        f"VISIONSET_MLFLOW_ENABLED is true, and the MLflow client is not installed "
+        f"here. Install it with: {INSTALL_COMMAND}"
+    )
+
+
+def client_installed() -> bool:
+    """Whether the client extra is importable here, found without importing it."""
+    return all(find_spec(name) is not None for name in MODULES)
+
+
 def _imported(name: str) -> ModuleType:
     try:
         return import_module(name)
     except ImportError:
-        raise TrackingUnavailable(
-            f"VISIONSET_MLFLOW_ENABLED is true, and the MLflow client is not installed "
-            f"here. Install it with: {INSTALL_COMMAND}"
-        ) from None
+        raise not_installed() from None
 
 
 def _describe(exc: BaseException) -> str:
@@ -150,7 +161,13 @@ def _describe(exc: BaseException) -> str:
     return type(exc).__name__
 
 
-def _tracking_uri() -> str:
+def tracking_uri() -> str:
+    """``MLFLOW_TRACKING_URI``, once it is safe to hand to MLflow.
+
+    Raises:
+        TrackingUnavailable: it is unset, malformed, or carries credentials, a
+            query string or a fragment.
+    """
     uri = os.environ.get(URI_VARIABLE, "").strip()
     if not uri:
         raise TrackingUnavailable(
@@ -327,7 +344,7 @@ def build_mlflow_tracker(experiment: str) -> MlflowTracker:
             carries credentials, a query string or a fragment; the MLflow client
             is not installed; or MLflow refuses the URI as a tracking store.
     """
-    uri = _tracking_uri()
+    uri = tracking_uri()
     for name, value in ENVIRONMENT_DEFAULTS.items():
         os.environ.setdefault(name, value)
     os.environ.update(ENVIRONMENT_FORCED)

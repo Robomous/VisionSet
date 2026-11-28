@@ -909,3 +909,42 @@ class DownloadSize(TypedDict):
     model_revision: str
     total_bytes: int | None
     file_count: int
+
+
+@closed
+class TrackingServer(TypedDict):
+    scheme: str
+    host: str | None
+    port: int | None
+
+
+@closed
+class TrackingStatus(TypedDict):
+    enabled: bool
+    experiment: str | None
+    server: TrackingServer | None
+    auth: str | None
+    ca_bundle_configured: bool
+    client_certificate_configured: bool
+    client_installed: bool
+    problem: str | None
+
+
+@closed
+class ExecutorVariable(TypedDict):
+    name: str
+    value: int | float | None
+    default: int | float
+
+
+@closed
+class ExecutorStatus(TypedDict):
+    variables: list[ExecutorVariable]
+    problem: str | None
+
+
+@closed
+class WorkspaceSettings(TypedDict):
+    version: str
+    tracking: TrackingStatus
+    executor: ExecutorStatus

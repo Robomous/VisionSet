@@ -454,6 +454,14 @@ from visionset.kernel.domain.segmentation import (
     Mask,
     SegmentedMask,
 )
+from visionset.kernel.domain.settings import (
+    ExecutorStatus,
+    ExecutorVariable,
+    TrackingAuth,
+    TrackingServer,
+    TrackingStatus,
+    WorkspaceSettings,
+)
 from visionset.kernel.domain.source import (
     DIRECTORY_KINDS,
     IMPORTED_SEQUENCE_KINDS,
@@ -965,6 +973,12 @@ __all__ = [
     "SAMPLING_POLICY_VERSION",
     "DEFAULT_EXTRACTION_FPS",
     "Workspace",
+    "WorkspaceSettings",
+    "ExecutorStatus",
+    "ExecutorVariable",
+    "TrackingAuth",
+    "TrackingServer",
+    "TrackingStatus",
     "assign_split",
     "canonical_bytes",
     "canonical_path",

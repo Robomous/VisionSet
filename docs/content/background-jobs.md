@@ -211,9 +211,11 @@ What lives in `visionset.jobs` is *what the work is* and *where it runs*.
 
 ## Settings
 
-The repository's first `pydantic-settings` object, `server/settings.py`, and
-server-side only - the executor takes these as plain constructor arguments, so
-nothing below the delivery layer reads an environment variable.
+The repository's first `pydantic-settings` object, `jobs/settings.py`. The
+executor takes these as plain constructor arguments, so nothing in the kernel
+reads an environment variable. They live below the surfaces rather than in the
+server so `GET /settings`, `visionset settings` and the `get_workspace_settings`
+MCP tool can report each value beside its default.
 
 | Variable | Default | What it is |
 | --- | --- | --- |

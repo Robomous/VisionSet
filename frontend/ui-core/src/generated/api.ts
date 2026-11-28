@@ -2287,10 +2287,13 @@ export interface paths {
         options?: never;
         head?: never;
         /**
-         * Rename Project
-         * @description Rename a project, and its dataset with it. The only field that moves.
+         * Update Project
+         * @description Rename a project, change its description, or both.
+         *
+         *     An omitted or null field is left alone. A new name renames the project's
+         *     dataset with it; a blank description clears it.
          */
-        patch: operations["rename_project"];
+        patch: operations["update_project"];
         trace?: never;
     };
     "/projects/{project_id}/assets": {
@@ -3646,6 +3649,31 @@ export interface paths {
          *     release names.
          */
         get: operations["verify_release"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Workspace Settings
+         * @description The version, the MLflow tracking status and the job executor's values.
+         *
+         *     Read-only, and read once when the process started, so a change takes a
+         *     restart. No secret is returned: tracking reports which authentication mode
+         *     is configured and whether certificates are, never their values, and the
+         *     tracking server only as scheme, host and port.
+         */
+        get: operations["get_workspace_settings"];
         put?: never;
         post?: never;
         delete?: never;
@@ -5583,6 +5611,28 @@ export interface components {
             message: string;
         };
         /**
+         * ExecutorStatusOut
+         * @description How the job executor is tuned. Every `value` is null when `problem` is set.
+         */
+        ExecutorStatusOut: {
+            /** Problem */
+            problem: string | null;
+            /** Variables */
+            variables: components["schemas"]["ExecutorVariableOut"][];
+        };
+        /**
+         * ExecutorVariableOut
+         * @description One executor knob: the environment variable, its value here, and its default.
+         */
+        ExecutorVariableOut: {
+            /** Default */
+            default: number;
+            /** Name */
+            name: string;
+            /** Value */
+            value: number | null;
+        };
+        /**
          * ExportCompatibilityOut
          * @description What one format would drop from one release, worked out before writing.
          *
@@ -7116,14 +7166,6 @@ export interface components {
             minimum_confidence: number;
         };
         /**
-         * ProjectRename
-         * @description The one field of a project that moves.
-         */
-        ProjectRename: {
-            /** Name */
-            name: string;
-        };
-        /**
          * ProjectStage
          * @description Where a project is in the road from images to a released dataset.
          *
@@ -7201,6 +7243,19 @@ export interface components {
              * Format: uuid
              */
             project_id: string;
+        };
+        /**
+         * ProjectUpdate
+         * @description A partial edit. A field omitted or null means *leave this alone*.
+         *
+         *     `name` renames the project's dataset with it. `description` set to a blank
+         *     string clears it.
+         */
+        ProjectUpdate: {
+            /** Description */
+            description?: string | null;
+            /** Name */
+            name?: string | null;
         };
         /**
          * ProviderOut
@@ -8084,6 +8139,53 @@ export interface components {
             track_id: string;
         };
         /**
+         * TrackingAuth
+         * @description Which authentication the MLflow client would send, in MLflow's own precedence.
+         * @enum {string}
+         */
+        TrackingAuth: "none" | "basic" | "token" | "client_certificate";
+        /**
+         * TrackingServerOut
+         * @description The tracking server's scheme, host and port. Never its path, query or credentials.
+         *
+         *     `host` is null for a scheme that names no host, such as a local store;
+         *     `port` is null unless the address names one.
+         */
+        TrackingServerOut: {
+            /** Host */
+            host: string | null;
+            /** Port */
+            port: number | null;
+            /** Scheme */
+            scheme: string;
+        };
+        /**
+         * TrackingStatusOut
+         * @description Whether MLflow tracking is on, and what it would need to run — never a secret.
+         *
+         *     With tracking off only the flag is read, so `experiment`, `server` and `auth`
+         *     are null and both certificate flags are false. `auth` names which
+         *     authentication is configured, in MLflow's precedence: basic needs both a
+         *     username and a password, and wins over a token. `problem` is the refusal a
+         *     run would meet, worded as its remedy; null when there is none.
+         */
+        TrackingStatusOut: {
+            auth: components["schemas"]["TrackingAuth"] | null;
+            /** Ca Bundle Configured */
+            ca_bundle_configured: boolean;
+            /** Client Certificate Configured */
+            client_certificate_configured: boolean;
+            /** Client Installed */
+            client_installed: boolean;
+            /** Enabled */
+            enabled: boolean;
+            /** Experiment */
+            experiment: string | null;
+            /** Problem */
+            problem: string | null;
+            server: components["schemas"]["TrackingServerOut"] | null;
+        };
+        /**
          * VertexVisibility
          * @description What is known about one vertex of a path: COCO keypoint visibility's three states.
          *
@@ -8302,6 +8404,18 @@ export interface components {
             actions: components["schemas"]["AssetAction"][];
             /** Code */
             code: string;
+        };
+        /**
+         * WorkspaceSettingsOut
+         * @description The read-only settings of the process answering, read once when it started.
+         *
+         *     Changing any of them takes a restart. Nothing here is editable over HTTP.
+         */
+        WorkspaceSettingsOut: {
+            executor: components["schemas"]["ExecutorStatusOut"];
+            tracking: components["schemas"]["TrackingStatusOut"];
+            /** Version */
+            version: string;
         };
         /**
          * WorkspaceTotalsOut
@@ -13361,7 +13475,7 @@ export interface operations {
             };
         };
     };
-    rename_project: {
+    update_project: {
         parameters: {
             query?: never;
             header?: never;
@@ -13372,7 +13486,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["ProjectRename"];
+                "application/json": components["schemas"]["ProjectUpdate"];
             };
         };
         responses: {
@@ -16589,6 +16703,62 @@ export interface operations {
             };
             /** @description No such resource */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description The request payload is not processable */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unhandled server error, with an incident id */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description The workspace is busy; retry after the header says */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    get_workspace_settings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkspaceSettingsOut"];
+                };
+            };
+            /** @description Missing or invalid bearer token */
+            401: {
                 headers: {
                     [name: string]: unknown;
                 };

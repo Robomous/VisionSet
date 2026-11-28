@@ -90,6 +90,8 @@ from visionset.kernel.domain import (
     AssetProgress,
     BackgroundJobState,
     DraftLabelClass,
+    ExecutorStatus,
+    ExecutorVariable,
     FrameOccurrence,
     GeometryType,
     ImportedClass,
@@ -107,7 +109,11 @@ from visionset.kernel.domain import (
     PreLabelRun,
     Track,
     TrackDetail,
+    TrackingAuth,
+    TrackingServer,
+    TrackingStatus,
     TrackStatus,
+    WorkspaceSettings,
 )
 from visionset.server import models
 from visionset.wire import shapes
@@ -158,6 +164,46 @@ TRACK_STATUS = TrackStatus(
     batch_id=BATCH.id,
     progress={**dict.fromkeys(AssetProgress, 0), AssetProgress.ANNOTATED: 2},
     outside=1,
+)
+
+_EXECUTOR = ExecutorStatus(
+    variables=(
+        ExecutorVariable(name="VISIONSET_JOB_WORKERS", value=2, default=1),
+        ExecutorVariable(name="VISIONSET_JOB_POLL_INTERVAL_S", value=0.5, default=0.5),
+    ),
+    problem=None,
+)
+#: Every nullable leaf populated, so no half of the tracking projection goes unchecked.
+SETTINGS_TRACKED = WorkspaceSettings(
+    version="1.2.3",
+    tracking=TrackingStatus(
+        enabled=True,
+        experiment="visionset",
+        server=TrackingServer(scheme="https", host="tracking.example", port=8443),
+        auth=TrackingAuth.TOKEN,
+        ca_bundle_configured=True,
+        client_certificate_configured=False,
+        client_installed=False,
+        problem="install the client",
+    ),
+    executor=_EXECUTOR,
+)
+SETTINGS_OFF = WorkspaceSettings(
+    version="1.2.3",
+    tracking=TrackingStatus(
+        enabled=False,
+        experiment=None,
+        server=None,
+        auth=None,
+        ca_bundle_configured=False,
+        client_certificate_configured=False,
+        client_installed=True,
+        problem=None,
+    ),
+    executor=ExecutorStatus(
+        variables=(ExecutorVariable(name="VISIONSET_JOB_WORKERS", value=None, default=1),),
+        problem="VISIONSET_JOB_WORKERS is not a valid value",
+    ),
 )
 
 MATRIX = build_matrix(exporters(), importers())
@@ -367,6 +413,12 @@ PAIRS: list[tuple[str, Mapping[str, Any], type[BaseModel]]] = [
     ("track_unnamed", wire.track(UNNAMED_TRACK), models.TrackOut),
     ("track_status", wire.track_status(TRACK_STATUS), models.TrackStatusOut),
     ("track_split", wire.track_split(TRACK, UNNAMED_TRACK), models.TrackSplitOut),
+    (
+        "workspace_settings_tracked",
+        wire.workspace_settings(SETTINGS_TRACKED),
+        models.WorkspaceSettingsOut,
+    ),
+    ("workspace_settings_off", wire.workspace_settings(SETTINGS_OFF), models.WorkspaceSettingsOut),
 ]
 
 IDS = [label for label, _, _ in PAIRS]
@@ -522,6 +574,14 @@ def test_the_compatibility_report_agrees_value_for_value_with_the_rest_model() -
 # --- the timestamp format the parity gate depends on -------------------------
 
 
+@pytest.mark.parametrize("settings", [SETTINGS_TRACKED, SETTINGS_OFF], ids=["tracked", "off"])
+def test_the_settings_projection_agrees_value_for_value_with_the_rest_model(
+    settings: WorkspaceSettings,
+) -> None:
+    rest = models.WorkspaceSettingsOut.of(settings).model_dump(mode="json")
+    assert wire.workspace_settings(settings) == rest
+
+
 def test_a_timestamp_keeps_its_microseconds_and_ends_in_z() -> None:
     # Deliberately *not* ``_output.moment``'s format, which stops at seconds. A
     # single shared helper would pass every key-set assertion above and fail the
@@ -655,6 +715,8 @@ SHAPES: dict[str, Any] = {
     "track_unnamed": shapes.Track,
     "track_status": shapes.TrackStatus,
     "track_split": shapes.TrackSplit,
+    "workspace_settings_tracked": shapes.WorkspaceSettings,
+    "workspace_settings_off": shapes.WorkspaceSettings,
     "track_deletion": shapes.TrackDeletion,
     "export_result": shapes.ExportResult,
     "export_result_with_recipe": shapes.ExportResult,
