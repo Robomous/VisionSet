@@ -161,6 +161,7 @@ class Host:
     windows: bool
     home: str | None
     fold_case: bool = False
+    macos: bool = False
 
     @classmethod
     def current(cls) -> Host:
@@ -170,6 +171,7 @@ class Host:
             windows=os.name == "nt",
             home=None if home == "~" else home,
             fold_case=sys.platform == "darwin",
+            macos=sys.platform == "darwin",
         )
 
     @property
@@ -306,9 +308,18 @@ def _kill(process: subprocess.Popen[bytes]) -> None:
 
 
 def run_bounded(
-    argv: Sequence[str], cwd: str, env: Mapping[str, str], timeout: float, cap: int
+    argv: Sequence[str],
+    cwd: str,
+    env: Mapping[str, str],
+    timeout: float,
+    cap: int,
+    *,
+    pass_fds: Sequence[int] = (),
 ) -> ProbeResult:
-    """Run argv without a shell, stdin closed, output captured and capped, within timeout."""
+    """Run argv without a shell, stdin closed, output captured and capped, within timeout.
+
+    `pass_fds` are inherited by the child on POSIX and ignored on Windows.
+    """
     windows = os.name == "nt"
     flags = 0
     if windows:
@@ -326,6 +337,7 @@ def run_bounded(
             shell=False,
             start_new_session=not windows,
             creationflags=flags,
+            pass_fds=() if windows else tuple(pass_fds),
         )
     except OSError as error:
         return ProbeResult(None, error=error.strerror or type(error).__name__)
@@ -374,6 +386,13 @@ def run_bounded(
         _kill(process)
         with contextlib.suppress(subprocess.TimeoutExpired):
             process.wait(5)
+    except BaseException:
+        # The child runs in its own session, so a Ctrl-C reaches only this process.
+        _kill(process)
+        with contextlib.suppress(subprocess.TimeoutExpired):
+            process.wait(5)
+        stop.set()
+        raise
     if not settle(0.5):
         # A descendant still holds a pipe open after the probe itself has exited.
         _kill(process)
@@ -685,6 +704,30 @@ class _Checker:
             detail = redact(stderr, self.host)[-REASON_TAIL:] or "no output"
             return stdout, f"{label} exited with {result.returncode}: {detail}"
         return stdout, None
+
+
+def checkout_of(project: str, host: Host | None = None, fs: FileSystem | None = None) -> str:
+    """The checkout discovery derives for an absolute project directory."""
+    search = _Search(host or Host.current(), fs or OsFileSystem(), "", "", project, ())
+    assert search.checkout is not None
+    return search.checkout
+
+
+def check_executable(
+    path: str,
+    *,
+    compatibility: str,
+    host: Host | None = None,
+    fs: FileSystem | None = None,
+    run: Runner = run_bounded,
+    probe_timeout: float = PROBE_TIMEOUT,
+) -> Found | Skipped:
+    """Check one plugin-owned console script with the probes discovery applies to a candidate."""
+    host = host or Host.current()
+    search = _Search(host, fs or OsFileSystem(), "visionset", "visionset", None, ())
+    wanted = _wanted_version(compatibility)
+    checker = _Checker(search, wanted, compatibility, False, run, probe_timeout)
+    return checker.check(Candidate(path, Tier.CACHE, "bootstrap"))
 
 
 def discover(

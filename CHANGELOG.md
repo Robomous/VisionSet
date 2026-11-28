@@ -25,6 +25,19 @@ nothing was being distributed. This is the first version that is.
   unit of work; a blank description clears it. `PATCH /projects/{project_id}` now takes `description` beside `name`
   (both optional; null leaves a field alone), and `visionset project update PROJECT --description TEXT` and the MCP
   tool `update_project` change the description (#1280).
+- **The agent plugin can build its own runtime.** When discovery finds no compatible `visionset`,
+  `agent-plugins/packages/visionset/runtime/bootstrap.py` creates a private virtual environment under the plugin's
+  data directory (`VISIONSET_PLUGIN_DATA`, else `CLAUDE_PLUGIN_DATA`, else the user's data directory). It uses a local
+  Python 3.11 or newer and installs the pinned `visionset==VERSION` with that environment's own pip: no `--user`, no
+  upgrade, no extras, no elevation. Only an allow-list of `PIP_*` variables passes through, and a `pip.conf` that
+  would install elsewhere is refused. A cross-process lock is inherited by pip, so an orphaned install keeps it. A
+  double-checked `ready.json` is published only after the console script passes discovery's probes, so simultaneous
+  starts install once. A reused runtime is probed again, and a broken one is superseded by a new generation beside it
+  rather than rebuilt under a running server, up to five per version. A runtime whose data folder moved counts as
+  broken, and one holding a readiness file is never removed. Interrupted setups are recovered only from directories the plugin owns.
+  Failures carry stable codes, a message with index and proxy credentials redacted and a manual `pipx install`
+  command, with one retry for an unreachable index. A Ctrl-C stops the setup's child processes before cleaning up. Stdout is never written, and `VISIONSET_PLUGIN_NO_BOOTSTRAP` turns all of it off. The launcher
+  does not call it yet.
 - **Agent-plugin discovery finds an installed `visionset`.** `agent-plugins/packages/visionset/runtime/discover.py`
   resolves the `VISIONSET_PLUGIN_EXECUTABLE` override, then user installs (`PATH` outside the project, pipx, uv tool,
   `pip --user`), then project installs (an active virtual or conda environment, `UV_PROJECT_ENVIRONMENT`, `.venv` and

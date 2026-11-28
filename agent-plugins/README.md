@@ -26,6 +26,7 @@ Python distribution.
 | `packages/visionset/.codex-plugin/plugin.json`, `codex.mcp.json` | Codex manifest and server declaration, **generated** |
 | `packages/visionset/runtime/` | The launcher, standard library only; `bundle.json` in it is **generated** and carries the rendered compatibility range |
 | `packages/visionset/runtime/discover.py` | Finds a compatible installed `visionset`: the `VISIONSET_PLUGIN_EXECUTABLE` override, then user, project and plugin-cached installs |
+| `packages/visionset/runtime/bootstrap.py` | Builds the plugin-owned runtime when discovery finds nothing: a private virtual environment under the plugin's data directory, populated by its own pip with the pinned `visionset` |
 | `packages/visionset/skills/` | End-user skills, shared by every client |
 | `schemas/` | Hand-written schemas for the files the generator emits, each citing its source |
 | `tools/` | `render_manifests.py` (generator), `validate_manifests.py` (schema and containment check) |
@@ -44,3 +45,30 @@ bash scripts/check.sh agent-plugins                      # the tests, ruff and m
 ```
 
 Never edit a generated file by hand; change `metadata.json` or the generator and render again.
+
+## The plugin-owned runtime
+
+`bootstrap.py` keeps its state under one data root: `VISIONSET_PLUGIN_DATA`, else
+`CLAUDE_PLUGIN_DATA`, else the user's data directory followed by `visionset-agent-plugin`.
+
+| Path under the data root | What it is |
+| --- | --- |
+| `runtimes/<base>-r<n>/venv/` | One generation's virtual environment, where `<base>` is `<version>-py<MAJOR><MINOR>-<tag>`. Created in place and never moved. A broken generation is superseded by `-r<n+1>`, never rebuilt in place, and a generation holding any `ready.json` is never removed. One whose data root moved is superseded too. At most five directories per base |
+| `runtimes/<base>-r<n>/.owner`, `runtimes/<base>-r<n>/ready.json` | The ownership marker, written first, and the readiness sentinel, written last |
+| `runtimes/.trash-<base>-*` | An unpublished generation moved aside before removal |
+| `locks/<base>.lock` | The cross-process lock, inherited by every process that writes into a generation |
+| `logs/<base>.log` | Redacted output of every setup step, mode 0600 |
+
+| Variable | Effect |
+| --- | --- |
+| `VISIONSET_PLUGIN_DATA` | Absolute data root, for operators and tests |
+| `VISIONSET_PLUGIN_NO_BOOTSTRAP` | Any value except `0`, `false`, `no` or `off` refuses to create a runtime and prints the manual `pipx install` command instead |
+| `PIP_INDEX_URL`, `PIP_EXTRA_INDEX_URL`, `PIP_FIND_LINKS`, `PIP_NO_INDEX`, `PIP_CONFIG_FILE` and the other allow-listed index and network variables, `pip.conf`, netrc | Honoured as pip honours them. Every other `PIP_*` variable is dropped, and a `pip.conf` that sets `target`, `prefix`, `root`, `user` and similar fails setup with `BAD_PIP_CONFIG` |
+
+A `VISIONSET_PLUGIN_DATA` inside the project is refused, even when the project is the home
+directory; `CLAUDE_PLUGIN_DATA` and the OS default under home are accepted there. After
+`GENERATIONS_EXHAUSTED`, remove the superseded `runtimes/<base>-r*` directories by hand.
+
+The rules, and what the tests prove, are in the decision record's "Settled by bootstrap"
+section. The real-install tests run on Linux, and one of them builds this checkout's wheel with
+`uv build`.
