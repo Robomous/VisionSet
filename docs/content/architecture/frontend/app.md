@@ -39,10 +39,8 @@ host does not get its own decoder, it gets the one reusable package. The `FrameS
 is this repository's own: `src/data/` builds one backed by the existing
 `VisionSetDataClient`, posting materialized frames as multipart chunks over the same
 transport `ossClient.ts` already speaks, to `VideoImportService`'s session endpoints.
-Nothing about the materializer or the sink protocol is enterprise-specific - a
-managed host replaces only the `FrameSink`'s destination, the same way it replaces
-`ossClient.ts` today, which is what proves the boundary actually sits where
-[ui-core.md](ui-core.md) says it does.
+Hosts can reuse the same materializer and provide a frame sink that stores
+output at their own destination. See [UI core](ui-core.md) for the port.
 
 The browser-model acquisition system is composed here for the same reason. The public
 registry and immutable manifests are discovery data, **not a trust anchor**. The app validates
@@ -90,9 +88,8 @@ A route is allowed to decide *which* screen renders and *what its parameters are
 and nothing else: no fetching, no domain logic, no error interpretation. The
 screen reports what happened through a callback and the route spells the URL.
 
-That is the enterprise rule, and it is worth stating as a test rather than an
-aspiration: **a capability that lands here instead of in `ui-core` is an
-architecture bug**, because the future enterprise UI cannot reuse it.
+Keep reusable screen behavior in `ui-core`. Other hosts can then provide their
+own routing and compose the same screens.
 
 ## Three regions, and the boundary between them is the credential
 

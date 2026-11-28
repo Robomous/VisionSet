@@ -1,15 +1,16 @@
 # jobs
 
 [`src/visionset/jobs/`](../../../../src/visionset/jobs/) holds the handlers for work
-that outlives the request that asked for it: an ingest run, an export, a weights
-download, an integrity check, a pre-label run over one annotation job.
+such as ingest, export, weight download, integrity checks, pre-labeling, and
+thumbnail backfill. The REST API queues that work for a worker. Some CLI commands
+and MCP tools run the same work inline.
 
 ## Launch and poll
 
 ```mermaid
 sequenceDiagram
     participant C as Client
-    participant R as route
+    participant R as REST API
     participant Q as JobQueue (SQLite)
     participant W as worker process
     participant H as handler
@@ -22,17 +23,16 @@ sequenceDiagram
     W->>H: run
     H->>Q: progress, then a result
     loop until settled
-        C->>Q: GET /background-jobs/{id}
-        Q-->>C: state, processed / total
+        C->>R: GET /background-jobs/{id}
+        R->>Q: read job
+        Q-->>R: state and progress
+        R-->>C: state, processed / total
     end
 ```
 
-Two properties of that shape are decisions rather than mechanics.
-
-**A refusal a request can make is a refusal the request makes.** The export route
-checks the consent gate synchronously, before the job row exists, so a 409 arrives
-as the answer to the request that asked rather than as a failed row somebody has
-to go and read. The worker checks again - *that* one is the guarantee.
+The export route checks consent before enqueueing, so the caller receives a
+409 from the launch request. The worker checks consent again when it runs the
+export.
 
 **There is no generic launch route.** Nothing creates a job by naming a type and a
 payload: an export is launched from `POST /releases/{id}/export`, an ingest from

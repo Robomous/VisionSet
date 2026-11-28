@@ -450,28 +450,13 @@ The [merge rule](#merging) holds regardless of what the ruleset enforces.
 
 ### Tags and publishing
 
-The road to the beta is cut into six internal milestones. The first five each end with a
-**git tag only**, and the sixth is the beta itself:
+The alpha tags mark development milestones. Published releases use a Git tag in npm semver
+and a Python distribution version in PEP 440. See the [version mapping](#versioning).
 
-```
-v0.0.1-alpha.1 … v0.0.1-alpha.5     git tags, never published to PyPI or npm
-```
-
-These mark milestone completion so the tree can be checked out and bisected. `VERSION`
-stays at `0.0.1.dev0` throughout — the alpha tags do not bump it, because nothing is
-being distributed.
-
-The first artifact anyone installs is the beta: bump `VERSION` to `0.0.1b1`, run
-`pnpm version:sync` and `python3 agent-plugins/tools/render_manifests.py`, tag `v0.0.1-beta.1`, and publish the wheel to PyPI as `0.0.1b1`.
-`0.0.1-beta` is *lower* than `0.1.0` in both version orderings, which is why `VERSION`
-sits at `0.0.1.dev0` rather than the `0.1.0.dev0` the repo was bootstrapped with.
-
-**The beta ships to PyPI as one wheel, and two of the three frontend packages ship to npm**
-— `@visionset/annotator` and `@visionset/ui-core`, at the same version, in that order;
-`@visionset/app` is `private: true` and its bundle ships inside the wheel. The reasoning and
-the whole runbook are in [docs/content/releasing.md](docs/content/releasing.md). The short
-version: pip is the vehicle the product is designed around, and a pre-release is invisible to
-a plain `pip install`, so publishing one is safe rather than premature.
+The Python wheel and sdist go to PyPI. The npm workflow publishes `@visionset/annotator`,
+`@visionset/media`, and `@visionset/ui-core` in dependency order. The browser app ships in
+the wheel. Follow the [release runbook](docs/content/releasing.md) to build, publish, and
+verify the artifacts.
 
 ## Commits
 

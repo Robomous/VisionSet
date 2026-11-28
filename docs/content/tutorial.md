@@ -1,27 +1,12 @@
 # Your first dataset
 
-This tutorial turns a folder of photographs into a trainer-ready YOLO dataset in about half an
-hour. Starting from a video instead? Step 3 is the one that differs - a clip is imported through
-the browser, not the command line, because decoding it happens on your own machine rather than on
-the server; see the box at the end of that step. Everything after it is identical either way.
+Start with a folder of photographs, label them in the browser, and export a YOLO dataset from a
+versioned release. This tutorial uses the current repository version of VisionSet. Earlier
+releases may have a different browser sign-in flow or fewer commands. See the
+[installation guide](install.md).
 
-Two limits to know before you start: the command line **cannot create annotations** (`job mark`
-records progress only, so you will draw the labels in the browser app), and **video import is
-browser-only**. [surfaces.md](surfaces.md) shows what each surface can do.
-
-You will need [VisionSet installed](install.md). No other binary - not even for a video, since
-nothing in this process decodes one.
-
-> **On screenshots.** There are none here, deliberately. This repository refuses to track binary
-> media - an architecture test caps every tracked file at 200 KB and fails on committed pictures,
-> which is what keeps a clone small and a history clean. So the browser sections describe what is
-> on screen and what to press. The app is two commands away and is the better screenshot.
-
-If you would rather read the whole thing as one program first,
-[`examples/thirty_minute_flow.py`](../../examples/thirty_minute_flow.py) is exactly these steps with
-the assertions still in them, and it runs in under two seconds.
-
----
+To follow the same general workflow in Python, see
+[the runnable SDK example](../../examples/thirty_minute_flow.py).
 
 ## 1. A workspace
 
@@ -30,10 +15,8 @@ visionset init ~/datasets/road-signs
 cd ~/datasets/road-signs
 ```
 
-Everything from here lives in that directory: `visionset.db` for metadata, `blobs/` for pixels.
-`init` refuses a directory that already holds something, and it is the **only** command that
-creates one - every other command finds one rather than inventing it, which is why standing in the
-wrong directory gives you a refusal instead of a second workspace.
+The workspace stores metadata in `visionset.db` and media in `blobs/`. Use an empty directory
+or a path that does not exist yet. Run the remaining commands from the workspace directory.
 
 ## 2. A project and a labelling contract
 
@@ -41,17 +24,15 @@ wrong directory gives you a refusal instead of a second workspace.
 visionset project create road-signs
 ```
 
-A project owns one dataset - its *trunk*, the curated set that releases are cut from. Before
-anything can be labelled it needs a **schema**: the list of classes, and which geometries each
-one accepts. A class may accept more than one — the same sign is worth boxing at a distance and
-worth outlining close up, and it is one class either way.
+A project has one dataset, called its *trunk*. Releases are snapshots of that curated dataset.
+Before labeling, define the classes and the geometry allowed for each class. Save this example
+as `schema.json` in the workspace:
 
 ```json
 {
   "classes": [
     { "name": "vehicle", "geometries": ["bbox"],    "color": "#eb5a47" },
-    { "name": "sign",    "geometries": ["bbox"],    "color": "#2a9d8f" },
-    { "name": "lane",    "geometries": ["polygon"], "color": "#f4a261" }
+    { "name": "sign",    "geometries": ["bbox"],    "color": "#2a9d8f" }
   ]
 }
 ```
@@ -60,128 +41,82 @@ worth outlining close up, and it is one class either way.
 visionset schema apply schema.json --project road-signs
 ```
 
-Schema versions are numbered and **immutable**: applying a new list creates version 2, and version
-1 stays readable forever. That matters more than it sounds - every annotation records which
-version it was judged against, and a release freezes the version it was cut with. Narrowing a
-schema (removing a class, taking a geometry away from one) needs `--allow-destructive`, and if annotations
-already depend on what you are removing it is refused outright with no override. See
-[schemas.md](schemas.md).
+This publishes schema version 1. Every version is immutable. Later versions can extend the
+schema while preserving the versions that earlier annotations and releases reference.
+See [annotation schemas](schemas.md).
 
 ## 3. Point it at a folder of images
 
-```bash
-visionset ingest ./photos --project road-signs
-```
-
-Two things happen, and the split is worth understanding because it explains most of VisionSet's
-behaviour.
-
-**A source is registered.** The folder's path becomes a `Source` - the record that this origin
-was offered to the project, nothing more. Registering the same folder again returns the same
-source rather than a second one.
-
-**Then it is read.** Every file at the top level is decoded, hashed, and stored by content.
-Identical bytes are one asset, so re-running the same ingest creates nothing and costs nothing:
+Place your photographs in a `photos/` directory in the workspace, or substitute an absolute path
+to your image directory:
 
 ```bash
-visionset ingest ./photos --project road-signs   # Ingested 0 new and 6 already-known assets. Nothing new, so no batch was created.
+BATCH=$(visionset ingest ./photos --project road-signs)
 ```
 
-The first run prints a batch id. A **batch** is a unit of work: the assets one ingest produced,
-which somebody is going to label.
+VisionSet registers the folder as a source and scans its top level. It reports unreadable
+entries and creates a draft batch for the successfully ingested images. Within a project,
+identical bytes identify the same asset. Running the command again on an unchanged folder with
+no new assets prints no batch ID.
 
-> **Starting from a video instead?** `visionset ingest` takes a directory of stills only, and
-> refuses a video file by name rather than guessing what you meant. Importing a clip is a
-> **browser** capability: run `visionset server`, open the project's *Add images* page, and choose the
-> file there - it is demuxed and decoded on your own machine, and only the JPEG frames it produces
-> ever reach the server. Nothing in this process decodes video, so there is no CLI or MCP
-> equivalent of this step; once the import finishes you have a batch, and step 4 onward is
-> unchanged. See [ingest.md](ingest.md) for why the two paths are separate.
+If you are starting from a video, run `visionset server`, open the project overview in the
+browser, and choose the clip in **Add images**. The browser decodes the clip locally and uploads
+JPEG frames. Run `visionset batch list --project road-signs` to find the new batch ID, then
+set `BATCH` to that ID for the next step. See [ingest](ingest.md).
 
 ## 4. Open the batch for annotation
 
 ```bash
-BATCH=<the id ingest printed>
 visionset batch approve "$BATCH" --jobs-of 100 --start
 ```
 
-That is two moves in one command - `approve`, then `start` - and the same batch can be walked in
-two commands when you want to look at the jobs before anybody opens them:
+Approval pins the project's active schema version and partitions the batch into jobs of up to
+100 assets. Each asset belongs to exactly one job. The membership stays fixed after approval.
+Use **Skip** if an asset should be excluded during annotation.
 
-```bash
-visionset batch approve "$BATCH" --jobs-of 100
-visionset batch start "$BATCH"
-```
-
-`approve` does two things that cannot be undone. It **pins the project's active schema version** to
-this batch - every label written here will be judged against that version, whatever the project's
-schema does later - and it **partitions** the assets into jobs of the size you asked for. The
-partition is exact: every asset is in exactly one job.
-
-After approval the membership is frozen. Excluding an asset from then on is a per-asset `skipped`
-decision rather than a removal, so a batch always describes what was actually looked at.
+The `--start` flag opens the approved batch for annotation. To inspect the jobs first, run
+`batch approve` without the flag, then run `visionset batch start "$BATCH"`. The batch uses its
+pinned schema to validate labels. See [how open batches follow compatible schema updates](batches.md#the-pin-follows-a-widening-version-on-its-own).
 
 ## 5. Draw the boxes
 
-Now open the app:
+Start the server from the workspace:
 
 ```bash
 visionset server
 ```
 
-The API is at `http://127.0.0.1:8000` and the browser app at `http://127.0.0.1:8000/app`.
+Open the local [browser app](http://127.0.0.1:8000/app). The server signs in the browser it
+serves automatically. See [the browser session](auth.md#the-browser-session).
 
-The first screen asks for a token. Mint one in another terminal:
+Open **Projects → road-signs**, select the batch, and open a job. Choose **vehicle** or **sign**
+from **Labels**, then drag a box around the object. Repeat for each object in the image.
 
-```bash
-visionset token create --name browser
-```
-
-That prints the secret **exactly once** - it is stored as a digest, so there is no way to recover
-it and no "show token" anywhere. Paste it into the form; it is verified against the server before
-anything is stored, so a typo is refused immediately rather than becoming a broken session.
-
-From there: **Projects → road-signs → the batch → a job**. The annotation page is a tool rail
-on the left carrying the shapes the selected class accepts, the image in the middle with the
-frame's moves floating at its foot (undo, skip, back, which frame, **Next**), and the classes
-and objects on the right. The job's progress and whether your work is saved are on the bar.
-
-| | |
+| Action | Control |
 | --- | --- |
-| Draw a box | pick the box tool, drag |
-| Draw a polygon | pick the polygon tool, click each vertex, click the first one again to close |
-| Pick a class | the number keys, or the Labels tab |
-| Move / resize | drag the shape, or drag a grip |
-| Delete | select it and press <kbd>Delete</kbd> |
-| Undo / redo | <kbd>Ctrl/⌘ Z</kbd> / <kbd>Ctrl/⌘ ⇧ Z</kbd> |
-| Zoom | mouse wheel, or trackpad pinch; <kbd>Ctrl/⌘ 0</kbd> fits. A trackpad two-finger scroll pans instead |
-| Next asset | **Next** at the foot of the image, or <kbd>↵</kbd> |
+| Select a class | **Labels**, or the number keys |
+| Move or resize a box | Drag the box or one of its handles |
+| Delete the selected box | <kbd>Delete</kbd> |
+| Undo or redo | <kbd>Ctrl/⌘ Z</kbd> or <kbd>Ctrl/⌘ ⇧ Z</kbd> |
+| Fit the image | <kbd>Ctrl/⌘ 0</kbd> |
+| Move to the next asset | **Next** |
 
-Every edit saves as you go - a moment after you stop, and at once when you move to another
-frame or press <kbd>Ctrl/⌘ S</kbd>. There is no save button and nothing to lose. The full shortcut table
-is in [annotations.md](annotations.md).
-
-Prefer not to click? [`examples/thirty_minute_flow.py`](../../examples/thirty_minute_flow.py) writes
-fifty boxes through the SDK in one pass, and an agent can do the same over
-[MCP](mcp.md) - including *looking* at each frame.
+Edits save after a short pause. Navigation saves pending edits first, and <kbd>Ctrl/⌘ S</kbd>
+saves immediately. Check the save status in the toolbar before closing the page. Use **Skip**
+for any image you intend to exclude from the dataset. See the [editor shortcuts](annotations.md#keys-are-bound-in-one-place-and-the-table-is-data).
 
 ## 6. Close the work and promote it
 
-When every asset in a job has been settled - annotated, skipped or accepted - close it, then close
-the batch, then promote:
+Once every asset in each job is annotated, skipped, or accepted, return to your terminal and run:
 
 ```bash
-visionset job complete <job-id>
-visionset batch complete "$BATCH" --promote
+visionset batch finish "$BATCH" --promote
 ```
 
-`--promote` is `batch promote` made right after `batch complete`; the two commands, one after
-the other, do the same. `complete` on the batch refuses while any job is still open: "derived"
-here means *recomputed*, not automatic. **Promotion** is what moves assets into the trunk - a union against what is already
-there, so promoting twice adds nothing and re-promoting after a curator removed something puts it
-back.
-
-Skipped assets stay out. That is the point of skipping.
+`finish` completes the remaining jobs and the batch in one transaction. The optional
+`--promote` step then adds annotated and accepted assets to the trunk. A repeated promotion
+adds only eligible assets that are missing from the trunk. See [batches](batches.md#finishing-closes-the-jobs-and-the-batch-together)
+and [datasets](datasets.md).
 
 ## 7. Publish a release
 
@@ -190,114 +125,44 @@ visionset release publish --tag v1.0 --project road-signs \
   --split 0.7,0.15,0.15 --seed 42
 ```
 
-A release is the only truly immutable thing here: a frozen manifest naming every asset by content
-hash and copying every label as it stood. Publish twice from an unchanged dataset and the two
-manifests are **byte-identical**, because nothing time-, machine- or identity-specific goes inside
-one.
-
-The split is stored as a *recipe* - three fractions and a seed - not as a materialised assignment,
-and folds are computed from the frozen manifest on demand. It keys on **content hash** rather than
-asset id, so two copies of the same image cannot straddle a train/test boundary, which is the
-classic way a benchmark quietly lies to you.
+The manifest freezes the media hashes and labels in the trunk. The split recipe specifies
+train, validation, and test proportions and a seed. VisionSet computes the assignment from the
+manifest, so an image with the same content hash always goes to the same fold for that seed
+when splitting by asset.
 
 ```bash
 visionset release verify v1.0 --project road-signs
 ```
 
-`verify` re-reads and re-hashes every blob the manifest names. It exits **1** when the answer is
-no - so `visionset release verify v1.0 && ./train.sh` means something.
+Verification re-reads and hashes the media named in the manifest. A failed verification exits
+with status 1.
 
 ## 8. Export it
 
-Ask first what a format would cost you:
+Use `visionset target list` to see the trainer targets installed in your environment. The
+`yolo11` target writes the Ultralytics format. Preview its compatibility report before
+writing files. The check prints its findings and exits with status 1 when the export
+requires loss consent.
 
 ```bash
-visionset format list
+visionset export --project road-signs --release v1.0 --target yolo11 --check
 ```
 
-```
-NAME                LOSSY
-bdd100k-lane        yes
-classification      yes
-classification-dir  yes
-coco                no
-coco-panoptic       yes
-createml            yes
-culane              yes
-curvelanes          yes
-cvat-images         yes
-cvat-video          yes
-darknet             yes
-dota                yes
-kitti               yes
-labelme             yes
-mot                 yes
-open-images         yes
-openlane-2d         yes
-segmentation-png    yes
-tfrecord            yes
-tusimple            yes
-ultralytics         yes
-voc                 yes
-yolo-obb            yes
-yolov5-yaml         yes
-```
-
-The five lane formats write polylines, `classification` writes image-level tags, `classification-dir` files each picture under one class directory, `kitti` writes
-scans and their cuboids, `mot` and `cvat-video` write tracks, `cvat-images` writes CVAT's per-picture
-shapes, `yolo-obb` and `dota` write rotated boxes, `segmentation-png` writes class-index PNG masks, `coco-panoptic` writes RGB segment PNGs with their `segments_info`, `labelme` writes LabelMe JSON documents beside their pictures, `createml` writes boxes into one Create ML JSON array per folder, `open-images` writes boxes as normalized rows of one Open Images CSV per split, `tfrecord` writes boxes and picture bytes as TensorFlow Object Detection records per split, `coco`
-also writes masks as RLE, and the rest write boxes and polygons (`yolo` is still accepted as an alias of `ultralytics` for one release); the whole set is described in [releases.md](releases.md#exporting). Run the
-command rather than trusting this listing — it reads installed entry-point metadata, so a
-third-party plugin appears in it too.
-
-An export is addressed to the model you will train rather than to a format. `visionset target
-list` prints the catalog - `yolo11` resolves to `ultralytics`, `yolov7` to `yolov5-yaml`, and
-every other format to a target named after itself - and `--target` takes one of those names in
-place of `--format`; exactly one of the two is given. Then export:
+Ultralytics label rows carry class indices and geometry. Exporting to this format requires
+consent because information such as attributes, confidence, and provenance is lost. If that
+loss is acceptable, export:
 
 ```bash
-visionset export --project road-signs --release v1.0 \
-  --target yolo11 --out ./yolo --allow-lossy
+visionset export --project road-signs --release v1.0 --target yolo11 --out ../road-signs-yolo --allow-lossy
 ```
 
-To resize every image, or write augmented variants of the train fold beside their sources, add
-`--recipe NAME` naming a pre-processing recipe of the project - `--recipe letterbox-640` on the
-command above; [preprocessing.md](preprocessing.md) is where a recipe is written.
+Export to a directory outside the workspace. The output contains `data.yaml`, fold directories
+under `images/` and `labels/`, and `visionset-export-report.json`. Check that each fold has
+enough images for training and evaluation. Start Ultralytics from inside `../road-signs-yolo`
+because the descriptor uses `path: .`.
 
-`--allow-lossy` is required here and the refusal without it is not bureaucracy. A YOLO label row
-is a class index and coordinates, so attributes, confidence and provenance never survive.
-VisionSet works out exactly what that costs *before* writing anything, tells you by class with
-counts, and writes the same report into the export as `visionset-export-report.json`.
-
-The layout follows what you drew: because the release holds polygons, this is a segment dataset,
-and the `lane` polygons are written as their vertices. A `weather` tag beside a box is not in the
-labels at all - a label file has nowhere to put a label with no location - and the report says so:
-
-```
-Not carried by ultralytics: weather (12). See visionset-export-report.json.
-```
-
-Export the same release as `yolov5-yaml` instead and the polygons are reduced to their bounding
-boxes, which the report calls *written in a reduced form* rather than not carried - they are two
-different decisions, and the report distinguishes them.
-
-Choose `--format coco` instead and no consent is needed at all: COCO carries boxes and polygons
-natively, and everything it has no field for rides in a `visionset` object per annotation. That
-contrast is the whole reason both formats exist. See [releases.md](releases.md#exporting).
-
-What lands in `./yolo`:
-
-```
-data.yaml                     path: ., the folds, and classes in your schema's order
-images/train/…  images/val/…  images/test/…
-labels/train/…  labels/val/…  labels/test/…
-visionset-export-report.json  what this format could not carry
-```
-
-That directory is a dataset `ultralytics` will load as it stands, from inside the directory
-(`path: .` resolves against the working directory of the process that loads it). You are done.
-
----
+For other targets, layouts, and optional export-time resizing or augmentation, see
+[exporting](releases.md#exporting) and [pre-processing](preprocessing.md).
 
 ## What to read next
 

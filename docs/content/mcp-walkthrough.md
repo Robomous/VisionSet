@@ -1,27 +1,17 @@
 # The MCP walkthrough
 
-[mcp.md](mcp.md) is the reference for every tool, its purpose, and the shared rules. This page
-follows a *session* in the order an agent encounters the workflow, then describes what happened
-when a model unfamiliar with the repository was asked to perform the task through the server.
+This example takes a local directory of images from an empty workspace to a published, exported
+release. The [MCP server guide](mcp.md) covers client setup and shared tool conventions.
 
-The page has two parts. The second measures whether a model **chooses** these tools and **reads**
-their results. That measures the tool descriptions rather than the kernel underneath them.
-
-The walk below is the executable
-[`tests/mcp/test_agent_walk.py`](../../tests/mcp/test_agent_walk.py) in prose. Every call it makes,
-this section makes; every assertion it makes is stated here as what the answer is good for.
-
-To run it yourself rather than read it, [`examples/mcp_end_to_end.py`](../../examples/mcp_end_to_end.py)
-is the same walk against a **real server over a real pipe** - it spawns `visionset mcp --workspace
-<root>` exactly as an MCP client configuration would and speaks JSON-RPC down its stdin and stdout,
-where the test drives the protocol over a paired in-memory stream. The test proves the tools; the
-example proves the transport.
+[Run the example](../../examples/mcp_end_to_end.py) to try the same workflow against
+`visionset mcp` over stdio. The [protocol test](../../tests/mcp/test_agent_walk.py) exercises the
+flow over an in-memory connection.
 
 ---
 
-# The walk
+## The walk
 
-## The shape of it
+### The shape of it
 
 | Step | Tool | What it settles |
 | --- | --- | --- |
@@ -35,7 +25,7 @@ example proves the transport.
 | 7b | `create_preprocessing_recipe`, `export_release` with `recipe` | the same release, resized and augmented for a model |
 | 8 | `publish_release` again | a refusal, on purpose |
 
-## 1 - Find out where you are
+### 1 - Find out where you are
 
 ```
 list_projects  ->  {"items": [], "total": 0}
@@ -49,11 +39,10 @@ went wrong".
 create_project name="road-signs" description="signage survey"
 ```
 
-The project and its dataset are created in one transaction. There is no `create_dataset`, and no
-tool that reads the dataset on its own: `get_project` already carries `dataset_id`, and
-`dataset_stats` takes the *project*. Two of the twenty tools that folded, folded here.
+The project and its dataset are created together. Read its identifier with `get_project` and its counts with
+`dataset_stats`, passing the project to either tool.
 
-## 2 - Declare the contract first
+### 2 - Declare the contract first
 
 ```
 create_schema_version project="road-signs" classes=[
@@ -69,10 +58,9 @@ things rather than two shapes of one thing. The whole list is sent every
 time: a version is the complete contract, never a patch against the last one, which is what lets
 [schemas.md](schemas.md) call removal *narrowing* and gate it.
 
-`get_schema` answers with `active_version` and `available_versions` beside the schema itself, which
-is the third fold: there is no `list_schema_versions`, because the parent already read them.
+`get_schema` answers with `active_version` and `available_versions` beside the selected schema.
 
-## 3 - Read the folder in
+### 3 - Read the folder in
 
 ```
 ingest project="road-signs" path="/abs/incoming"
@@ -105,7 +93,7 @@ back, and it is emphatically not an annotation job - those do not exist until `a
 them. It is called that because it was once called `job_id`, and [an agent took that straight to
 `get_job`](#what-a-real-agent-actually-did).
 
-## 4 - Freeze it, cut it, open it
+### 4 - Freeze it, cut it, open it
 
 ```
 approve_batch batch_id=... jobs_of=2   ->  {"schema_version": 1, "jobs": [ {...}, {...} ]}
@@ -120,7 +108,7 @@ exact partition of jobs. A later `create_schema_version` does not move the pin, 
 `start_batch` is separate because nothing may be written into a batch nobody opened. The lifecycle
 is one-way - there is no route back to `draft` - since the jobs are already cut against the pin.
 
-## 5 - Look, then label
+### 5 - Look, then label
 
 This is the step that makes an agent an annotator rather than an operator.
 
@@ -173,7 +161,7 @@ set_asset_progress job_id=... asset_id=... progress="skipped"
 `SETTLED_PROGRESS` (does not block completion) and `PROMOTABLE_PROGRESS` (belongs in the dataset),
 and it is why the counts change at step 6.
 
-## 6 - Close it, and move the finished work
+### 6 - Close it, and move the finished work
 
 ```
 complete_job   job_id=...    ->  {"state": "completed"}
@@ -194,7 +182,7 @@ labels over a thousand pictures and the same thousand over ten are the same tota
 different dataset. A class the schema declares but nobody used is **absent, not zero** - which
 classes exist is a question for `get_schema`.
 
-## 7 - Freeze it, check it, write it out
+### 7 - Freeze it, check it, write it out
 
 ```
 publish_release project=... tag="v1.0" split={"train":0.5,"val":0.25,"test":0.25,"seed":7}
@@ -216,7 +204,7 @@ bill nobody should pay.
 There is no `get_release_manifest`, for that last reason, and no `get_release_assignment` -
 `export_release` puts the folds on disk in the form anything downstream actually consumes.
 
-## 7b - And once more, for a model, through a recipe
+### 7b - And once more, for a model, through a recipe
 
 ```
 create_preprocessing_recipe project=... name="yolo-640"
@@ -234,7 +222,7 @@ the split in step 7 is for - one of the two released assets lands there, so one
 `allow_lossy` because the format `yolo11` resolves to declares itself lossy; `check_export` with
 the same `recipe` answers the consent question without writing anything.
 
-## 8 - And it ends on a refusal
+### 8 - And it ends on a refusal
 
 ```
 publish_release project=... tag="v1.0"
@@ -254,7 +242,7 @@ turns this call into a successful one; the remedy is a different tag. Where a fl
 
 ---
 
-# What a real agent actually did
+## What a real agent actually did
 
 On **2026-07-29**, for [#36](https://github.com/Robomous/VisionSet/issues/36), a headless Claude
 Code agent was pointed at `visionset mcp` twelve times: three scenarios, two models (**Opus 5** and
@@ -281,7 +269,7 @@ reached for a tool that does not exist, and no run showed the wrong-tool churn t
 argument predicts. **There is no evidence for folding the lifecycle verbs**, which was the declared
 next move if selection turned out noisy; the sequences read as the cycle.
 
-## The coordinate frame: sixteen boxes, none of them in the wrong frame - and not for the expected reason
+### The coordinate frame: sixteen boxes, none of them in the wrong frame - and not for the expected reason
 
 | model | boxes | mean IoU against ground truth | measured on the preview | asked for `full` |
 | --- | --- | --- | --- | --- |
@@ -309,7 +297,7 @@ triage pass and every look-before-skipping cost an original-sized image, to serv
 agents already opt in unprompted. The mechanism is doing its job by making the choice available,
 which is a different claim from the one `docs/content/mcp.md` used to make, and the honest one.
 
-## `retry_with`: the un-retryable refusal was hit four times out of four, and nothing looped
+### `retry_with`: the un-retryable refusal was hit four times out of four, and nothing looped
 
 Every S3 run walked into `SCHEMA_CHANGE_WOULD_ORPHAN` - narrowing a schema out from under
 annotations that already exist. `retry_with` was `null`, as it must be, and in all four runs the
@@ -335,7 +323,7 @@ settled the way the sentence above predicts: the two destructive tools are not r
 without `--allow-destructive`, so the verb is absent from the listing rather than present and
 gated. `confirm` itself is untouched. See [mcp.md](mcp.md#destructive-tools-are-not-offered-unless-you-ask).
 
-## Two pieces of friction, and both were about names rather than shapes
+### Two pieces of friction, and both were about names rather than shapes
 
 **`ingest` answered with a `job_id` that no tool could read.** One run took it straight to
 `get_job`, was refused with *"no job ... in workspace"*, and diagnosed the problem itself in its final
@@ -355,7 +343,7 @@ mode instead of warning about it: `start_job` is retired and every write starts 
 reporting `job_started`. What is above is the measurement that made the case - kept as the evidence,
 not as the current behaviour.
 
-## What the runs could not settle
+### What the runs could not settle
 
 **The canonical cycle finished twice and stopped twice, on the same reasoning.** In trial 1 both
 models drove the whole thing - ingest at 5 fps, approve, cut, look, label, complete, promote,
@@ -375,7 +363,7 @@ successes are weaker evidence than they look.
 
 ---
 
-# What changed because of it
+## What changed because of it
 
 Three edits, all inside the MCP package, all pinned by a test that fails without them. None of them
 touched the kernel, a route, or a stored shape; `openapi.json` and the generated client are
@@ -404,7 +392,7 @@ Three things were deliberately **not** changed:
   time since, each because a surface grew a capability an agent had no way to reach; the count
   the runs measured is thirty-three because that is what the runs saw.
 
-## What was left
+### What was left
 
 - [#108](https://github.com/Robomous/VisionSet/issues/108) — `confirm` is satisfiable from the tool
   description, so a destructive tool self-authorises in one call. **Settled: the gate moved to the

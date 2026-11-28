@@ -67,20 +67,11 @@ import, value or type, anywhere in this package's shipped source.
 
 ## A third host-injected runtime, for suggesting on this device
 
-`inference/browserPort.ts` declares `VisionSetBrowserInferenceRuntime` - which targets can
-answer an interactive suggestion **on this device, right now**, and how to ask one of them -
-and `VisionSetBrowserInferenceProvider` / `useBrowserInferenceRuntime()` carry it exactly as
-`media/port.ts` is carried. Third seam, same rule: this package owns the port and the React
-plumbing and never the implementation. It imports no model runtime, no execution backend and no
-concrete adapter, and it discovers none either.
-
-Absence is the ordinary case, so the hook answers `null` and never throws - the rule stated
-twice above, for a third capability. **A host that offers browser inference composes the
-runtime at the host boundary; a host that does not offer it supplies nothing.** `frontend/app`
-now supplies one: `data/browserInference/BrowserInferenceRuntime.ts` composes a real
-`VisionSetBrowserInferenceRuntime` over `@visionset/browser-inference` and passes it through
-`OssSession.tsx` unconditionally. A host that omitted it would still behave exactly as it did
-before the port existed.
+`inference/browserPort.ts` declares `VisionSetBrowserInferenceRuntime`. Its
+provider injects the host runtime and `useBrowserInferenceRuntime()` returns
+`null` when a host omits it. The standalone app adapts
+`@visionset/browser-inference` in `data/browserInference/BrowserInferenceRuntime.ts`
+and supplies it from `OssSession.tsx`.
 
 The port is four members wide, and it is an *execution* contract rather than a catalog: the two
 required members - `listTargets` and `executorFor` - are only about asking a model that can
@@ -104,63 +95,36 @@ only while the asset is mounted, and owns the object URL it gives the existing a
 The URL is revoked and an unfinished request is aborted when the asset is replaced or unmounted.
 There is no JavaScript Blob cache: revisiting an asset relies on the server's immutable HTTP cache.
 
-The React annotator adapter can report a generation-scoped lease over the same visible decoded
-`<img>` — `AnnotatorCanvas`'s `onImageReady`, fired from that image's own `onLoad`. A future host
-that needs pixels reads them lazily from that lease: nothing draws to a canvas or calls
-`getImageData` until a caller asks for `readRgb(width, height)`, in the asset descriptor's
-coordinate frame, and ordinary mounting and display never asks. It does not fetch or decode a
-second copy of the asset, and it does not construct a second `Image` to read from — the element
-handed back is the exact node the person is looking at. A lease refuses after its image source is
-replaced *or* after its owning `AnnotatorCanvas` instance unmounts, which prevents a retained
-reference for one asset from reading pixels of the next asset either through a reused DOM node or
-through the detached one a host's real asset-switch (unmount the old canvas, mount a fresh one)
-leaves behind.
+`AnnotatorCanvas` fires `onImageReady` when the visible image finishes loading.
+The callback supplies a lease for that image. The app passes it to the runtime
+through `setActiveAsset()` and the executor calls `readRgb(width, height)` when
+a suggestion needs pixels in the asset descriptor's coordinate frame. That
+call reads the visible image through a canvas. Displaying the image alone
+requires no canvas read. Replacing the source or unmounting the canvas invalidates
+the lease.
 
-This is resource plumbing only: it neither selects a browser model nor exposes an inference
-target. Composing the two is the host's decision, and `frontend/app` now makes it — the lease
-reaches the browser runtime through the port's `setActiveAsset`, and the executor behind
-`executorFor` is what reads `readRgb`.
+`e2e/assetPixels.spec.ts` confirms in Chromium that one request supplies the
+visible image and that the lease returns its decoded RGB in the descriptor's
+coordinate frame.
 
-**What is proved, and what is not claimed.** `e2e/assetPixels.spec.ts` drives a real Chromium
-against a tiny runtime-generated image and confirms, in that browser, on that image: one content
-request, the same decoded `<img>` handed back as the pixel source, and the exact descriptor-frame
-RGB a real 2D context produced. That is evidence about this seam's wiring, not a claim that a
-browser's canvas decode agrees with the server's own (Pillow) decode byte-for-byte in general —
-this phase changes no server decoding, and takes no position on cross-decoder parity beyond what
-is measured here.
-
-**Measured browser-canvas-vs-Pillow divergence.** A separate, informal comparison against the
-server's `convert("RGB")` decode found three real categories of disagreement: alpha-premultiplication
-rounding loss on partially-transparent pixels, EXIF-orientation auto-rotation (a browser applies an
-image's EXIF orientation when decoding to canvas; the server's direct-bytes decode path does not),
-and AdobeRGB ICC-profile color management (a browser color-manages a tagged profile toward sRGB on
-decode; the server's path does not). None of these are exact figures worth repeating here — they
-are a known limitation, not a benchmark.
-
-**This is now a live limitation, not a future one.** The browser suggestion executor feeds this
-lease's `readRgb` output straight to a model, so the pixels "This device" segments are the
-browser's decode and the pixels the server segments are Pillow's. **Server and "This device" can
-therefore return different masks for the same asset and the same click**, and for an asset
-carrying EXIF orientation or an AdobeRGB profile the difference can be large rather than
-marginal — an auto-rotated decode is not a variation on the same picture. Nothing reconciles
-the two, and nothing in the editor tells a person which decode answered. Treat a browser
-suggestion as this browser's answer about this browser's decode; it is not a claim about what
-the server would have said. Closing the gap means changing a decode, not adding a tolerance,
-and neither side has been changed here.
+Browser canvas and Pillow can decode the same source differently. Observed
+differences include rounding of partially transparent pixels, automatic EXIF
+rotation in the browser, and color conversion for AdobeRGB ICC profiles.
+Browser suggestions use canvas RGB, while server suggestions use the server's
+decode. These differences can affect the mask for the same asset and click.
 
 ## Asking for a suggestion is not sending one
 
-`inference/suggestionExecutor.ts` is the seam the runtime above would plug into, and it exists
-on its own. A `SuggestionRequest` is what the editor asks - whose asset, the accumulated
-positive and negative points in placement order, the geometry kinds the ask will accept, and
-where the adjustments stand - and a `SuggestionExecutor` answers one. The request carries **no
-connection id**: where an answer is routed is the executor's own business, fixed when it is
-built.
+`inference/suggestionExecutor.ts` defines the request and result shared by server
+and browser suggestions. A `SuggestionRequest` identifies the asset, prompt
+points in placement order, accepted geometry kinds, and adjustment values.
+The executor binds the request to a server connection or browser target.
 
-`useServerSuggestionExecutor()` is the only implementation that ships. It posts
-`/inference/suggest` exactly as `AnnotationPage` used to, and answers `null` when there is no
-usable connection - "nowhere to send this" is the state `usableConnection()` already reports
-through its blocker, and the panel renders the blocker rather than a refusal.
+`useServerSuggestionExecutor()` posts to `/inference/suggest` and returns `null`
+when no connection is usable. The panel renders the blocker from
+`usableConnection()`. For an active browser target, the host supplies an executor
+through `executorFor()`. It reads the displayed image through the active-asset
+lease and adapts the local model output to the same result type.
 
 Every executor answers in one shape, `SuggestionOut`, which is what keeps the suggestion
 session - the accumulated points, the serial, and the rule that a slow first answer may not

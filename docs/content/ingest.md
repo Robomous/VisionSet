@@ -1,24 +1,20 @@
 # Ingest
 
-**Stated limit:** video import is a browser feature. `visionset ingest` and the MCP `ingest` tool
-take a directory of still images and refuse a video file; the REST video-import session exists, but
-the client has to cut the frames itself, as the browser does. [surfaces.md](surfaces.md) shows what
-each surface can do.
+Ingest brings raw media into a project as assets for annotation. Use directory ingest for
+still images or point-cloud scans. To bring in media with existing labels, use
+[labeled dataset import](import.md).
 
-A dataset that already carries labels is [imported](import.md) rather than ingested.
+`IngestService` reads a registered [directory source](sources.md), stores each file by content
+hash, and records metadata from the decoder. A run can create a draft [batch](batches.md)
+or add assets to an existing draft.
 
-There are two distinct ways raw data becomes an `Asset`, and they are two use cases rather than
-one with a branch in it. `IngestService` turns a registered directory [source](sources.md) into
-rows: it hashes every item, stores its bytes once, records the decoder output, and adds the
-result to a draft [batch](batches.md) for approval. `VideoImportService` does the analogous job
-for a browser-materialized video, but it is not ingest wearing a different hat - see
-["A video import is a session, not a run"](#a-video-import-is-a-session-not-a-run) below for why
-the two do not share a service. Nothing else in the kernel creates an `Asset`;
-`examples/sdk_end_to_end.py` once did so but no longer does.
+To bring in a video, use **Add images** in the browser. The browser decodes the clip locally
+and sends frames through a [video import session](#a-video-import-is-a-session-not-a-run).
+REST clients can use the same session API by decoding the clip themselves. The
+[surface guide](surfaces.md) lists the available entry points.
 
-Everything in the image-directory half below is executed by
-[`examples/ingest_end_to_end.py`](../../examples/ingest_end_to_end.py), which is walked through in
-[examples.md](examples.md).
+The [runnable ingest example](../../examples/ingest_end_to_end.py) demonstrates directory
+registration, deduplication, and per-file reporting.
 
 ```python
 source = sources.register_images(project.id, Path("~/dashcam/monday").expanduser())
@@ -26,8 +22,8 @@ result = ingest.ingest(source.id, batch_name="monday")
 
 result.created  # assets new to this project
 result.deduplicated  # items whose bytes the project already held
-result.failures  # one line per item that was not simply read
-result.failed  # of those, how many produced nothing
+result.failures  # entries with a reported issue
+result.failed  # entries that produced no asset
 ```
 
 ## `IngestService` does not know what a video is
@@ -527,14 +523,10 @@ committed session is never swept - its source is the provenance of assets somebo
 
 ## In the browser
 
-`@visionset/ui-core`'s **Add images** dialog - three steps over the project, opened from its
-bar - picks between mechanisms by what the files are rather than running one flow with a branch
-in it, mirroring the split on this page: `useIngestRun` is the directory/upload path this section
-used to describe alone, and `useClipImport` is everything around a `VideoImportService` session -
-inspection, capability refusal, ranges, rate and scale, materialization, progress, commit and
-cancel. `clipProbe.ts`, the module that used to talk to a
-server-side probe, is gone; a clip is inspected by `@visionset/media`, in the browser, before
-anything is ever sent.
+Open **Add images** from the project to upload stills, point-cloud scans, or a video clip.
+Directory uploads use `useIngestRun`. Video imports use `useClipImport` to inspect the clip,
+set its ranges, rate, and scale, then decode and upload its frames. The browser uses
+`@visionset/media` to inspect the clip before sending any frames.
 
 Point-cloud scans take the directory path too. The dialog routes a drop by file extension,
 case-insensitively: when every file is `.pcd` or `.ply` it is a scan upload, and a drop that mixes
@@ -557,11 +549,10 @@ browser's decoder refuses - no video track, a container it cannot parse, a codec
 will not touch, or a browser missing WebCodecs entirely - surfaces one of `VideoRefusal`'s
 closed set of reasons rather than a generic failure, and starts no import at all.
 
-The image-directory flow still shows `processed` against `total` and groups its per-file report
-by `IngestFailureKind`, offering **Resume** only for a `failed` run - a stuck `running` job has no
-button, because `running → running` is deliberately not a transition. See
-[ui.md](ui.md#the-add-images-dialog-and-the-order-the-domain-forces). The video flow shows a different
-pair - a session's `received_frame_count` against `expected_frame_count` - and its actions are
-**Commit**, available once the two are equal, and **Cancel**, available until then; there is no
-resume, because a session that stalls is aborted and restarted rather than continued; the
-`partial` failure this section used to describe here does not exist for either flow any more.
+Directory ingest shows the progress count and groups issues by `IngestFailureKind`. It offers
+**Resume** when a run has failed. See [the Add images dialog](ui.md#the-add-images-dialog-and-the-order-the-domain-forces).
+
+Video import shows how many frames the session has received and commits automatically after the
+last frame is uploaded. Use **Cancel import** to stop an in-progress import before the commit.
+To retry a stalled import, cancel it and start a new session. After a successful import, the
+dialog can take you to batch approval or open the resulting batch.

@@ -1,8 +1,7 @@
 # The frontend
 
-[`frontend/`](../../../../frontend/) is a pnpm workspace containing five packages.
-The division is architectural, not merely a build convenience: each package is
-defined by what it is *allowed to know*.
+The [frontend workspace](../../../../frontend/) contains five pnpm packages.
+The app composes the reusable UI, annotation, media, and inference packages.
 
 ## The five packages
 
@@ -19,6 +18,7 @@ flowchart TB
     App --> Annotator
     App --> Media
     App --> Mediabunny
+    App --> Inference
     UiCore --> Annotator
     UiCore --> Media
 
@@ -32,32 +32,22 @@ flowchart TB
     Mediabunny -.-> Media
 ```
 
-Arrows are `dependencies` in each `package.json`. The interesting part is what is
-**absent** from each one:
+Solid arrows show workspace dependencies and the media adapter subpath.
+Dotted arrows show external library relationships.
 
 | Package | Depends on | Never |
 | --- | --- | --- |
 | [`annotator`](annotator.md) | nothing at runtime; the root entrypoint is headless, and the optional `react` peer is touched only by the `./react` subpath | HTTP, a design system, a router |
 | [`media`](media.md) | nothing at runtime (core); its own `./mediabunny` subpath depends on `mediabunny` and the browser | React, HTTP, routing, a host — and the core entrypoint never touches `window`, `Worker` or `VideoDecoder` at module scope |
 | [`ui-core`](ui-core.md) | `@visionset/annotator` (root and `./react`), `@visionset/media` **root entrypoint only**, Radix, TanStack Query; `openapi-fetch` is a dependency for consumer-resolvable type references in emitted declarations, never a runtime/value import | a router, HTTP, `@visionset/media/mediabunny`, or which transport a `FrameSink` uses |
-| [`app`](app.md) | all three of the above (`annotator`'s root and `./react`; `media`'s root **and** its `/mediabunny` subpath), `react-router`, `openapi-fetch` as an actual client | domain logic |
-| [`browser-inference`](browser-inference.md) | `onnxruntime-web`, and nothing else — **no VisionSet package at all** | React, a host, HTTP, a model, or the `ui-core` port it deliberately does not implement |
+| [`app`](app.md) | `ui-core`, `annotator` and its React adapter, `media` and its Mediabunny adapter, `browser-inference`, `react-router`, and `openapi-fetch` | domain logic |
+| [`browser-inference`](browser-inference.md) | `onnxruntime-web` | application screens, model acquisition, or the `ui-core` port |
 
-Read down the right-hand column and the architecture falls out. The annotator
-ships with **zero runtime dependencies**, so an application can embed it without
-inheriting a stack. `media`'s core is the same shape one layer over: a materializer
-*contract* with no decoder in it, so importing it never pulls in the ~800 KB
-Mediabunny bundle — only the app, which actually needs to decode a video, imports
-`@visionset/media/mediabunny`. `ui-core` imports no router and no concrete
-materializer, so a screen takes navigation as a callback and video import as an
-injected runtime, and both work inside anybody's tree. The app is shell only, so a
-capability that lands there instead of in `ui-core` or `media` is an architecture
-bug by definition - the future enterprise UI could not reuse it.
-
-`browser-inference` is the newest and the strictest: it has no arrow into the graph
-above at all, because a runtime that executes a model graph needs to know nothing
-about VisionSet to do it. Nothing imports it yet, which is the honest state of a
-package built before the thing that will use it.
+The annotator's headless engine has zero runtime dependencies. The media core
+defines the materializer contract, and the app loads the Mediabunny decoder
+through its own subpath. The app also adapts the browser inference runtime to
+the suggestion port in `ui-core`. Reusable screens receive navigation through
+callbacks and data, media, and inference through host-supplied ports.
 
 ## What the workspace runs
 
@@ -67,13 +57,12 @@ pnpm -r test      # vitest
 pnpm -r lint      # eslint, plus the annotator's two typecheck passes
 ```
 
-None of the four opens a browser by default: both Playwright suites - the annotator
-e2e and the real-server cycle - sit outside them, so anything only chromium can see
-passes here. `@visionset/media`'s own `test:browser` is the exception, because a
-Mediabunny/WebCodecs adapter cannot be proven any other way; it runs real Chromium
-against the built package, the same way a consumer would load it. CI runs all of
-these on every pull request; `bash scripts/check.sh` runs them all locally, browser
-suites included.
+The default package tests use Vitest. Separate Playwright suites cover the
+app against a stubbed API, the app against a real VisionSet server, browser
+video decoding, and browser inference. The media and inference packages each
+expose a `test:browser` script. The
+[local check runner](../../../../scripts/check.sh) and
+[CI workflow](../../../../.github/workflows/ci.yml) also run the browser suites.
 
 The bundle the app produces is copied into `src/visionset/_static/` and served by
 `visionset server` under `/app`, which is why one `pip install` is the whole
@@ -86,7 +75,9 @@ product.
 - [media.md](media.md) - browser video import: the sampling policy, the
   core/adapter split, and the worker's back-pressure.
 - [ui-core.md](ui-core.md) - screens, the design system, and the generated contract.
-- [app.md](app.md) - the router shell.
+- [App](app.md) covers routing, sessions, and host adapters.
+- [Browser inference](browser-inference.md) covers model execution and worker lifecycle.
+- [Visual baselines](visual-baselines.md) covers screenshot comparison and baseline updates.
 
 [`DESIGN.md`](../../../../DESIGN.md) is the visual contract and the file to read
 before building any screen; the product's own UI rules are

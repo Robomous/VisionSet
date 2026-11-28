@@ -1,14 +1,12 @@
 # Architecture
 
-VisionSet is an SDK with clients attached. One Python package defines what a
-dataset *is*. Every user-facing or programmatic surface - the REST API, CLI, MCP
-server, and browser - is a thin translation layer over that package. This section
-follows the same order: start here, then continue into the area you plan to change.
+The Python SDK owns VisionSet's dataset model and workflows. The REST API,
+CLI, and MCP server call it directly. The browser reaches it through the REST
+API and handles browser-specific work such as video decoding and on-device
+inference.
 
-These pages describe the system's *shape*: what each layer is, what it may depend
-on, and where those rules are enforced. They do not restate behavior. Where a topic has an
-authoritative page under [`docs/content/`](../README.md), this tree links to it instead of
-duplicating it and risking drift.
+These pages cover package responsibilities, dependency boundaries, and the checks
+that enforce them. See the [documentation index](../README.md) for product behavior.
 
 ## The system
 
@@ -27,7 +25,7 @@ flowchart TB
         Adapters["kernel.adapters\nSQLite · filesystem · Pillow"]
     end
 
-    Store[("Workspace\none directory, one SQLite file")]
+    Store[("Workspace\nSQLite metadata and stored files")]
 
     Browser --> Server
     Agent --> Mcp
@@ -40,10 +38,10 @@ flowchart TB
     Adapters --> Store
 ```
 
-Every arrow points one way. The kernel never imports a surface, and the surfaces
-never import each other - both are checked by import-linter contracts in
-[`pyproject.toml`](../../../pyproject.toml) and by a fresh-process test in
-[`tests/architecture/`](../../../tests/architecture/).
+The arrows show how calls reach a workspace. [Import-linter contracts](../../../pyproject.toml)
+enforce kernel purity and keep the delivery packages independent. A
+[fresh-process test](../../../tests/architecture/test_kernel_purity.py) checks
+what loading the kernel actually imports.
 
 ## The two halves
 
@@ -52,18 +50,15 @@ never import each other - both are checked by import-linter contracts in
 | Python distribution | [`src/visionset/`](../../../src/visionset/) | a `pip` wheel | [backend/](backend/README.md) |
 | Frontend workspace | [`frontend/`](../../../frontend/) | npm packages, and a bundle inside the wheel | [frontend/](frontend/README.md) |
 
-The browser is not a separate product. `visionset server` serves the compiled
-bundle from `src/visionset/_static/` under `/app`, so one `pip install` is the
-whole thing.
+The wheel includes the compiled browser bundle in `visionset/_static/`.
+`visionset server` serves it under `/app`.
 
 ## Where to go next
 
-- [backend/](backend/README.md) - the layer stack, and a page per package.
-- [frontend/](frontend/README.md) - the four workspace packages and how they
-  depend on each other.
-- [cross-cutting.md](cross-cutting.md) - the two machine-enforced boundaries, the
-  capabilities contract, and the batch lifecycle at a glance.
+- [Backend](backend/README.md) maps the Python packages and their import contracts.
+- [Frontend](frontend/README.md) covers the five workspace packages and their dependencies.
+- [Cross-cutting rules](cross-cutting.md) cover host adapters, capabilities, and the batch lifecycle.
+- [Decisions](decisions/README.md) document constraints that apply across layers.
 
-For what the system *does* rather than how it is arranged, the index at
-[`docs/content/README.md`](../README.md) is the map. [`DESIGN.md`](../../../DESIGN.md) is the
-visual contract, and [`CONTRIBUTING.md`](../../../CONTRIBUTING.md) lists the checks.
+See [the visual contract](../../../DESIGN.md) for design guidance and the
+[contribution guide](../../../CONTRIBUTING.md) for local checks.

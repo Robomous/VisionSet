@@ -5,8 +5,8 @@ the browser. It owns a persistent worker, ONNX Runtime Web, and a model layer th
 caller-supplied EfficientSAM-Ti - and nothing else. No weights ship with the package, it offers
 no UI, and it has no knowledge that VisionSet exists.
 
-Read that last clause literally: this package depends on **no VisionSet package and no
-framework**. It is the only one of the five with no edge into the workspace at all.
+The package depends on ONNX Runtime Web. Its root entrypoint can be imported
+independently of the VisionSet workspace and any UI framework.
 
 ## What it is not
 
@@ -102,11 +102,8 @@ actual background class reads from.
 That refusal is a real limit on what this model can stand in for, and it is worth stating plainly
 rather than leaving to be discovered. VisionSet's server-side `point_suggest` interaction is
 defined in terms of positive *and* negative points; EfficientSAM-Ti supports positive points and
-multi-positive refinement only. It is the engineering model for this phase - the thing that
-proved the export, the worker-resident embedding and the browser execution path are real - and
-not yet a semantically complete replacement for that capability. Which model eventually becomes a
-browser default is a later decision, and negative-point support is one of the criteria it has to
-be made against.
+multi-positive refinement only. The browser target therefore supports adding foreground points only. Its executor
+reports unsupported prompts through the same error path as other refused requests.
 
 `prompt-rejected` is not only a prompt code: `prepareImage` raises it the same way for an image
 with a non-positive or non-integer width or height, or a byte count that does not match

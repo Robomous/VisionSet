@@ -1,12 +1,8 @@
 # Releases
 
-A Release is the only VisionSet artifact that never changes. A [dataset](datasets.md) gains and
-loses assets, a [schema](schemas.md) gains versions, and a [batch](batches.md) moves through its
-states. A Release captures the trunk at one moment and permanently answers: *which bytes and
-labels did we train on?*
-
-There is no operation that edits one. An error in a release is fixed by publishing another
-release.
+A release is an immutable snapshot of the project's [dataset](datasets.md). Its manifest
+records the exact media and labels at publication, the schema used to validate them, and an
+optional split recipe. Publish a new release to capture later edits or membership changes.
 
 ```python
 from visionset.kernel.domain import SplitRecipe

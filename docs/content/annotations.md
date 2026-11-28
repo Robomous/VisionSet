@@ -1,9 +1,9 @@
 # Annotations
 
-An annotation labels an asset with a class, a geometry, and the attribute values required by
-that class. A batch pins the schema version so the contract cannot change, while a job assigns
-the assets to be labeled. `AnnotationService` brings those constraints together and is the
-**only** way to create an `Annotation`.
+An annotation labels one asset. It records a class, geometry, attributes, and provenance.
+To create or edit labels, use an open annotation job. `AnnotationService` checks that the batch,
+job, and asset progress allow the write, then validates each label against the batch's pinned
+[schema](schemas.md).
 
 ```python
 from visionset.kernel.domain import Annotation, BboxGeometry
@@ -1517,9 +1517,9 @@ and three of its decisions are worth knowing before changing it:
 - **The navigator is the batch's asset listing filtered to the job**, not
   `next_pending_assets` - that route hands out *pending* assets, so it shrinks as
   the work is done and cannot go back.
-- **There is no autosave.** A save is a diff followed by a refetch (the kernel mints
-  its own ids), so a timer would rebuild the document mid-gesture. Explicit Save,
-  save-on-navigate, and a `beforeunload` guard.
+- **Edits save automatically.** The timer waits for an idle frame, and navigation saves
+  pending edits before proceeding. Use <kbd>Ctrl/⌘ S</kbd> to save immediately. The toolbar
+  reports save status, and the browser warns before closing a page with unsaved edits.
 
 Zoom controls reach `AnnotatorCanvas`'s `viewRef` handle, whose `fit()` is the same
 implementation `mod+0` runs - one behaviour, two doors, which is why the chord is
