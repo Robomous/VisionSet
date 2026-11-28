@@ -39,6 +39,7 @@ handler is not an operation.
 | `/` | redirects to `/projects`; there is no Home page | yes |
 | `/projects`, `/projects/:id/overview\|images\|batches\|schema\|dataset` (`?batch=<id>`, `?add=images`), `/projects/:id/ingest` (redirects to `…/overview?add=images`), `/projects/:id/batches/:id` | the product | yes |
 | `/models` | model connections, workspace-scoped; `/inference` redirects here | yes |
+| `/settings/about`; `/settings` redirects to the first section | the workspace's Settings page; an unknown section is a 404 | yes |
 | `/jobs/:jobId` (`?asset=<id>`) | the annotation page, outside the shell: the whole viewport, no main rail | yes |
 | `/demo` | the annotator showcase (`?scene=bench` for #49's benchmark) | **no** |
 | `/styleguide` | the rendered design system | **no** |
@@ -73,12 +74,13 @@ path no file backs; [`api.md`](api.md#where-the-ui-lives) describes the server-s
 fallback that answers it.
 
 The shell is the workbench: a collapsible rail (the logo, Projects, Models, the collapse
-toggle, sign out — 48px collapsed by default, 208px expanded), the open-project tabs across the top, the status bar along the bottom — the rules
+toggle, the theme, Settings, sign out — 48px collapsed by default, 208px expanded), the open-project tabs across the top, the status bar along the bottom — the rules
 are in [`ui/navigation.md`](ui/navigation.md#the-workbench-frame). Anything richer growing on the rail is what the thin-app audit exists to catch - a
 capability in `app/` is one the future enterprise UI cannot reuse. `Models` joined by
 the decision recorded on #421 (2026-08-08), as *Inference* until the page was renamed for
-the noun it lists: what earns an entry is a workspace-level object every project uses and
-that has nowhere else to live, never frequency of use.
+the noun it lists: what earns an entry is a workspace-level destination that has nowhere
+else to live, never frequency of use. Settings joined on #1287 under the same rule, amended
+to say so: it is not an object, but nothing on it belongs to a project.
 
 ### Panes, and which one a route gets
 
@@ -2325,7 +2327,7 @@ of to a blank page.
 Light and dark are one stylesheet: every token has a counterpart under `.dark` on
 `<html>`, and a screen follows that class through `useTheme` and never sets it. The
 standalone app sets it from a **System / Light / Dark** control on the rail, above
-account ([navigation.md](ui/navigation.md#the-rail)). System follows
+Settings ([navigation.md](ui/navigation.md#the-rail)). System follows
 `prefers-color-scheme`, light when the system says nothing, and keeps following it
 live; Light and Dark pin it.
 

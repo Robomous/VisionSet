@@ -19,6 +19,11 @@ section or nav entry, or changes an entry point updates this block in the same p
 /                                  → /projects (no Home page; the list is the front door)
 /projects                          Projects list (rail destination)
 /models                            Models — model connections as cards (workspace-scoped)
+/settings                          → redirects to /settings/about, replacing the history entry
+/settings/<section>                Settings (rail destination) — what belongs to the workspace or
+                                   to this browser, never to a project; sections as path
+                                   segments in a column beside the page's groups:
+    about                            About — the version the server reports (GET /health)
 /projects/:id                      → redirects to /projects/:id/overview
 /projects/:id/<section>            Project — sections as path segments, drawn as a section
                                    toolbar across the pane at ≥lg and a tab strip below, in
@@ -345,13 +350,20 @@ instead, so the Overview never loses its way to it.
   on it — that is what lets it name where it goes. A rail destination has no way out of
   its own, for the reason a section has none: the rail *is* it, and a second answer to
   "where am I" inside the pane would contradict it.
-- **What earns a rail entry**: a workspace-level object every project uses, which has
-  nowhere else to live. Model connections carry no project id, so a project tab would state
-  a scope the object does not have. A destination that belongs to one project does not
-  qualify, however often it is visited. The current entries: the mark, Projects, Models,
-  the collapse toggle in the mark's row, and theme and account at the bottom — nothing else. The entry is named for the noun
-  it lists — the models a workspace can run — rather than for one use of them, and its
+- **What earns a rail entry**: a workspace-level destination that has nowhere else to live —
+  an object every project uses, or the page that holds the workspace's and this browser's
+  settings. Model connections carry no project id, so a project tab would state a scope the
+  object does not have; Settings holds nothing that belongs to a project, for the same reason.
+  A destination that belongs to one project does not qualify, however often it is visited.
+  The current entries: the mark, Projects, Models, the collapse toggle in the mark's row, and
+  theme, Settings and account at the bottom — nothing else. The Models entry is named for the
+  noun it lists — the models a workspace can run — rather than for one use of them, and its
   route is `/models`; `/inference`, the address it had before, redirects there.
+- **Settings is one entry with sections in the URL.** The rail links to `/settings`, which
+  redirects to the first section with `replace`, as a bare project URL does; the entry is
+  current (`aria-current="page"`) on `/settings` and every path under it. A section joins the
+  page's column only when it has content, so the page never links to an empty one; an
+  unknown section segment is a 404. About is the only section today.
 - **The rail collapses and expands**: 48px collapsed (`--spacing-rail`, the default), 208px
   expanded (`--spacing-rail-expanded`), toggled with ⌘B / Ctrl+B or from the rail's top row,
   and remembered per browser (`app/src/shell/railState.ts`). Collapsed, the mark is the
@@ -360,7 +372,7 @@ instead, so the Overview never loses its way to it.
   whose label is its accessible name and its tooltip; expanded, the full logo and the labels
   show and the tooltips go. Every icon sits in the same 40px-wide slot in both states and the
   logo's mark at the same x, so expanding only adds labels.
-- **The theme is the rail's, and the screens only follow it.** The control above account
+- **The theme is the rail's, and the screens only follow it.** The control above Settings
   opens a menu of System, Light and Dark; its icon and accessible name say the current choice.
   System follows `prefers-color-scheme`, light when the system says nothing, and keeps
   following it live. The choice is kept per browser through `ui-core`'s `data/prefs.ts`, never
