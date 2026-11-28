@@ -16,6 +16,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { TooltipProvider } from "@robomous/ui-core";
 import { AnnotationPage } from "./AnnotationPage";
 import { trackGeometryKind } from "./trackQueries";
+import { SCAN_UNTRACKABLE_REASON } from "./TrackRegion";
 import { REFUSAL_PROSE } from "../data/refusals";
 import { renderWithData } from "../testing/dataHarness";
 import { stubResizeObserver } from "../testing/resizeObserver.js";
@@ -77,6 +78,39 @@ const ANNOTATIONS: Record<string, unknown[]> = {
   [A2]: [box("ann-5", A2, "vehicle", 10)],
 };
 
+const SCAN_SCHEMA = {
+  ...SCHEMA,
+  classes: [
+    { name: "vehicle", geometries: ["cuboid_3d"], color: "#3355ff", attributes: [] },
+    { name: "pedestrian", geometries: ["cuboid_3d"], color: "#22c55e", attributes: [] },
+    { name: "lane", geometries: ["polyline_3d"], color: "#f59e0b", attributes: [] },
+  ],
+};
+
+function cuboid(id: string, assetId: string, labelClass: string, x: number) {
+  return { ...box(id, assetId, labelClass, x), geometry: { type: "cuboid_3d", center: [x, 0, 0], size: [4, 2, 1.5], yaw: 0 } };
+}
+
+/** The same frames as scans of a `point_cloud_sequence`: the same ids, so the same tracks observe them. */
+const SCAN_ANNOTATIONS: Record<string, unknown[]> = {
+  [A1]: [
+    cuboid("ann-1", A1, "vehicle", 10),
+    cuboid("ann-2", A1, "vehicle", 20),
+    cuboid("ann-3", A1, "pedestrian", 30),
+    { ...box("ann-4", A1, "lane", 0), geometry: { type: "polyline_3d", points: [[0, 0, 0], [5, 0, 0]] } },
+  ],
+  [A2]: [cuboid("ann-5", A2, "vehicle", 10)],
+};
+
+function pointBuffer(count: number): ArrayBuffer {
+  const out = new ArrayBuffer(16 + count * 12);
+  const view = new DataView(out);
+  for (let i = 0; i < 4; i += 1) view.setUint8(i, "VSPC".charCodeAt(i));
+  view.setUint32(4, 1, true);
+  view.setUint32(8, count, true);
+  return out;
+}
+
 function observation(position: number, annotationId: string) {
   const at = OCCURRENCES.find((one) => one.position === position)!;
   return { occurrence_id: at.id, position, timestamp: at.timestamp, asset_id: at.asset_id, annotation_id: annotationId };
@@ -97,6 +131,8 @@ function observationAt(occurrenceId: string, annotationId: string) {
 
 interface World {
   sourceId: string | null;
+  /** Every frame of the job is a scan of a `point_cloud_sequence` rather than an image. */
+  scans: boolean;
   occurrences: (typeof OCCURRENCES)[number][];
   tracks: { id: string; source_id: string; label_class: string; external_id: string | null; geometry_kind?: string | null; observations: ReturnType<typeof observation>[] }[];
   readOnly: boolean;
@@ -131,6 +167,7 @@ const sent: { method: string; path: string; body: unknown }[] = [];
 function freshWorld(): World {
   return {
     sourceId: SOURCE,
+    scans: false,
     occurrences: [...OCCURRENCES],
     tracks: [
       {
@@ -188,20 +225,21 @@ function answer(method: string, path: string, body: unknown): Response {
       schema_version: 1,
       asset_count: 2,
       allowed_actions: batchActions(batchState, { settled: false }),
-      modalities: ["image"],
+      modalities: [world.scans ? "point_cloud" : "image"],
       promoted_asset_count: 0,
       parent_batch_id: null,
       pre_label_run: null,
       progress: { unannotated: 1, pre_labeled: 0, annotated: 1, skipped: 0, review_pending: 0, accepted: 0, total: 2 },
     });
   }
-  if (path.endsWith("/schema/versions/1")) return json(SCHEMA);
+  if (path.endsWith("/schema/versions/1")) return json(world.scans ? SCAN_SCHEMA : SCHEMA);
+  if (path.endsWith("/points")) return new Response(pointBuffer(3), { status: 200 });
   if (path === `/batches/${BATCH}/assets`) {
     const progressOf = (index: number) => (index === 0 ? (world.preLabeled ? "pre_labeled" : "unannotated") : "annotated");
     const items = world.jobAssets.map((id, index) => ({
       id,
       project_id: PROJECT,
-      modality: "image",
+      modality: world.scans ? "point_cloud" : "image",
       point_cloud: null,
       content_hash: `abcdef0${index}`.padEnd(64, "0"),
       width: 640,
@@ -232,7 +270,7 @@ function answer(method: string, path: string, body: unknown): Response {
   if (method !== "GET" && path.endsWith("/annotations") && world.refuseSave !== null) return json(world.refuseSave, 409);
   const annotations = /^\/jobs\/[^/]+\/assets\/([^/]+)\/annotations$/.exec(path);
   if (annotations !== null) {
-    const items = ANNOTATIONS[annotations[1]!] ?? [];
+    const items = (world.scans ? SCAN_ANNOTATIONS : ANNOTATIONS)[annotations[1]!] ?? [];
     return json({ items, total: items.length });
   }
   const assetOccurrences = new RegExp(`^/projects/${PROJECT}/assets/([^/]+)/occurrences$`).exec(path);
@@ -250,11 +288,11 @@ function answer(method: string, path: string, body: unknown): Response {
     return json({
       id: sourceRead[1],
       project_id: PROJECT,
-      kind: "image_sequence",
+      kind: world.scans ? "point_cloud_sequence" : "image_sequence",
       name: SOURCE_NAMES[sourceRead[1]!],
       registered_at: "2026-11-01T00:00:00Z",
       video: null,
-      frame: null,
+      frame: world.scans ? "lidar_flu" : null,
     });
   }
   if (path === `/sources/${SECOND}/tracks` && method === "GET" && world.failSecondTracks) return json({ code: "INTERNAL", message: "down" }, 500);
@@ -288,7 +326,7 @@ function answer(method: string, path: string, body: unknown): Response {
   if (path === `/jobs/${JOB}/tracks` && method === "POST") {
     if (world.refuseObserve !== null) return json(world.refuseObserve, 409);
     const { occurrence_id, annotation_id } = body as { occurrence_id: string; annotation_id: string };
-    const labelClass = (Object.values(ANNOTATIONS).flat() as { id: string; label_class: string }[]).find((one) => one.id === annotation_id)!.label_class;
+    const labelClass = (Object.values(world.scans ? SCAN_ANNOTATIONS : ANNOTATIONS).flat() as { id: string; label_class: string }[]).find((one) => one.id === annotation_id)!.label_class;
     const started = {
       id: `track-${world.tracks.length + 1}`,
       source_id: world.occurrences.find((one) => one.id === occurrence_id)!.source_id,
@@ -868,5 +906,134 @@ describe("writing", () => {
     expect(screen.getByTestId("track-next").getAttribute("aria-disabled")).toBeNull();
     fireEvent.click(screen.getByTestId("track-unobserve-1"));
     expect(writes()).toEqual([]);
+  });
+});
+
+describe("tracks on a scan", () => {
+  beforeEach(() => {
+    world.scans = true;
+  });
+
+  it("lists the sequence's tracks and badges the cuboid a track observes", async () => {
+    await open();
+    const tracks = await region();
+    expect(within(tracks).getByTestId("track-count").textContent).toBe("2");
+    expect(within(tracks).getByTestId("track-row-track-1").textContent).toMatch(/vehicle 17.*here.*3 frames/);
+    await waitFor(() => expect(screen.getByTestId("object-track-0").getAttribute("aria-label")).toBe("On track vehicle 17 at frame 1"));
+    expect(screen.queryByTestId("object-track-1")).toBeNull();
+    expect(sent.some((one) => one.path === `/projects/${PROJECT}/assets/${A1}/occurrences`)).toBe(true);
+  });
+
+  it("names each source when the scan sits in two sequences", async () => {
+    world.occurrences.push(IN_SECOND);
+    world.tracks.push({ id: "track-b1", source_id: SECOND, label_class: "pedestrian", external_id: null, observations: [] });
+    await open();
+    const tracks = await region();
+    await waitFor(() =>
+      expect(within(within(tracks).getByTestId(`track-source-${SECOND}`)).getByTestId("track-source-name").textContent).toBe("drive-b"),
+    );
+  });
+
+  it("reads ahead the next scan's occurrences", async () => {
+    await open();
+    await region();
+    await waitFor(() => expect(sent.some((one) => one.path === `/projects/${PROJECT}/assets/${A2}/occurrences`)).toBe(true));
+  });
+
+  it("adds the selected cuboid to the track", async () => {
+    await open();
+    await userEvent.click(await screen.findByTestId("object-select-1"));
+    await focusTrack("track-1");
+    await userEvent.click(screen.getByTestId("track-observe"));
+
+    await waitFor(() => expect(screen.getByTestId("track-done").textContent).toBe("Added at frame 4"));
+    expect(writes()).toEqual([
+      { method: "POST", path: `/jobs/${JOB}/tracks/track-1/observations`, body: { occurrence_id: "occ-4", annotation_id: "ann-2" } },
+    ]);
+    await waitFor(() => expect(screen.getByTestId("object-track-1")).not.toBeNull());
+  });
+
+  it("starts a track from the selected cuboid", async () => {
+    await open();
+    await userEvent.click(await screen.findByTestId("object-select-1"));
+    await region();
+    await userEvent.click(screen.getByTestId("track-start"));
+    await userEvent.click(await screen.findByTestId("track-start-at-occ-4"));
+
+    await waitFor(() => expect(screen.getByTestId("track-done").textContent).toBe("Started a track at frame 4"));
+    expect(writes()).toEqual([{ method: "POST", path: `/jobs/${JOB}/tracks`, body: { occurrence_id: "occ-4", annotation_id: "ann-2" } }]);
+    expect(screen.getByTestId("track-row-track-3").getAttribute("aria-pressed")).toBe("true");
+  });
+
+  it("takes the cuboid off the track and keeps it", async () => {
+    await open();
+    await focusTrack("track-1");
+    await userEvent.click(screen.getByTestId("track-unobserve-1"));
+    await waitFor(() => expect(screen.getByTestId("track-done").textContent).toMatch(/the object stays/));
+    expect(writes()).toEqual([{ method: "DELETE", path: `/jobs/${JOB}/tracks/track-1/observations/occ-1`, body: null }]);
+    await waitFor(() => expect(screen.queryByTestId("object-track-0")).toBeNull());
+    expect(screen.getByTestId("object-row-0")).not.toBeNull();
+  });
+
+  it("withholds adding a cuboid of another class, naming the track's", async () => {
+    await open();
+    await userEvent.click(await screen.findByTestId("object-select-2"));
+    await focusTrack("track-1");
+    expect(screen.getByTestId("track-observe").getAttribute("data-reason")).toBe("This track follows “vehicle”");
+    fireEvent.click(screen.getByTestId("track-observe"));
+    expect(writes()).toEqual([]);
+  });
+
+  it("withholds adding a cuboid to a track of another kind, with the kernel's reason", async () => {
+    world.tracks[0] = { ...world.tracks[0]!, geometry_kind: "bbox" };
+    await open();
+    await userEvent.click(await screen.findByTestId("object-select-1"));
+    await focusTrack("track-1");
+    expect(screen.getByTestId("track-observe").getAttribute("data-reason")).toBe(REFUSAL_PROSE.TRACK_GEOMETRY_MISMATCH);
+    fireEvent.click(screen.getByTestId("track-observe"));
+    expect(writes()).toEqual([]);
+  });
+
+  it("withholds starting or adding with a selected polyline, saying only cuboids follow a track", async () => {
+    await open();
+    await userEvent.click(await screen.findByTestId("object-select-3"));
+    await focusTrack("track-1");
+    expect(screen.getByTestId("track-start").getAttribute("data-reason")).toBe(SCAN_UNTRACKABLE_REASON);
+    expect(screen.getByTestId("track-observe").getAttribute("data-reason")).toBe(SCAN_UNTRACKABLE_REASON);
+    fireEvent.click(screen.getByTestId("track-start"));
+    fireEvent.click(screen.getByTestId("track-observe"));
+    expect(writes()).toEqual([]);
+  });
+
+  it("renders the kernel's refusal of an untrackable label as prose", async () => {
+    world.refuseObserve = { code: "INVALID_ANNOTATION", message: "annotation ann-2 is a polyline_3d on a scan" };
+    await open();
+    await userEvent.click(await screen.findByTestId("object-select-1"));
+    await focusTrack("track-1");
+    await userEvent.click(screen.getByTestId("track-observe"));
+    const refusal = await screen.findByTestId("track-refusal");
+    expect(refusal.textContent).toBe(REFUSAL_PROSE.INVALID_ANNOTATION);
+    expect(refusal.textContent).not.toContain("INVALID_ANNOTATION");
+  });
+
+  it("steps to the track's next scan and selects the cuboid it follows there", async () => {
+    await open();
+    await focusTrack("track-1");
+    await userEvent.click(screen.getByTestId("track-next"));
+
+    await waitFor(() => expect(screen.getByTestId("asset-position").textContent).toContain("2/2"));
+    expect(screen.getByTestId("track-where").textContent).toBe("On this frame at 5");
+    await waitFor(() => expect(screen.getByTestId("object-row-0").getAttribute("data-selected")).toBe("true"));
+  });
+
+  it("saves an unsaved cuboid edit before stepping, and stays when the save is refused", async () => {
+    world.refuseSave = { code: "ASSET_NOT_WRITABLE", message: "kernel wording" };
+    await open();
+    await focusTrack("track-1");
+    await userEvent.click(await screen.findByTestId("object-delete-1"));
+    await userEvent.click(screen.getByTestId("track-next"));
+
+    await waitFor(() => expect(writes().some((one) => one.path.endsWith("/annotations"))).toBe(true));
+    expect(screen.getByTestId("asset-position").textContent).toContain("1/2");
   });
 });

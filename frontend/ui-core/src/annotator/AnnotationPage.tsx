@@ -185,7 +185,7 @@ import { REFUSAL_PROSE, refusalProse } from "../data/refusals";
 import { Badge, Button, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger, HoverCard, HoverCardContent, HoverCardTrigger, Kbd, Tooltip, TooltipContent, TooltipTrigger, cn } from "@robomous/ui-core";
 import { EmptyState, ErrorState, LoadingState } from "../patterns/AsyncStates";
 import { AnnotatorPanel, type TrackMark } from "./AnnotatorPanel";
-import { TrackRegion, type TrackCandidate, type TrackFocus, type TrackOutcome } from "./TrackRegion";
+import { SCAN_UNTRACKABLE_REASON, TrackRegion, type TrackCandidate, type TrackFocus, type TrackOutcome } from "./TrackRegion";
 import {
   observationOf,
   sequenceTrackLabel,
@@ -1942,10 +1942,9 @@ function Workspace({
       ? null
       : (REFUSAL_PROSE[withheldCode(asset, ASSET_ACTION.observe) ?? ""] ?? "Adding to a track is not available on this frame.");
 
-  // The annotator shows tracks on images only; a scan's tracks are read through REST, the CLI and MCP.
   // One asset can sit in several sequences, and each keeps its own tracks.
   const jobAssetIds = useMemo(() => assets.map((one) => one.id), [assets]);
-  const occurrences = useAssetOccurrences(projectId, isScan ? null : asset.id);
+  const occurrences = useAssetOccurrences(projectId, asset.id);
   const sequences = useMemo(() => sequencesOf(occurrences.data ?? []), [occurrences.data]);
   const prefetchOccurrences = usePrefetchAssetOccurrences(projectId);
   const previousAsset = assets[assetIndex - 1];
@@ -1953,7 +1952,7 @@ function Workspace({
   useEffect(() => {
     if (sequences.length === 0) return;
     prefetchOccurrences(
-      [previousAsset, nextAsset].flatMap((one) => (one === undefined || one.modality === "point_cloud" ? [] : [one.id])),
+      [previousAsset, nextAsset].flatMap((one) => (one === undefined ? [] : [one.id])),
     );
   }, [sequences.length, previousAsset, nextAsset, prefetchOccurrences]);
   const sourceIds = useMemo(() => sequences.map((one) => one.sourceId), [sequences]);
@@ -2009,10 +2008,11 @@ function Workspace({
     },
     [frameSession],
   );
+  const scanDocument = scan?.snapshot.document ?? null;
   const trackMarks = useMemo(() => {
     const marks = new Map<string, TrackMark>();
     if (trackSequences === undefined) return marks;
-    for (const annotation of snapshot.document.annotations.values()) {
+    for (const annotation of [...snapshot.document.annotations.values(), ...(scanDocument?.annotations.values() ?? [])]) {
       const on = observationOf(readTracks, frame.minted.get(annotation.id) ?? annotation.id);
       if (on === null) continue;
       marks.set(annotation.id, {
@@ -2021,7 +2021,7 @@ function Workspace({
       });
     }
     return marks;
-  }, [trackSequences, readTracks, snapshot.document, frame.minted, onTrackFocus]);
+  }, [trackSequences, readTracks, snapshot.document, scanDocument, frame.minted, onTrackFocus]);
   /**
    * The class a track keeps each drawn object to. The tracks read of each
    * source the frame sits in are the fresher word on their own tracks — a
@@ -2073,12 +2073,51 @@ function Workspace({
     lockKeyRef.current = key;
     store.recheckHistory();
   }, [store, classLocks]);
+  const scanSelection = scan?.snapshot.selection ?? null;
+  const trackSelectionCount = scanSelection?.size ?? snapshot.selection.size;
   const trackCandidate: TrackCandidate | null = useMemo(() => {
+    if (scanSelection !== null) {
+      if (scanSelection.size !== 1 || scanDocument === null) return null;
+      const [id] = scanSelection;
+      const one = id === undefined ? undefined : scanDocument.annotations.get(id);
+      if (one === undefined) return null;
+      return {
+        localId: one.id,
+        labelClass: one.label_class,
+        geometry: one.geometry.type,
+        untrackable: one.geometry.type === "cuboid_3d" ? null : SCAN_UNTRACKABLE_REASON,
+      };
+    }
     if (snapshot.selection.size !== 1) return null;
     const [id] = snapshot.selection;
     const one = id === undefined ? undefined : snapshot.document.annotations.get(id);
-    return one === undefined || isTagAnnotation(one) ? null : { localId: one.id, labelClass: one.label_class, geometry: one.geometry.type };
-  }, [snapshot.selection, snapshot.document]);
+    return one === undefined || isTagAnnotation(one)
+      ? null
+      : { localId: one.id, labelClass: one.label_class, geometry: one.geometry.type, untrackable: null };
+  }, [scanSelection, scanDocument, snapshot.selection, snapshot.document]);
+  /**
+   * The followed track's cuboid on this scan, at the position a step landed on:
+   * selected on arrival, so stepping along a track lands on the same object.
+   */
+  const scanStore = scan?.store ?? null;
+  const followedCuboid = useMemo(() => {
+    if (scanDocument === null || trackFocus === null || trackFocus.position === null) return null;
+    const at = readTracks
+      .find((one) => one.id === trackFocus.trackId)
+      ?.observations.find((one) => one.position === trackFocus.position && one.asset_id === asset.id);
+    if (at === undefined) return null;
+    if (scanDocument.annotations.has(at.annotation_id)) return at.annotation_id;
+    for (const [local, server] of frame.minted) if (server === at.annotation_id && scanDocument.annotations.has(local)) return local;
+    return null;
+  }, [scanDocument, trackFocus, readTracks, asset.id, frame.minted]);
+  const arrivedAt = useRef<string | null>(null);
+  useEffect(() => {
+    if (scanStore === null || trackFocus === null || followedCuboid === null) return;
+    const arrival = `${trackFocus.trackId}@${trackFocus.position}`;
+    if (arrivedAt.current === arrival) return;
+    arrivedAt.current = arrival;
+    scanStore.select(selectOnly(followedCuboid));
+  }, [scanStore, trackFocus, followedCuboid]);
   const detect =
     activeTarget.kind === "server" && !readOnly ? { blocker: detectBlocker, onDetect: detectAll } : undefined;
 
@@ -3381,7 +3420,7 @@ function Workspace({
                     jobAssetIds={jobAssetIds}
                     withheld={readOnly ? "Viewing only" : null}
                     observeWithheld={observeWithheld}
-                    selectionCount={snapshot.selection.size}
+                    selectionCount={trackSelectionCount}
                     candidate={trackCandidate}
                     serverIdOf={serverIdOf}
                     saveThen={attempt}

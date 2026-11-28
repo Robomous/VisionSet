@@ -58,16 +58,10 @@ function assetOccurrencesQuery(client: VisionSetDataClient, projectId: string, a
   };
 }
 
-/**
- * The asset's occurrences in every sequence source it sits in. `null` is "no
- * asset to ask about": a scan, which no track follows.
- */
-export function useAssetOccurrences(
-  projectId: string,
-  assetId: string | null,
-): UseQueryResult<readonly FrameOccurrence[], Error> {
+/** The asset's occurrences in every sequence source it sits in, an image's or a scan's alike. */
+export function useAssetOccurrences(projectId: string, assetId: string): UseQueryResult<readonly FrameOccurrence[], Error> {
   const client = useApiClient();
-  return useQuery({ ...assetOccurrencesQuery(client, projectId, assetId ?? "none"), enabled: assetId !== null });
+  return useQuery(assetOccurrencesQuery(client, projectId, assetId));
 }
 
 /**
