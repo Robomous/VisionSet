@@ -412,17 +412,17 @@ def data_root(host: Host) -> str:
     return _data_root(host)[0]
 
 
-def _data_root(host: Host) -> tuple[str, bool]:
-    """The data root, and whether a variable named it rather than the OS default."""
+def _data_root(host: Host) -> tuple[str, str]:
+    """The data root and who chose it: `operator`, `host` or `default`."""
     pm = _pm(host)
     override = host.get(DATA_ENV)
     if override is not None:
         if not _absolute(override, host):
             raise BootstrapError(Code.BAD_DATA_DIR, f"{DATA_ENV} must be an absolute path")
-        return str(pm.normpath(override)), True
+        return str(pm.normpath(override)), "operator"
     given = host.get(CLAUDE_DATA_ENV)
     if given is not None and _absolute(given, host):
-        return str(pm.normpath(given)), True
+        return str(pm.normpath(given)), "host"
     base: str | None
     if host.windows:
         base = host.get("LOCALAPPDATA")
@@ -440,7 +440,7 @@ def _data_root(host: Host) -> tuple[str, bool]:
             "no user data directory could be determined",
             hint=f"set {DATA_ENV} to an absolute path",
         )
-    return str(pm.join(pm.normpath(base), APP_DIR)), False
+    return str(pm.join(pm.normpath(base), APP_DIR)), "default"
 
 
 def runtime_key(version: str, interpreter: Interpreter) -> str:
@@ -454,6 +454,8 @@ def runtime_key(version: str, interpreter: Interpreter) -> str:
 
 _GENERATION = re.compile(r"(.+)-r([1-9][0-9]*)")
 _TRASH = re.compile(r"\.trash-(.+)-[0-9a-f]{12}")
+# pip's console-script header for an interpreter path that contains spaces.
+_SH_LAUNCHER = re.compile(r"""'''exec' "([^"]+)" "\$0" "\$@\"""")
 
 
 def layout(root: str, key: str, console_script: str, windows: bool) -> Layout:
@@ -816,7 +818,31 @@ class _Job:
                 return outcome
         return outcome
 
+    def located(self, lay: Layout) -> bool:
+        """Whether the interpreter the console script names exists inside this generation.
+
+        pip writes an absolute interpreter path into the script, so a generation whose data root
+        was moved, or was built through a symlink that is gone, cannot start any more.
+        """
+        if self.host.windows:
+            return True
+        head = self.fs.read_head(lay.console_script)
+        first = head.split("\n", 1)[0]
+        if not first.startswith("#!"):
+            return False
+        named = first[2:].strip()
+        if named in ("/bin/sh", "/usr/bin/env sh"):
+            match = _SH_LAUNCHER.search(head)
+            if match is None:
+                return False
+            named = match.group(1)
+        if not posixpath.isabs(named) or not self.fs.lexists(named):
+            return False
+        return _inside(posixpath.dirname(named), lay.runtime, self.host, self.fs)
+
     def _probe_runtime(self, lay: Layout) -> str:
+        if not self.located(lay):
+            return "dead"
         cwd = str(self.pm.dirname(lay.console_script))
         for args in (["--version"], ["mcp", "--help"]):
             if not (self.fs.is_file(lay.python) and self.fs.is_file(lay.console_script)):
@@ -842,15 +868,17 @@ class _Job:
                 continue
             outcome = self.verify(lay)
             if outcome == "dead":
-                self.progress(f"the cached runtime {lay.key} no longer works; building a new one")
-                return None
+                self.progress(f"the cached runtime {lay.key} no longer works")
+                continue
             if outcome == "transient":
                 self.progress(f"the cached runtime {lay.key} did not answer; using it anyway")
             return Bootstrapped(lay.venv, lay.console_script, sentinel["version"], reused=True)
         return None
 
     def discard(self, path: str, base: str) -> None:
-        """Move an unpublished generation aside and remove it; callers check `ready.json`."""
+        """Move an unpublished generation aside and remove it; a published one is kept."""
+        if self.fs.lexists(str(self.pm.join(path, "ready.json"))):
+            return
         trash = str(self.pm.join(self.pm.dirname(path), f".trash-{base}-{os.urandom(6).hex()}"))
         try:
             self.fs.replace(path, trash)
@@ -909,17 +937,17 @@ class _Job:
                     self.clear(root, other)
             finally:
                 lease.release()
-        highest = max((number for number, _ in self.generations(root, base)), default=0)
-        if highest >= MAX_GENERATIONS:
+        existing = self.generations(root, base)
+        if len(existing) >= MAX_GENERATIONS:
             raise self.fail(
                 Code.GENERATIONS_EXHAUSTED,
-                f"{MAX_GENERATIONS} runtimes for {base} were built and none of them works "
-                "here any more; no further one is built",
-                hint="check the log, remove the superseded runtimes under "
-                f"{self.runtimes(root)} yourself, or install it yourself: "
+                f"{len(existing)} runtimes for {base} exist and none of them works here; "
+                "no further one is built",
+                hint="check the log, then remove every superseded runtime "
+                f"{base}-r* under {self.runtimes(root)} yourself, or install it yourself: "
                 f"pipx install '{self.requirement}'",
             )
-        return highest + 1
+        return max((number for number, _ in existing), default=0) + 1
 
     def build(self, root: str, base: str, number: int, interpreter: Interpreter) -> Bootstrapped:
         lay = layout(root, f"{base}-r{number}", self.bundle.console_script, self.host.windows)
@@ -1002,6 +1030,13 @@ class _Job:
         pip_version = [lay.python, "-I", "-m", "pip", "--version"]
         result = self.step(pip_version, lay.runtime, PROBE_TIMEOUT, OUTPUT_CAP)
         if result.error is not None or result.timed_out or result.returncode != 0:
+            output = (result.stdout + result.stderr).decode("utf-8", "replace")
+            if "Configuration file could not be loaded" in output:
+                raise self.fail(
+                    Code.BAD_PIP_CONFIG,
+                    f"pip cannot load its configuration: {self.tail(result)}",
+                    hint=f"fix pip.conf or PIP_CONFIG_FILE; or {self.manual}",
+                )
             raise self.fail(
                 Code.NO_PIP, f"the new environment has no working pip: {self.tail(result)}"
             )
@@ -1078,6 +1113,10 @@ def _inside(path: str, root: str, host: Host, fs: FileSystem) -> bool:
     return child == parent or child.startswith(parent.rstrip(sep) + sep)
 
 
+def _same(one: str, other: str, host: Host, fs: FileSystem) -> bool:
+    return _inside(one, other, host, fs) and _inside(other, one, host, fs)
+
+
 def bootstrap(
     bundle: Bundle,
     *,
@@ -1111,7 +1150,7 @@ def bootstrap(
     job = _Job(bundle, host, fs, run, clock, progress, install_timeout)
     if _opted_out(host.get(NO_BOOTSTRAP_ENV)):
         raise job.fail(Code.OPTED_OUT, f"{NO_BOOTSTRAP_ENV} is set, so no runtime is created")
-    root, explicit = _data_root(host)
+    root, chosen_by = _data_root(host)
     outside = f"set {DATA_ENV} to a directory outside it"
     if plugin_root is not None and _inside(root, plugin_root, host, fs):
         raise job.fail(Code.BAD_DATA_DIR, "the data directory lies inside the plugin", outside)
@@ -1119,8 +1158,11 @@ def bootstrap(
         checkout = checkout_of(project, host, fs)
         if not project_trusted:
             job.untrusted = checkout
-        # The OS default lives under home, which is also where a project at home starts.
-        for where in {project, checkout} if explicit else ():
+        # The OS default and a client's data directory live under home, which a project at
+        # home also contains; only an operator's choice is refused there.
+        at_home = host.home is not None and _same(checkout, host.home, host, fs)
+        checked = chosen_by == "operator" or (chosen_by == "host" and not at_home)
+        for where in {project, checkout} if checked else ():
             if _inside(root, where, host, fs):
                 raise job.fail(
                     Code.BAD_DATA_DIR, "the data directory lies inside the project", outside

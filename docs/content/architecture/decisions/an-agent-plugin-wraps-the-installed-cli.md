@@ -165,10 +165,11 @@ macOS behaviour is covered by fakes, not by a run on either system.
 - **Where state lives.** The data root is `VISIONSET_PLUGIN_DATA` (absolute, or setup fails),
   else `CLAUDE_PLUGIN_DATA`, else `$XDG_DATA_HOME` or `~/.local/share`, `~/Library/Application
   Support` on macOS, or `%LOCALAPPDATA%` on Windows, each followed by `visionset-agent-plugin`.
-  Setup refuses a root inside the installed plugin. It refuses a root named by
-  `VISIONSET_PLUGIN_DATA` or `CLAUDE_PLUGIN_DATA` that lies inside the project or its checkout.
-  The OS default is allowed even under a project, because a project at the home directory
-  contains it. On POSIX it also refuses a root, or its `runtimes`, `locks` or `logs` directory, that
+  Setup refuses a root inside the installed plugin. A root named by `VISIONSET_PLUGIN_DATA`, the
+  operator's own choice, is refused inside the project or its checkout. `CLAUDE_PLUGIN_DATA`
+  comes from the host and lives under the home directory, so it is refused there only when the
+  checkout is not the home directory itself. The OS default is never refused for that reason.
+  On POSIX it also refuses a root, or its `runtimes`, `locks` or `logs` directory, that
   another user owns, that every user can write, or that a group other than the user's primary
   group can write. Failing to create or write any of them is a `BAD_DATA_DIR` error, never a raw
   exception.
@@ -194,18 +195,24 @@ macOS behaviour is covered by fakes, not by a run on either system.
   generation is reused when the data root is reached through a symlink or another spelling. It
   is staged, read back and renamed into place, and only after `pip --version` works and the console script passes
   discovery's two probes. Two processes starting together install once.
-- **Reuse proves the runtime works.** Before reusing a published generation, bootstrap runs its
+- **Reuse proves the runtime works.** pip writes the venv interpreter's absolute path into the
+  console script, as a `#!` line or, for a path with spaces, as a `/bin/sh` launcher. On POSIX,
+  a generation whose named interpreter is missing or lies outside the generation (its data root
+  was moved, or was built through a symlink that is gone) is broken. Otherwise bootstrap runs its
   console script's `--version` (which must be inside the range) and `mcp --help`. A runtime is
-  broken only when its interpreter or console script file is gone, or when a check fails the
+  also broken when its interpreter or console script file is gone, or when a check fails the
   same way twice. A start error such as `EAGAIN`, `ENOMEM` or `EMFILE`, a timeout, or one check
   that passes on retry counts as transient: the runtime is reused. A broken generation is never
-  removed or rebuilt in place, because a running server may be using it. A new generation is
+  removed or rebuilt in place, because a running server may be using it. An older published
+  generation that still works is reused before anything is built; otherwise a new generation is
   built beside it, and `cached_prefixes()` lists the newest first. A `ready.json` this version
   cannot use (unreadable, another schema, a console script that resolves outside its generation)
-  makes the generation unusable but keeps it. At most five generations are built per base: past
-  that, setup fails with `GENERATIONS_EXHAUSTED` instead of reinstalling on every start.
+  makes the generation unusable but keeps it. While five generation directories of a base exist,
+  no sixth is built: setup fails with `GENERATIONS_EXHAUSTED`, whose hint says to remove the
+  superseded ones, instead of reinstalling on every start.
 - **Recovery never takes what it does not own.** A generation holding any `ready.json` is never
-  removed. Under the lock, a generation without one is cleared only when its marker names this
+  removed, not even by the clean-up after an interrupted build: an interrupt that lands just after
+  `ready.json` is renamed into place leaves the runtime published. Under the lock, a generation without one is cleared only when its marker names this
   base and key, or when it holds nothing but `.owner` or `.owner.tmp`, which is what a setup killed before its marker was complete leaves behind. Such a
   generation is first renamed to `runtimes/.trash-<base>-<nonce>`, then removed with `.owner`
   last. If the rename fails (on Windows, a file in use), setup stops with `CLEANUP_FAILED` and
@@ -227,7 +234,8 @@ macOS behaviour is covered by fakes, not by a run on either system.
   cache, `PIP_USE_FEATURE` and config file. Every other `PIP_*` variable is dropped, including `PIP_REQUIREMENT`,
   `PIP_CONSTRAINT`, `PIP_TARGET` and `PIP_PREFIX`. Before installing, `pip config list` is read,
   with each value decoded from pip's quoting. If it fails, times out or prints a line that cannot
-  be decoded, setup fails closed with `BAD_PIP_CONFIG`. In the `global`, `install` and `:env:`
+  be decoded, setup fails closed with `BAD_PIP_CONFIG`, as it does when pip reports that it
+  cannot load its configuration file. In the `global`, `install` and `:env:`
   sections, a configured `target`, `prefix`, `root`, `requirement`, `editable`, `src` or
   `python`, or a true `user` or `dry-run`, also fails with `BAD_PIP_CONFIG`. Other sections, such
   as `freeze`, are ignored. Other settings in `pip.conf`, and netrc, are
@@ -249,7 +257,8 @@ macOS behaviour is covered by fakes, not by a run on either system.
   created. Progress goes to stderr, and a progress sink that fails (a closed stderr) does not fail
   setup. Child output is captured, and stdout is never written.
 
-Deviations from the plan reviewed for this slice. There is no `VISIONSET_PLUGIN_FIND_LINKS`,
+Deviations from the plan reviewed for this slice. This section was written by the same change
+that implements it, and was amended during review to match what the tests enforce. There is no `VISIONSET_PLUGIN_FIND_LINKS`,
 because pip's own `PIP_FIND_LINKS` already covers it. A runtime directory without the marker is
 recovered when it holds only the marker files. A group-writable data directory is accepted when
 the group is the user's primary group, as it is with the per-user groups of a `002` umask.
@@ -262,7 +271,8 @@ dependencies repacked from the synced environment and installed with `--no-index
 
 Known limits.
 
-- On Windows the lock descriptor is not passed to pip, so an orphaned pip does not hold the lock.
+- On Windows the lock descriptor is not passed to pip, so an orphaned pip does not hold the lock,
+  and a moved generation is not detected by its launcher before the probes run.
 - A pip that is still writing output when its bootstrap dies is ended by `SIGPIPE`. Its own
   subprocesses do not inherit the lock.
 - pip's output reaches the log when each step ends, not while it runs.

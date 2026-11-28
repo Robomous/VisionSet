@@ -53,7 +53,7 @@ Never edit a generated file by hand; change `metadata.json` or the generator and
 
 | Path under the data root | What it is |
 | --- | --- |
-| `runtimes/<base>-r<n>/venv/` | One generation's virtual environment, where `<base>` is `<version>-py<MAJOR><MINOR>-<tag>`. Created in place and never moved. A broken generation is superseded by `-r<n+1>`, never rebuilt in place, and a generation holding any `ready.json` is never removed. At most five per base |
+| `runtimes/<base>-r<n>/venv/` | One generation's virtual environment, where `<base>` is `<version>-py<MAJOR><MINOR>-<tag>`. Created in place and never moved. A broken generation is superseded by `-r<n+1>`, never rebuilt in place, and a generation holding any `ready.json` is never removed. One whose data root moved is superseded too. At most five directories per base |
 | `runtimes/<base>-r<n>/.owner`, `runtimes/<base>-r<n>/ready.json` | The ownership marker, written first, and the readiness sentinel, written last |
 | `runtimes/.trash-<base>-*` | An unpublished generation moved aside before removal |
 | `locks/<base>.lock` | The cross-process lock, inherited by every process that writes into a generation |

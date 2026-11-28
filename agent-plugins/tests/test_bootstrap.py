@@ -66,6 +66,12 @@ SECRETS = (SECRET, PATH_TOKEN, QUERY_TOKEN, "alice")
 GENERATION = r"^0\.0\.1b4-py312-[0-9a-f]{8}-r{n}$"
 
 
+def sh_launcher(python: str) -> str:
+    """pip's console-script header for an interpreter path with spaces."""
+    quotes = "'" * 3
+    return f'#!/bin/sh\n{quotes}exec\' "{python}" "$0" "$@"\n\' {quotes}\n'
+
+
 class FakeDisk:
     def __init__(self, windows: bool = False) -> None:
         self.pm: Any = ntpath if windows else posixpath
@@ -81,6 +87,7 @@ class FakeDisk:
         self.refuse_makedirs = False
         self.corrupt: set[str] = set()
         self.links: dict[str, str] = {}
+        self.interrupt_after_publish = False
 
     def k(self, path: str) -> str:
         return str(self.pm.normcase(self.pm.normpath(path)))
@@ -161,6 +168,8 @@ class FakeDisk:
             keep = {key for key in current if not self._under(key, src)}
             keep |= {dst + key[len(src) :] for key in current if self._under(key, src)}
             setattr(self, store, keep)
+        if self.interrupt_after_publish and dst.endswith("ready.json"):
+            raise KeyboardInterrupt
 
     def remove_tree(self, path: str) -> None:
         if self.refuse_remove:
@@ -315,7 +324,8 @@ class FakeRunner:
             if result.returncode == 0 and not result.overflow:
                 scripts = self.disk.pm.dirname(argv[0])
                 name = "visionset.exe" if self.windows else "visionset"
-                self.disk.put(self.disk.pm.join(scripts, name), executable=True)
+                header = f"#!{argv[0]}\nimport sys\n"
+                self.disk.put(self.disk.pm.join(scripts, name), header, executable=True)
             return result
         if argv[1:] == ["--version"]:
             if self.disk.k(argv[0]) in self.bad:
@@ -736,10 +746,12 @@ class BuildTest(unittest.TestCase):
             with self.subTest(text=text):
                 self.m.disk.files[self.m.disk.k(old.ready)] = text
                 before = self.m.disk.tree(old.runtime)
+                self.m.progress.clear()
                 result = self.m.bootstrap()
                 self.assertFalse(result.reused)
                 self.assertNotEqual(result.prefix, old.venv)
                 self.assertEqual(self.m.disk.tree(old.runtime), before)
+                self.assertFalse(any("incomplete" in line for line in self.m.progress))
                 for name in self.m.runtimes():
                     if name != old.key:
                         self.m.disk.remove_tree(self.m.generation(name).runtime)
@@ -752,6 +764,61 @@ class BuildTest(unittest.TestCase):
         result = self.m.bootstrap()
         self.assertTrue(result.prefix.endswith("-r2/venv"))
         self.assertEqual(self.m.disk.tree(old.runtime), before)
+
+    def test_an_interrupt_right_after_publishing_keeps_the_runtime(self) -> None:
+        self.m.disk.interrupt_after_publish = True
+        with self.assertRaises(KeyboardInterrupt):
+            self.m.bootstrap()
+        lay = self.built()
+        self.assertIn(self.m.disk.k(lay.ready), self.m.disk.files)
+        self.m.disk.interrupt_after_publish = False
+        installs = len(self.m.run.install_calls())
+        self.assertTrue(self.m.bootstrap().reused)
+        self.assertEqual(len(self.m.run.install_calls()), installs)
+
+    def test_a_generation_that_was_moved_cannot_start_and_is_superseded(self) -> None:
+        self.m.bootstrap()
+        old = self.built()
+        script = self.m.disk.k(old.console_script)
+        outside = "/usr/bin/python3.12"
+        headers = [
+            "#!/old/root/runtimes/x-r1/venv/bin/python\n",
+            f"#!{old.venv}/bin/python-missing\n",
+            f"#!{outside}\n",
+            sh_launcher("/gone/plugin data/venv/bin/python"),
+            "#!/bin/sh\necho no launcher\n",
+            "no shebang\n",
+        ]
+        for header in headers:
+            with self.subTest(header=header):
+                self.m.disk.files[script] = header
+                before = self.m.disk.tree(old.runtime)
+                result = self.m.bootstrap()
+                self.assertFalse(result.reused)
+                self.assertEqual(self.m.disk.tree(old.runtime), before)
+                for name in self.m.runtimes():
+                    if name != old.key:
+                        self.m.disk.remove_tree(self.m.generation(name).runtime)
+
+    def test_the_space_safe_launcher_naming_this_generation_is_reused(self) -> None:
+        self.m.bootstrap()
+        old = self.built()
+        header = sh_launcher(old.python)
+        self.m.disk.files[self.m.disk.k(old.console_script)] = header
+        self.assertTrue(self.m.bootstrap().reused)
+
+    def test_an_older_generation_that_still_works_is_reused_before_building(self) -> None:
+        first = self.m.bootstrap()
+        self.m.run.bad[self.m.disk.k(first.console_script)] = ProbeResult(1)
+        second = self.m.bootstrap()
+        self.assertNotEqual(second.prefix, first.prefix)
+        del self.m.run.bad[self.m.disk.k(first.console_script)]
+        self.m.run.bad[self.m.disk.k(second.console_script)] = ProbeResult(1)
+        installs = len(self.m.run.install_calls())
+        third = self.m.bootstrap()
+        self.assertTrue(third.reused)
+        self.assertEqual(third.prefix, first.prefix)
+        self.assertEqual(len(self.m.run.install_calls()), installs)
 
     def test_a_marker_for_another_generation_of_the_same_base_is_not_ownership(self) -> None:
         self.m.bootstrap()
@@ -803,8 +870,13 @@ class BuildTest(unittest.TestCase):
         installs = len(self.m.run.install_calls())
         error = self.m.failure()
         self.assertIs(error.code, Code.GENERATIONS_EXHAUSTED)
+        self.assertIn("remove every superseded runtime", error.hint)
         self.assertEqual(len(self.m.run.install_calls()), installs)
         self.assertEqual(len(self.m.runtimes()), MAX_GENERATIONS)
+        for name in self.m.runtimes()[:-1]:
+            self.m.disk.remove_tree(self.m.generation(name).runtime)
+        result = self.m.bootstrap()
+        self.assertTrue(result.prefix.endswith(f"-r{MAX_GENERATIONS + 1}/venv"))
 
     def test_a_progress_sink_that_breaks_does_not_fail_setup(self) -> None:
         def broken(_: str) -> None:
@@ -966,16 +1038,26 @@ class FailureTest(unittest.TestCase):
 
     def test_every_mirror_of_a_multi_line_extra_index_is_redacted(self) -> None:
         self.m.run.python(PYTHON, probe_output((3, 12, 1)))
-        first, second = "TOKENAAAA11", "TOKENBBBB22"
-        value = f"\\nhttp://m1.example/{first}/simple\\nhttp://m2.example/{second}/simple"
+        first, second = "TOKENAAAA11", "Qx7z"
+        # The short query secret comes first: only splitting the value learns it on its own.
+        value = f"\\nhttp://m1.example/simple?sig={second}\\nhttp://m2.example/{first}/simple"
         self.m.run.pip_config = ProbeResult(0, f"global.extra-index-url='{value}'\n".encode())
-        output = f"ERROR: 403 /{first}/simple and /{second}/simple/visionset/"
+        output = f"ERROR: 403 /{first}/simple and http://m2.example/simple?sig={second}"
         self.m.run.installs = [ProbeResult(1, stderr=output.encode())]
         error = self.m.failure()
         for text in (str(error), self.log()):
             self.assertNotIn(first, text)
             self.assertNotIn(second, text)
         self.assertIn("<redacted>", self.log())
+
+    def test_a_pip_configuration_pip_cannot_load_is_a_configuration_error(self) -> None:
+        self.m.run.python(PYTHON, probe_output((3, 12, 1)))
+        self.m.run.pip_version = ProbeResult(
+            2, b"Configuration file could not be loaded.\nFile contains no section headers."
+        )
+        self.assertIs(self.m.failure().code, Code.BAD_PIP_CONFIG)
+        self.m.run.pip_version = ProbeResult(1, stderr=b"No module named pip")
+        self.assertIs(self.m.failure().code, Code.NO_PIP)
 
     def test_lock_timeout(self) -> None:
         self.m.run.python(PYTHON, probe_output((3, 12, 1)))
@@ -1194,6 +1276,23 @@ class DataRootTest(unittest.TestCase):
         for project in (HOME, HOME + "/work/repo"):
             with self.subTest(project=project):
                 self.assertTrue(m.bootstrap(project=project).prefix.startswith(HOME + "/.local"))
+
+    def test_the_client_data_directory_is_allowed_when_the_project_is_home(self) -> None:
+        m = self.machine()
+        del m.env[DATA_ENV]
+        m.env["CLAUDE_PLUGIN_DATA"] = HOME + "/.claude/plugins/data/visionset"
+        for project in (HOME, HOME + "/notes"):
+            with self.subTest(project=project):
+                m.bootstrap(project=project)
+        m.env[DATA_ENV] = HOME + "/.vs-data"
+        self.assertIs(m.failure(project=HOME).code, Code.BAD_DATA_DIR)
+
+    def test_a_client_data_directory_inside_a_checkout_under_home_is_refused(self) -> None:
+        m = self.machine()
+        del m.env[DATA_ENV]
+        m.disk.makedirs(HOME + "/work/repo/.git")
+        m.env["CLAUDE_PLUGIN_DATA"] = HOME + "/work/repo/.data"
+        self.assertIs(m.failure(project=HOME + "/work/repo/src").code, Code.BAD_DATA_DIR)
 
     def test_a_client_data_directory_inside_the_project_is_refused(self) -> None:
         m = self.machine()

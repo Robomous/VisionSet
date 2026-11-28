@@ -220,6 +220,8 @@ class RealBootstrapTest(unittest.TestCase):
         log = self.ws.data / "logs" / f"{runtime.name.removesuffix('-r1')}.log"
         self.assertEqual(log.stat().st_mode & 0o777, 0o600)
         self.assertIn("pip install --no-input", log.read_text(encoding="utf-8"))
+        header = Path(self.first.console_script).read_text(encoding="utf-8")
+        self.assertTrue(header.startswith("#!/bin/sh\n"), "the data path has a space")
         printed = subprocess.run(
             [self.first.console_script, "--version"], capture_output=True, check=True
         )
@@ -471,12 +473,12 @@ class RealSafetyTest(unittest.TestCase):
         self.assertEqual(list((self.ws.data / "runtimes").iterdir()), [])
 
     def test_tokens_of_every_configured_mirror_are_redacted(self) -> None:
-        tokens = ("TOPSECRETPATH1", "SECRETTOKEN123", "OTHERSECRET99")
+        tokens = ("TOPSECRETPATH1", "SECRETTOKEN123", "Qx7z")
         conf = self.ws.root / "pip.conf"
         conf.write_text(
             f"[global]\nindex-url = http://127.0.0.1:9/{tokens[0]}/simple\n"
-            f"extra-index-url =\n    http://127.0.0.1:9/{tokens[1]}/simple\n"
-            f"    http://127.0.0.1:9/{tokens[2]}/simple\nretries = 1\ntimeout = 1\n",
+            f"extra-index-url =\n    http://127.0.0.1:9/simple?sig={tokens[2]}\n"
+            f"    http://127.0.0.1:9/{tokens[1]}/simple\nretries = 1\ntimeout = 1\n",
             encoding="utf-8",
         )
         for name in ("PIP_NO_INDEX", "PIP_FIND_LINKS"):
@@ -485,10 +487,40 @@ class RealSafetyTest(unittest.TestCase):
         with self.assertRaises(BootstrapError) as raised:
             self.ws.bootstrap(clock=NoWaitClock())
         log = "".join(p.read_text(encoding="utf-8") for p in (self.ws.data / "logs").iterdir())
-        self.assertIn("<redacted>", log)
+        self.assertIn("simple?<redacted>", log)
         for token in tokens:
             self.assertNotIn(token, str(raised.exception))
             self.assertNotIn(token, log)
+
+    def test_a_moved_data_directory_gets_a_new_working_generation(self) -> None:
+        first, _ = self.ws.bootstrap()
+        moved = self.ws.root / "moved data"
+        self.ws.data.rename(moved)
+        self.ws.env[DATA_ENV] = str(moved)
+        second, runner = self.ws.bootstrap()
+        self.assertFalse(second.reused)
+        self.assertEqual(runner.installs(), 1)
+        self.assertTrue(second.prefix.endswith("-r2/venv"))
+        self.assertTrue((moved / "runtimes" / Path(first.prefix).parent.name).is_dir())
+        printed = subprocess.run([second.console_script, "--version"], capture_output=True)
+        self.assertEqual(printed.stdout, b"0.0.1b4\n")
+
+    def test_a_generation_built_through_a_vanished_symlink_is_superseded(self) -> None:
+        real = self.ws.root / "real"
+        real.mkdir()
+        link = self.ws.root / "link"
+        link.symlink_to(real)
+        self.ws.env[DATA_ENV] = str(link / "vs")
+        first, _ = self.ws.bootstrap()
+        link.unlink()
+        self.ws.env[DATA_ENV] = str(real / "vs")
+        second, runner = self.ws.bootstrap()
+        self.assertFalse(second.reused)
+        self.assertEqual(runner.installs(), 1)
+        self.assertTrue(second.prefix.endswith("-r2/venv"))
+        self.assertTrue((real / "vs" / "runtimes" / Path(first.prefix).parent.name).is_dir())
+        printed = subprocess.run([second.console_script, "--version"], capture_output=True)
+        self.assertEqual(printed.stdout, b"0.0.1b4\n")
 
     def test_a_requirements_file_in_the_environment_adds_nothing(self) -> None:
         extra = self.ws.wheels / "extrapkg-1.0-py3-none-any.whl"
