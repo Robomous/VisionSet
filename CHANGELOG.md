@@ -73,8 +73,9 @@ nothing was being distributed. This is the first version that is.
 - **Tracks on a scan in the annotation workspace.** A scan of a point-cloud sequence shows its sequence's tracks in the
   Tracks region, named by source when it sits in more than one, and a selected cuboid can be added to a track, start
   one, or be removed from one, with the same refusals and reasons as an image's shape. A cuboid row carries the track
-  badge, a step along a track selects the cuboid it follows on the scan it lands on, and a selected polyline is
-  withheld from both writes with the reason. `INVALID_ANNOTATION` now reads as prose (#1233).
+  badge, a step along a track or a press of that badge selects the cuboid it follows once, keeping a selection made
+  first, and a selected polyline is withheld from both writes with the reason. A track write refused
+  `INVALID_ANNOTATION` is said as the track's rule (#1233).
 
 - **Apple Create ML object-detection JSON import and export as `createml`.** Only the object-detection annotation
   schema: an array of `{"image", "annotations": [{"label", "coordinates": {"x", "y", "width", "height"}}]}` with

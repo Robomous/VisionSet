@@ -364,9 +364,10 @@ rest of a sequence a correction batch did not take — are passed over, and the 
 disabled with its reason (`No later frame on this track`, or `Every later frame of this track is
 outside this job (3)`). Gaps need nothing: a track ends where its observations end and reappears at
 the next one. A frame whose bytes repeat at two positions is one asset at two occurrences, so the
-position last stepped to is what tells the two apart. On a scan the step also selects the cuboid
-the track follows there, in the stage's own selected highlight, so stepping keeps you on the same
-object; on an image the selection is left alone.
+position last stepped to is what tells the two apart. On a scan a step, or a press of a cuboid's
+track badge, also selects the cuboid the track follows there, once, in the stage's own selected
+highlight, so stepping keeps you on the same object. A selection made on that scan first is kept,
+and reaching a scan by plain navigation selects nothing; on an image the selection is left alone.
 
 **Two writes, both a job's, both the kernel's to judge.** *Add selected object* observes the one
 selected drawn object at this frame, and *Remove from track* takes the track's observation here away
@@ -387,8 +388,8 @@ menu refuses a geometry: `This track follows “car”`. A shape of another kind
 track reads as `geometry_kind` (a rotated box counting as a box) is refused the same way, with the
 kernel's own `TRACK_GEOMETRY_MISMATCH` wording. On a scan a track follows cuboids only, so a
 selected polyline is withheld from both writes with `A track follows a scan's cuboids only — a
-polyline cannot be on one.`, and the kernel's `INVALID_ANNOTATION` refusal, should one arrive, is
-said as prose. What only the kernel can know — an asset
+polyline cannot be on one.`, and a track write the kernel refuses `INVALID_ANNOTATION` is said as
+that rule, for an image or a scan. What only the kernel can know — an asset
 another job carries, a declaration gone stale — is its refusal, rendered under the region as prose;
 what landed is said there too (`Added at frame 4`). Merging, splitting, changing a
 track's class and deleting a track are not offered in the editor.
