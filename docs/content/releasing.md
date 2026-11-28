@@ -98,12 +98,14 @@ trusted publishing, so no step below asks anybody for a credential.
 ### 1. Bump the version
 
 `VERSION` at the repository root is the single source of truth - hatchling reads it for the
-Python distribution and `pnpm version:sync` propagates it to every `frontend/*` package.
+Python distribution, `pnpm version:sync` propagates it to every `frontend/*` package, and
+`agent-plugins/tools/render_manifests.py` writes it into the agent-plugin manifests.
 
 ```bash
 echo "0.0.1b3" > VERSION
 pnpm version:sync
 pnpm version:check                                  # must be clean
+python3 agent-plugins/tools/render_manifests.py     # the plugin manifests carry the version
 uv sync --reinstall-package visionset               # refresh the installed dist metadata
 uv run python scripts/export_openapi.py             # the spec embeds the version
 ```

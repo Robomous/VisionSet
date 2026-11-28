@@ -361,8 +361,8 @@ fi
 # Verified here rather than inside the groups that need it, and that placement is
 # the point: `python` runs first and takes minutes, so a check living beside
 # `require_node_modules` would let a wrong-version run reach the frontend suites
-# several minutes in and fail there, looking like a code defect. `python` is the
-# one group that needs no Node, so a run asking only for it is left alone.
+# several minutes in and fail there, looking like a code defect. `python` and
+# `agent-plugins` need no Node, so a run asking only for them is left alone.
 for group in "${groups[@]}"; do
   case "$group" in
     frontend | generated | browser | docs)

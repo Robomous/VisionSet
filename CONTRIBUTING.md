@@ -247,7 +247,7 @@ a deliberate manual run, because each costs minutes or needs its own install.
 | Import contracts | `uv run lint-imports` | `python` |
 | Kernel type-safety (strict) | `uv run mypy src/visionset/kernel` — the kernel and nothing else; the script runs `uv run mypy src/visionset`, well over twice as many files | `python` |
 | Lint/format | `uv run ruff check .` / `uv run ruff format .` | `python` |
-| Agent-plugin bundle | `bash scripts/check.sh agent-plugins` — the contract tests under `agent-plugins/tests/` on a bare Python 3.11 (`-I -S`, so a non-stdlib import in the runtime fails), the manifest drift and schema checks, and ruff and strict mypy over the tree. The rules they hold are in [An agent plugin only launches the MCP server](docs/content/architecture/decisions/an-agent-plugin-only-launches-the-mcp-server.md); CI runs it as `agent plugins` | `agent-plugins` |
+| Agent-plugin bundle | `bash scripts/check.sh agent-plugins` — the contract tests under `agent-plugins/tests/` on a bare Python 3.11 (`-I -S`, so a non-stdlib import in the runtime fails), the manifest drift and schema checks, and ruff and strict mypy over the tree. The rules they hold are in [An agent plugin wraps the installed CLI](docs/content/architecture/decisions/an-agent-plugin-wraps-the-installed-cli.md); CI runs it as `agent plugins` | `agent-plugins` |
 | Frontend build + tests | `pnpm -r build && pnpm test` — **no browser at all**; anything only chromium can see passes here | `frontend` |
 | Frontend lint | `pnpm -r lint` — **after** a build: `frontend/app` resolves the four libraries through their `dist/`, so its typecheck has no declarations until they are built | `frontend` |
 | Annotator headless boundary | `pnpm --filter @visionset/annotator lint` | part of `frontend` (`pnpm -r lint`) |
@@ -376,6 +376,9 @@ else derives from it, in lockstep across the monorepo — the Python distributio
 - **npm**: `pnpm version:sync` rewrites the `version` field of every `frontend/*`
   package.json, translating PEP 440 to npm semver. `pnpm version:check` is the CI drift
   gate — it fails if a package.json has fallen out of step with `VERSION`.
+- **Agent plugin**: `python3 agent-plugins/tools/render_manifests.py` writes the same semver
+  spelling into the generated plugin manifests, and the exact version into the plugin's
+  compatibility range. `bash scripts/check.sh agent-plugins` is its drift gate.
 
 | PEP 440 (`VERSION`, PyPI) | npm semver | Used for |
 | --- | --- | --- |
@@ -385,7 +388,8 @@ else derives from it, in lockstep across the monorepo — the Python distributio
 | `0.0.1b2` | `0.0.1-beta.2` | The beta corrected — defects found by testing the wheel |
 | `0.0.1` | `0.0.1` | First stable release |
 
-Never hand-edit a version anywhere else — change `VERSION`, then run `pnpm version:sync`.
+Never hand-edit a version anywhere else — change `VERSION`, then run `pnpm version:sync` and
+`python3 agent-plugins/tools/render_manifests.py`.
 
 ### Building the distribution
 
@@ -458,7 +462,7 @@ stays at `0.0.1.dev0` throughout — the alpha tags do not bump it, because noth
 being distributed.
 
 The first artifact anyone installs is the beta: bump `VERSION` to `0.0.1b1`, run
-`pnpm version:sync`, tag `v0.0.1-beta.1`, and publish the wheel to PyPI as `0.0.1b1`.
+`pnpm version:sync` and `python3 agent-plugins/tools/render_manifests.py`, tag `v0.0.1-beta.1`, and publish the wheel to PyPI as `0.0.1b1`.
 `0.0.1-beta` is *lower* than `0.1.0` in both version orderings, which is why `VERSION`
 sits at `0.0.1.dev0` rather than the `0.1.0.dev0` the repo was bootstrapped with.
 

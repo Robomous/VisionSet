@@ -66,3 +66,53 @@ and the minimum client versions are recorded when the provider packages observe 
 and are not guessed here. The legal publisher string is taken from package metadata
 (`Robomous Inc.`) and confirmed before it reaches a manifest. The launcher shape is decided by
 its own work package, and external directory submissions are a later, non-blocking step.
+
+## Settled by the spike
+
+Checked on 2026-11-27 with Claude Code 2.1.332 and Codex CLI 0.155.1 on Linux x86_64. A stub
+plugin with this layout was installed through each client's own marketplace commands and
+answered a real MCP call. Where this section and the rule above differ, this section holds.
+
+- **The manifests sit in the bundle root.** Both clients copy a plugin into their own cache and
+  load only that copy. A symlink leading out of the root is dropped from the copy, and
+  `claude plugin validate` refuses a `..` path. A provider directory therefore cannot depend on
+  a sibling package. `.claude-plugin/plugin.json` and `.codex-plugin/plugin.json` are generated
+  into `agent-plugins/packages/visionset/`, which is the one plugin root.
+  `agent-plugins/tools/validate_manifests.py` refuses a symlink in the root, and refuses any path
+  a generated file names that does not exist inside the root.
+- **One server declaration per client.** Claude Code substitutes `${CLAUDE_PLUGIN_ROOT}` in a
+  server's arguments and starts the server in the project directory. Codex substitutes no
+  variable and resolves `cwd` against its cached copy of the root. The generator writes
+  `.mcp.json` for Claude Code and `codex.mcp.json` (with `cwd: "."`) for Codex. No generated
+  declaration contains `--allow-destructive`.
+- **Codex starts the server in the plugin root, not the project.** The launcher cannot take
+  the workspace from its working directory there.
+- **Version spelling.** Both clients accepted any version string, including `0.0.1b4`.
+  Manifests carry `VERSION` in the frontend packages' semver spelling (`0.0.1-beta.4`). The
+  compatibility range in `metadata.json` is written `=={VERSION}`, so for now it is exactly the
+  current version. The generator renders it into `runtime/bundle.json`, because the clients do
+  not copy `metadata.json`, which sits outside the root.
+- **Schemas.** Neither client publishes a schema for the files this bundle emits. The published
+  Agent Plugins schema describes a root `plugin.json` that this bundle does not write. The
+  pinned schemas are therefore hand-written under `agent-plugins/schemas/`, and each one names
+  its source.
+- **Plugin data and startup.** Claude Code gives the server `${CLAUDE_PLUGIN_DATA}`, while Codex
+  0.155.1 gives it no data directory. Codex waits 30 seconds for a server by default and honours
+  `startup_timeout_sec` in the plugin's declaration. Claude Code reads `MCP_TIMEOUT`, which the
+  user sets.
+
+`layout` means only the stub check above passed. VisionSet itself has not been launched
+through any client.
+
+| Client | Linux x86_64 | Linux arm64 | macOS arm64 | macOS x86_64 | Windows x86_64 |
+| --- | --- | --- | --- | --- | --- |
+| Claude Code | layout | untested | untested | untested | untested |
+| Codex CLI | layout | untested | untested | untested | untested |
+| Codex desktop | untested | untested | untested | untested | untested |
+| Copilot CLI and VS Code | untested | untested | untested | untested | untested |
+| Gemini CLI | untested | untested | untested | untested | untested |
+| Cursor, OpenCode (MCP-only) | untested | untested | untested | untested | untested |
+
+Several things are left to later work: the data directory used when a client gives none, the
+version a plugin-created runtime installs, how the launcher finds the project under Codex, and
+the interpreter command on macOS and Windows.

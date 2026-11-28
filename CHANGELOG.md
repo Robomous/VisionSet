@@ -13,15 +13,16 @@ nothing was being distributed. This is the first version that is.
 
 ### Added
 
-- **The agent-plugin tree.** `agent-plugins/packages/visionset/` is one plugin root for Claude Code and Codex:
-  `bundle.toml` is its only hand-edited source, and the client manifests and server declarations are generated from it
-  and `VERSION` (in the frontend packages' semver spelling, `0.0.1-beta.4`) by
-  `agent-plugins/tools/render_manifests.py`, committed, and drift-checked. Hand-written schemas under
-  `agent-plugins/schemas/` validate the generated files. The launcher is a standard-library stub that exits without
-  starting a server, and no marketplace lists the plugin yet. `bash scripts/check.sh agent-plugins` and the `agent
-  plugins` CI job run the contract tests on a bare Python 3.11. The sdist now leaves `agent-plugins/` out, and the
-  wheel never carried it. The rules are in [An agent plugin only launches the MCP
-  server](docs/content/architecture/decisions/an-agent-plugin-only-launches-the-mcp-server.md).
+- **The agent-plugin tree.** `agent-plugins/packages/visionset/` is one plugin root for Claude Code and Codex. The
+  client manifests, the per-client server declarations and `runtime/bundle.json` are generated from
+  `agent-plugins/metadata.json` and `VERSION` by `agent-plugins/tools/render_manifests.py`, committed, and
+  drift-checked. Manifests carry the frontend packages' semver spelling (`0.0.1-beta.4`), and the compatibility range
+  is exactly the current version. Hand-written schemas under `agent-plugins/schemas/` validate the generated files.
+  The launcher is a standard-library stub that exits without starting a server, and no marketplace lists the plugin
+  yet. `bash scripts/check.sh agent-plugins` and the `agent plugins` CI job run the contract tests on a bare Python
+  3.11. The sdist now leaves `agent-plugins/` out, and the wheel never carried it. [An agent plugin wraps the
+  installed CLI](docs/content/architecture/decisions/an-agent-plugin-wraps-the-installed-cli.md) records what an
+  install check of both clients settled.
 - **2D keypoints: the `keypoints` geometry and the class keypoint spec.** A class may declare `keypoints`, an ordered
   list of at least one finite `[x, y]` point in asset pixels, with the polyline's optional per-point `visibility`
   (`0` unlabeled, `1` occluded, `2` visible, strict integers, absent when unknown). Position is the keypoint's
