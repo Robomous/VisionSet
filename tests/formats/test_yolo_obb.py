@@ -19,7 +19,7 @@ from tests.fixtures.media import write_image
 from tests.formats.test_report_agreement import _yolo_counts
 from tests.formats.test_ultralytics import CLASSES, IMAGE_SIZE, Fixture, _box
 
-from visionset.formats._obb import FITTED
+from visionset.formats._obb import FITTED, NOT_A_RECTANGLE
 from visionset.formats.registry import exporters, importers
 from visionset.formats.ultralytics import UltralyticsImporter
 from visionset.formats.yolo_obb import YoloObbExporter, YoloObbImporter
@@ -320,6 +320,24 @@ def test_a_quadrilateral_that_is_not_a_rectangle_is_a_label_loss(
     assert (kind, subject, count) == (ImportLossKind.LABEL, "ship", 1)
     assert reason in why
     assert [label.class_name for label in dataset.images[0].labels] == ["plane"]
+
+
+@pytest.mark.parametrize(
+    "points",
+    [
+        ((0, 0), (60, 0), (44, 45), (16, 45)),
+        ((0, 0), (40, 0), (63, 40), (23, 40)),
+        ((41, 18), (62, 25), (59, 32), (34, 25)),
+    ],
+    ids=["trapezoid-45-pixels", "parallelogram-30-degrees", "small-box-corner-4-pixels-off"],
+)
+def test_a_quadrilateral_spelled_to_whole_pixels_is_still_a_label_loss(
+    tmp_path: Path, points: Any
+) -> None:
+    row = " ".join(f"{x / SIZE[0]:.2f} {y / SIZE[1]:.2f}" for x, y in points)
+    dataset = _read(_source(tmp_path, f"0 {row}\n"))
+
+    assert _losses(dataset) == [(ImportLossKind.LABEL, "ship", NOT_A_RECTANGLE, 1)]
 
 
 @pytest.mark.parametrize("decimals", [6, 3])

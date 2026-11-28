@@ -610,6 +610,12 @@ nothing was being distributed. This is the first version that is.
 
 ### Fixed
 
+- **`dota` keeps small hand-drawn boxes on whole pixels.** A row spelling `76.0` was read as precise to a tenth, so a
+  box too small to judge by shape could stray 0.1 pixels from its nearest rectangle, and 5.90% of DOTA v1.5's train
+  and val rows were refused, most of them vehicles under 8 pixels. `dota` now reads the precision from significant
+  digits, and both `dota` and `yolo-obb` keep a small box whose corners lie within two units of that precision per
+  axis, up from one; on DOTA v1.5 that refuses 0.44%. Every kept fit is still a `geometry` loss, and the sixth-of-the-
+  shorter-side test is unchanged (#1208).
 - **A mask is decoded once per write and not again on read.** Writing a `mask` annotation decoded its counts about
   six times, plus once more for every mask already on the asset; reading one back decoded it twice. A write now
   decodes the new mask once, and a mask read back from the workspace store is trusted as the canonical form the

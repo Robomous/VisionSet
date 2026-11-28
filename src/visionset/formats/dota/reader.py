@@ -181,7 +181,7 @@ def _label(
         return None
     coordinates = [float(value) for value in values if value is not None]
     points = tuple(zip(coordinates[::2], coordinates[1::2], strict=True))
-    unit = half_unit(tokens[:8])
+    unit = half_unit(tokens[:8], significant=True)
     geometry, reason = read_corners(points, (unit, unit))
     if geometry is None:
         losses[(ImportLossKind.LABEL, name, reason)] += 1
