@@ -333,6 +333,7 @@ export async function serveVisualApi(page: Page, options: VisualOptions = {}): P
 
     if (path === "/session") return route.fulfill({ json: { issued: false } });
     if (path === "/geometries") return route.fulfill({ json: geometryPage() });
+    if (path === "/health") return route.fulfill({ json: { status: "ok", version: "0.0.0-visual" } });
 
     if (path === "/home") {
       return route.fulfill({

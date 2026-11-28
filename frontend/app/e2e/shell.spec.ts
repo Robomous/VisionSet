@@ -41,6 +41,10 @@ async function serveApi(page: Page, { session = false } = {}): Promise<void> {
   // rail and the router: what the screen does with rows is `ui-core`'s
   // `models.test.tsx`, and an unrouted request here would leave the page
   // waiting on a network that is not there.
+  // The Settings page's About group reads the version from here.
+  await page.route("**/api/health", (route) =>
+    route.fulfill({ status: 200, json: { status: "ok", version: "0.0.0-e2e" } }),
+  );
   await page.route("**/api/inference/**", (route) =>
     route.fulfill({ status: 200, json: { items: [], total: 0 } satisfies Wire["ConnectionPage"] }),
   );
@@ -161,17 +165,19 @@ test("the token survives a reload, because losing it mid-job is the worst moment
   await expect(page.getByTestId("app-rail")).toBeVisible();
 });
 
-/** The rail: the mark (the collapse toggle's row), Projects, Models, the theme and account controls. No more. */
+/** The rail: the mark (the collapse toggle's row), Projects, Models, the theme, Settings and account controls. No more. */
 test("the rail carries exactly what the design gives it", async ({ page }) => {
   await signIn(page);
 
   const rail = page.getByTestId("app-rail");
-  // Two: Projects and Models. `Models` is a top-level destination, because
-  // model connections are workspace infrastructure; Home was removed. The count
-  // is the assertion — a destination arriving without that decision fails here.
-  await expect(rail.getByRole("link")).toHaveCount(2);
+  // Three: Projects, Models and Settings. `Models` is a top-level destination,
+  // because model connections are workspace infrastructure; Settings holds what
+  // belongs to the workspace or this browser; Home was removed. The count is the
+  // assertion — a destination arriving without that decision fails here.
+  await expect(rail.getByRole("link")).toHaveCount(3);
   await expect(page.getByTestId("rail-projects")).toBeVisible();
   await expect(page.getByTestId("rail-models")).toBeVisible();
+  await expect(page.getByTestId("rail-settings")).toBeVisible();
   await expect(page.getByTestId("rail-mark")).toHaveAccessibleName("Robomous VisionSet");
   await expect(page.getByTestId("rail-collapse")).toBeVisible();
   await expect(page.getByTestId("rail-theme")).toBeVisible();
@@ -193,6 +199,32 @@ test("the Models entry goes to the page, and is current once you are on it", asy
   // A rail destination has no way out of its own: the rail is it, and a second
   // answer to "where am I" inside the pane would contradict it.
   await expect(page.getByTestId("back-link")).toHaveCount(0);
+});
+
+test("the Settings entry opens the page on its first section, and stays current under it", async ({
+  page,
+}) => {
+  await signIn(page);
+  const entry = page.getByTestId("rail-settings");
+  await expect(entry).toHaveAttribute("href", "/settings");
+  await expect(entry).toHaveAccessibleName("Settings");
+  // Bottom group, between the theme control and account.
+  const y = async (testId: string): Promise<number> => (await page.getByTestId(testId).boundingBox())!.y;
+  expect(await y("rail-theme")).toBeLessThan(await y("rail-settings"));
+  expect(await y("rail-settings")).toBeLessThan(await y("rail-sign-out"));
+
+  await entry.click();
+  await expect(page).toHaveURL(/\/settings\/about$/);
+  await expect(page.getByTestId("settings-screen")).toBeVisible();
+  await expect(page.getByTestId("settings-version")).toHaveText("0.0.0-e2e");
+  await expect(entry).toHaveAttribute("aria-current", "page");
+  await expect(page.getByTestId("rail-projects")).not.toHaveAttribute("aria-current", "page");
+  await expect(page.getByTestId("settings-nav-about")).toHaveAttribute("aria-current", "page");
+  await expect(page.getByTestId("back-link")).toHaveCount(0);
+
+  // The redirect replaced the bare address, so Back leaves Settings.
+  await page.goBack();
+  await expect(page).toHaveURL(/\/projects$/);
 });
 
 test("the page's old address still lands on it", async ({ page }) => {
@@ -237,6 +269,7 @@ test("collapsed by default the rail is one icon wide, and every control keeps it
   // the tooltip both say.
   await expect(page.getByTestId("rail-projects")).toHaveAccessibleName("Projects");
   await expect(page.getByTestId("rail-models")).toHaveAccessibleName("Models");
+  await expect(page.getByTestId("rail-settings")).toHaveAccessibleName("Settings");
   await expect(page.getByTestId("rail-collapse")).toHaveAccessibleName("Expand sidebar");
   await expect(page.getByTestId("rail-collapse")).toHaveAttribute("aria-expanded", "false");
 });
