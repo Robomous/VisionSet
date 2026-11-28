@@ -16,7 +16,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { TooltipProvider } from "@robomous/ui-core";
 import { AnnotationPage } from "./AnnotationPage";
 import { trackGeometryKind } from "./trackQueries";
-import { SCAN_UNTRACKABLE_REASON } from "./TrackRegion";
+import { AUTOSAVE_MS } from "./AnnotationPage";
+import { SCAN_UNTRACKABLE_REASON, TRACK_INVALID_ANNOTATION_PROSE } from "./TrackRegion";
 import { REFUSAL_PROSE } from "../data/refusals";
 import { renderWithData } from "../testing/dataHarness";
 import { stubResizeObserver } from "../testing/resizeObserver.js";
@@ -99,7 +100,8 @@ const SCAN_ANNOTATIONS: Record<string, unknown[]> = {
     cuboid("ann-3", A1, "pedestrian", 30),
     { ...box("ann-4", A1, "lane", 0), geometry: { type: "polyline_3d", points: [[0, 0, 0], [5, 0, 0]] } },
   ],
-  [A2]: [cuboid("ann-5", A2, "vehicle", 10)],
+  // The followed cuboid is not the first, so a step that selects the wrong one is seen.
+  [A2]: [cuboid("ann-6", A2, "vehicle", 30), cuboid("ann-5", A2, "vehicle", 10)],
 };
 
 function pointBuffer(count: number): ArrayBuffer {
@@ -145,6 +147,8 @@ interface World {
   refuseSave: { code: string; message: string } | null;
   /** While set, an observe waits on it. */
   observeGate: Promise<void> | null;
+  /** While set, a read of the second frame's occurrences waits on it. */
+  occurrencesGate: Promise<void> | null;
   /** How many more occurrence reads answer 500. */
   failOccurrences: number;
   /** Every read of this source's tracks answers 500. */
@@ -162,7 +166,7 @@ interface World {
 }
 
 let world: World;
-const sent: { method: string; path: string; body: unknown }[] = [];
+const sent: { method: string; path: string; query: string; body: unknown; at: number }[] = [];
 
 function freshWorld(): World {
   return {
@@ -185,6 +189,7 @@ function freshWorld(): World {
     preLabeledOnRefusal: false,
     refuseSave: null,
     observeGate: null,
+    occurrencesGate: null,
     failOccurrences: 0,
     failTracks: false,
     failSourceNames: false,
@@ -268,6 +273,7 @@ function answer(method: string, path: string, body: unknown): Response {
     return json({ items, total: items.length });
   }
   if (method !== "GET" && path.endsWith("/annotations") && world.refuseSave !== null) return json(world.refuseSave, 409);
+  if (method === "DELETE" && path === `/jobs/${JOB}/annotations`) return new Response(null, { status: 204 });
   const annotations = /^\/jobs\/[^/]+\/assets\/([^/]+)\/annotations$/.exec(path);
   if (annotations !== null) {
     const items = (world.scans ? SCAN_ANNOTATIONS : ANNOTATIONS)[annotations[1]!] ?? [];
@@ -371,8 +377,9 @@ beforeEach(() => {
     const path = new URL(request.url).pathname;
     const text = request.method === "GET" ? "" : await request.text();
     const body = text === "" ? null : (JSON.parse(text) as unknown);
-    sent.push({ method: request.method, path, body });
+    sent.push({ method: request.method, path, query: new URL(request.url).search, body, at: performance.now() });
     if (world.observeGate !== null && request.method === "POST" && path.endsWith("/observations")) await world.observeGate;
+    if (world.occurrencesGate !== null && path === `/projects/${PROJECT}/assets/${A2}/occurrences`) await world.occurrencesGate;
     return answer(request.method, path, body);
   });
 });
@@ -401,7 +408,7 @@ async function focusTrack(id: string): Promise<HTMLElement> {
 }
 
 function writes(): { method: string; path: string; body: unknown }[] {
-  return sent.filter((one) => one.method !== "GET");
+  return sent.filter((one) => one.method !== "GET").map(({ method, path, body }) => ({ method, path, body }));
 }
 
 describe("reading tracks", () => {
@@ -1005,35 +1012,103 @@ describe("tracks on a scan", () => {
     expect(writes()).toEqual([]);
   });
 
-  it("renders the kernel's refusal of an untrackable label as prose", async () => {
+  it("says a track write's INVALID_ANNOTATION as the track's rule", async () => {
     world.refuseObserve = { code: "INVALID_ANNOTATION", message: "annotation ann-2 is a polyline_3d on a scan" };
     await open();
     await userEvent.click(await screen.findByTestId("object-select-1"));
     await focusTrack("track-1");
     await userEvent.click(screen.getByTestId("track-observe"));
-    const refusal = await screen.findByTestId("track-refusal");
-    expect(refusal.textContent).toBe(REFUSAL_PROSE.INVALID_ANNOTATION);
-    expect(refusal.textContent).not.toContain("INVALID_ANNOTATION");
+    expect((await screen.findByTestId("track-refusal")).textContent).toBe(TRACK_INVALID_ANNOTATION_PROSE);
   });
 
-  it("steps to the track's next scan and selects the cuboid it follows there", async () => {
+  it("steps to the track's next scan and selects the cuboid it follows there, not another", async () => {
     await open();
     await focusTrack("track-1");
     await userEvent.click(screen.getByTestId("track-next"));
 
     await waitFor(() => expect(screen.getByTestId("asset-position").textContent).toContain("2/2"));
     expect(screen.getByTestId("track-where").textContent).toBe("On this frame at 5");
+    await waitFor(() => expect(screen.getByTestId("object-row-1").getAttribute("data-selected")).toBe("true"));
+    expect(screen.getByTestId("object-row-0").getAttribute("data-selected")).toBe("false");
+  });
+
+  it("selects nothing on a scan reached by plain navigation, though the track is still followed", async () => {
+    await open();
+    await focusTrack("track-1");
+    await userEvent.click(screen.getByTestId("track-next"));
+    await waitFor(() => expect(screen.getByTestId("object-row-1").getAttribute("data-selected")).toBe("true"));
+
+    await userEvent.click(screen.getByTestId("prev-asset"));
+    await waitFor(() => expect(screen.getByTestId("asset-position").textContent).toContain("1/2"));
+    await userEvent.click(screen.getByTestId("save-and-next"));
+    await waitFor(() => expect(screen.getByTestId("asset-position").textContent).toContain("2/2"));
+    await screen.findByTestId("track-focus");
+    await waitFor(() => expect(screen.getByTestId("track-where").textContent).toBe("On this frame at 5"));
+    expect(screen.getByTestId("object-row-0").getAttribute("data-selected")).toBe("false");
+    expect(screen.getByTestId("object-row-1").getAttribute("data-selected")).toBe("false");
+  });
+
+  it("keeps a selection made on the scan a step lands on before its tracks are read", async () => {
+    let release: () => void = () => {};
+    world.occurrencesGate = new Promise((resolve) => {
+      release = resolve;
+    });
+    await open();
+    await focusTrack("track-1");
+    await userEvent.click(screen.getByTestId("track-next"));
+    await waitFor(() => expect(screen.getByTestId("asset-position").textContent).toContain("2/2"));
+    await userEvent.click(await screen.findByTestId("object-select-0"));
+    release();
+
+    await waitFor(() => expect(screen.getByTestId("track-where").textContent).toBe("On this frame at 5"));
+    expect(screen.getByTestId("object-row-0").getAttribute("data-selected")).toBe("true");
+    expect(screen.getByTestId("object-row-1").getAttribute("data-selected")).toBe("false");
+  });
+
+  it("selects the badged cuboid on every press of its badge", async () => {
+    await open();
+    await userEvent.click(await screen.findByTestId("object-track-0"));
+    await waitFor(() => expect(screen.getByTestId("object-row-0").getAttribute("data-selected")).toBe("true"));
+    await userEvent.click(screen.getByTestId("object-select-1"));
+    expect(screen.getByTestId("object-row-0").getAttribute("data-selected")).toBe("false");
+
+    await userEvent.click(screen.getByTestId("object-track-0"));
     await waitFor(() => expect(screen.getByTestId("object-row-0").getAttribute("data-selected")).toBe("true"));
   });
 
-  it("saves an unsaved cuboid edit before stepping, and stays when the save is refused", async () => {
-    world.refuseSave = { code: "ASSET_NOT_WRITABLE", message: "kernel wording" };
+  it("saves a pending cuboid delete as the step's own save, before it moves", async () => {
+    await open();
+    await focusTrack("track-1");
+    await userEvent.click(await screen.findByTestId("object-delete-1"));
+    const pressed = performance.now();
+    await userEvent.click(screen.getByTestId("track-next"));
+
+    await waitFor(() => expect(screen.getByTestId("asset-position").textContent).toContain("2/2"));
+    const saves = sent.filter((one) => one.method !== "GET" && one.path.endsWith("/annotations"));
+    expect(saves.map((one) => [one.method, new URLSearchParams(one.query).getAll("id")])).toEqual([["DELETE", ["ann-2"]]]);
+    expect(saves[0]!.at - pressed).toBeLessThan(AUTOSAVE_MS);
+  });
+
+  it("stays on the scan when the step's save is refused, and says the save's own refusal", async () => {
+    world.refuseSave = { code: "INVALID_ANNOTATION", message: "the kernel's own account of the label" };
     await open();
     await focusTrack("track-1");
     await userEvent.click(await screen.findByTestId("object-delete-1"));
     await userEvent.click(screen.getByTestId("track-next"));
 
-    await waitFor(() => expect(writes().some((one) => one.path.endsWith("/annotations"))).toBe(true));
+    expect((await screen.findByTestId("save-refusal")).textContent).toContain("the kernel's own account of the label");
+    expect(screen.getByTestId("save-refusal").textContent).not.toContain(TRACK_INVALID_ANNOTATION_PROSE);
     expect(screen.getByTestId("asset-position").textContent).toContain("1/2");
+  });
+});
+
+describe("tracks on an image", () => {
+  it("leave the selection alone on the frame a step lands on", async () => {
+    await open();
+    await focusTrack("track-1");
+    await userEvent.click(screen.getByTestId("track-next"));
+    await waitFor(() => expect(screen.getByTestId("asset-position").textContent).toContain("2/2"));
+    await waitFor(() => expect(screen.getByTestId("track-where").textContent).toBe("On this frame at 5"));
+    expect(screen.getByTestId("object-row-0").getAttribute("data-selected")).toBe("false");
   });
 });

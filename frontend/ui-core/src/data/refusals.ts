@@ -145,8 +145,6 @@ export const REFUSAL_PROSE: Record<string, string> = {
   ASSET_NOT_FOUND: "Some of those assets are not in this project.",
   ANNOTATION_NOT_FOUND: "That annotation is no longer on record.",
   ANNOTATION_GEOMETRY_OUT_OF_BOUNDS: "That shape falls outside the asset it is drawn on.",
-  INVALID_ANNOTATION:
-    "That label cannot be taken as it is — a scan holds 3D labels and tags, and a track follows an image's 2D shapes or a scan's cuboids only.",
   JOB_NOT_FOUND: "That job is no longer on record.",
   JOB_FINISHED: "This job is finished — correct its labels in a new batch instead.",
 

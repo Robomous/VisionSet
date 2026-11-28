@@ -16,6 +16,7 @@ import { Button, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMe
 import { ChevronLeft, ChevronRight, Plus } from "lucide-react";
 import { useEffect, type JSX } from "react";
 
+import { asApiError } from "../data/errors";
 import { REFUSAL_PROSE, refusalProse } from "../data/refusals";
 import { Withheld } from "./Withheld";
 import {
@@ -58,6 +59,13 @@ export interface TrackCandidate {
 
 /** Why a scan's polyline cannot be on a track: the kernel follows a scan's cuboids only. */
 export const SCAN_UNTRACKABLE_REASON = "A track follows a scan's cuboids only — a polyline cannot be on one.";
+
+/**
+ * A track write refused `INVALID_ANNOTATION`: the object is not one a track may follow. Said here
+ * rather than in the product-wide vocabulary, where the same code also refuses edits no track names.
+ */
+export const TRACK_INVALID_ANNOTATION_PROSE =
+  "That object cannot be on a track — a track follows an image's 2D shapes or a scan's cuboids only.";
 
 export interface TrackRegionProps {
   readonly jobId: string;
@@ -114,7 +122,10 @@ export function TrackRegion(props: TrackRegionProps): JSX.Element {
   const candidateOn = candidateServerId === null ? null : observationOf(tracks, candidateServerId);
 
   function failed(cause: unknown): void {
-    setOutcome({ tone: "error", text: refusalProse(cause) });
+    setOutcome({
+      tone: "error",
+      text: asApiError(cause).code === "INVALID_ANNOTATION" ? TRACK_INVALID_ANNOTATION_PROSE : refusalProse(cause),
+    });
   }
 
   /** Save, then hand over the object's stored id; a save that stored nothing stops here, with its own notice. */

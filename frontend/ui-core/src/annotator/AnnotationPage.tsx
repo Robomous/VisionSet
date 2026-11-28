@@ -188,6 +188,7 @@ import { AnnotatorPanel, type TrackMark } from "./AnnotatorPanel";
 import { SCAN_UNTRACKABLE_REASON, TrackRegion, type TrackCandidate, type TrackFocus, type TrackOutcome } from "./TrackRegion";
 import {
   observationOf,
+  observedLocalId,
   sequenceTrackLabel,
   sequencesOf,
   useAssetOccurrences,
@@ -307,6 +308,11 @@ const PRECISE_DEVICE_PREF = "annotator.precise-device";
  * bar before anybody thinks to ask.
  */
 export const AUTOSAVE_MS = 1200;
+
+/** A step or a badge press that should select the followed track's cuboid on the scan it lands on, once. */
+interface TrackArrival {
+  readonly assetId: string;
+}
 
 /** What an autosave is keyed on: the frame's image document, and its scan document on a scan. */
 interface EditedDocuments {
@@ -657,6 +663,7 @@ function JobScreen({
    */
   const [trackFocus, setTrackFocus] = useState<TrackFocus | null>(null);
   const [trackOutcome, setTrackOutcome] = useState<TrackOutcome | null>(null);
+  const [trackArrival, setTrackArrival] = useState<TrackArrival | null>(null);
   /**
    * Every route to a drawing class goes through here — the panel's list, the tool
    * strip, a digit hotkey and the canvas's own `activate-class`.
@@ -751,6 +758,8 @@ function JobScreen({
       onTrackFocus={setTrackFocus}
       trackOutcome={trackOutcome}
       onTrackOutcome={setTrackOutcome}
+      trackArrival={trackArrival}
+      onTrackArrival={setTrackArrival}
       {...(onConfigureInference === undefined ? {} : { onConfigureInference })}
       {...(onOpenGallery === undefined
         ? {}
@@ -851,6 +860,8 @@ interface WorkspaceProps {
   readonly onTrackFocus: (focus: TrackFocus | null) => void;
   readonly trackOutcome: TrackOutcome | null;
   readonly onTrackOutcome: (outcome: TrackOutcome | null) => void;
+  readonly trackArrival: TrackArrival | null;
+  readonly onTrackArrival: (arrival: TrackArrival | null) => void;
   readonly onOpenGallery?: () => void;
   /** Where to set up a model connection, if the host has such a screen. */
   readonly onConfigureInference?: () => void;
@@ -908,6 +919,8 @@ function Workspace({
   onTrackFocus,
   trackOutcome,
   onTrackOutcome,
+  trackArrival,
+  onTrackArrival,
   onOpenGallery,
   onConfigureInference,
 }: WorkspaceProps): JSX.Element {
@@ -1847,8 +1860,10 @@ function Workspace({
   /** `goTo` for a step along a track, which can land on this very frame when its bytes repeat. */
   function openTrackStep(next: number, then: () => void): void {
     if (next < 0 || next >= assetCount) return;
+    const arriving = assets[next];
     attempt(() => {
       then();
+      if (arriving !== undefined) onTrackArrival({ assetId: arriving.id });
       if (next !== assetIndex) onNavigate(next);
     });
   }
@@ -2017,11 +2032,14 @@ function Workspace({
       if (on === null) continue;
       marks.set(annotation.id, {
         label: `${sequenceTrackLabel(on.track, trackSequences)} at frame ${on.observation.position}`,
-        onShow: () => onTrackFocus({ trackId: on.track.id, position: on.observation.position, passed: 0 }),
+        onShow: () => {
+          onTrackFocus({ trackId: on.track.id, position: on.observation.position, passed: 0 });
+          onTrackArrival({ assetId: asset.id });
+        },
       });
     }
     return marks;
-  }, [trackSequences, readTracks, snapshot.document, scanDocument, frame.minted, onTrackFocus]);
+  }, [trackSequences, readTracks, snapshot.document, scanDocument, frame.minted, onTrackFocus, onTrackArrival, asset.id]);
   /**
    * The class a track keeps each drawn object to. The tracks read of each
    * source the frame sits in are the fresher word on their own tracks — a
@@ -2096,28 +2114,42 @@ function Workspace({
       : { localId: one.id, labelClass: one.label_class, geometry: one.geometry.type, untrackable: null };
   }, [scanSelection, scanDocument, snapshot.selection, snapshot.document]);
   /**
-   * The followed track's cuboid on this scan, at the position a step landed on:
-   * selected on arrival, so stepping along a track lands on the same object.
+   * The followed track's cuboid on this scan, at the position a step or a badge
+   * landed on: selected once on arrival, so stepping along a track lands on the
+   * same object. The arrival is spent by that selection, by a selection made
+   * first, or by landing anywhere else; plain navigation makes none.
    */
   const scanStore = scan?.store ?? null;
-  const followedCuboid = useMemo(() => {
-    if (scanDocument === null || trackFocus === null || trackFocus.position === null) return null;
-    const at = readTracks
-      .find((one) => one.id === trackFocus.trackId)
-      ?.observations.find((one) => one.position === trackFocus.position && one.asset_id === asset.id);
-    if (at === undefined) return null;
-    if (scanDocument.annotations.has(at.annotation_id)) return at.annotation_id;
-    for (const [local, server] of frame.minted) if (server === at.annotation_id && scanDocument.annotations.has(local)) return local;
-    return null;
-  }, [scanDocument, trackFocus, readTracks, asset.id, frame.minted]);
-  const arrivedAt = useRef<string | null>(null);
+  const followedCuboid = useMemo(
+    () =>
+      scanDocument === null || trackFocus === null || trackFocus.position === null
+        ? null
+        : observedLocalId(
+            readTracks,
+            { trackId: trackFocus.trackId, position: trackFocus.position, assetId: asset.id },
+            (id) => scanDocument.annotations.has(id),
+            frame.minted,
+          ),
+    [scanDocument, trackFocus, readTracks, asset.id, frame.minted],
+  );
+  const selectionKey = scanSelection === null ? "" : [...scanSelection].sort().join("|");
+  const arrivalSeen = useRef<{ readonly arrival: TrackArrival; readonly selection: string } | null>(null);
   useEffect(() => {
-    if (scanStore === null || trackFocus === null || followedCuboid === null) return;
-    const arrival = `${trackFocus.trackId}@${trackFocus.position}`;
-    if (arrivedAt.current === arrival) return;
-    arrivedAt.current = arrival;
+    if (trackArrival === null) return;
+    if (trackArrival.assetId !== asset.id || scanStore === null) {
+      onTrackArrival(null);
+      return;
+    }
+    if (arrivalSeen.current?.arrival !== trackArrival) {
+      arrivalSeen.current = { arrival: trackArrival, selection: selectionKey };
+    } else if (arrivalSeen.current.selection !== selectionKey) {
+      onTrackArrival(null);
+      return;
+    }
+    if (followedCuboid === null) return;
+    onTrackArrival(null);
     scanStore.select(selectOnly(followedCuboid));
-  }, [scanStore, trackFocus, followedCuboid]);
+  }, [trackArrival, asset.id, scanStore, selectionKey, followedCuboid, onTrackArrival]);
   const detect =
     activeTarget.kind === "server" && !readOnly ? { blocker: detectBlocker, onDetect: detectAll } : undefined;
 

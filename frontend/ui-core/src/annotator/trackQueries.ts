@@ -304,6 +304,25 @@ export function sequenceTrackLabel(track: Track, sequences: readonly TrackSequen
   return sequence?.name == null ? name : `${name} in ${sequence.name}`;
 }
 
+/**
+ * The local id of the annotation `trackId` observes on `assetId` at `position`, or null. A label
+ * saved on this frame keeps its local id while the server knows it by the one it minted.
+ */
+export function observedLocalId(
+  tracks: readonly Track[],
+  at: { readonly trackId: string; readonly position: number; readonly assetId: string },
+  holds: (localId: string) => boolean,
+  minted: ReadonlyMap<string, string>,
+): string | null {
+  const seen = tracks
+    .find((one) => one.id === at.trackId)
+    ?.observations.find((one) => one.position === at.position && one.asset_id === at.assetId);
+  if (seen === undefined) return null;
+  if (holds(seen.annotation_id)) return seen.annotation_id;
+  for (const [local, server] of minted) if (server === seen.annotation_id && holds(local)) return local;
+  return null;
+}
+
 /** Which track observes this annotation, and where. An annotation is observed at most once. */
 export function observationOf(
   tracks: readonly Track[],

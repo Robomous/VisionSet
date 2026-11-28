@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   observationOf,
+  observedLocalId,
   sequencesOf,
   trackAnchor,
   trackName,
@@ -25,6 +26,29 @@ function observed(position: number, assetId: string, annotationId = `ann-${posit
 function track(id: string, observations: readonly TrackObservation[], externalId: string | null = null): Track {
   return { id, source_id: SOURCE, label_class: "car", external_id: externalId, observations: [...observations] };
 }
+
+describe("observedLocalId", () => {
+  const followed = track("t", [observed(1, "a1", "server-1"), observed(2, "a2", "server-2")]);
+  const at = { trackId: "t", position: 2, assetId: "a2" };
+
+  it("answers the stored id when the document holds it", () => {
+    const held = new Set(["server-0", "server-2"]);
+    expect(observedLocalId([followed], at, (id) => held.has(id), new Map())).toBe("server-2");
+  });
+
+  it("answers the local id the server minted its id for", () => {
+    const held = new Set(["local-a", "local-b"]);
+    const minted = new Map([["local-a", "server-9"], ["local-b", "server-2"]]);
+    expect(observedLocalId([followed], at, (id) => held.has(id), minted)).toBe("local-b");
+  });
+
+  it("answers null off the track, at another asset, or for a label the document no longer holds", () => {
+    const all = (): boolean => true;
+    expect(observedLocalId([followed], { ...at, trackId: "other" }, all, new Map())).toBeNull();
+    expect(observedLocalId([followed], { ...at, assetId: "a1" }, all, new Map())).toBeNull();
+    expect(observedLocalId([followed], at, () => false, new Map([["local-b", "server-2"]]))).toBeNull();
+  });
+});
 
 describe("trackStep", () => {
   // Positions 3 and 4 are absent: the track ends at 2 and reappears at 5.
