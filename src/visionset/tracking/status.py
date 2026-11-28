@@ -20,6 +20,7 @@ from visionset.kernel.domain import TrackingAuth, TrackingServer, TrackingStatus
 from visionset.kernel.errors import TrackingUnavailable
 from visionset.tracking._mlflow import (
     URI_VARIABLE,
+    carries_userinfo,
     client_installed,
     not_installed,
     tracking_uri,
@@ -54,12 +55,14 @@ def _enabled() -> bool:
 
 def _server() -> TrackingServer | None:
     uri = os.environ.get(URI_VARIABLE, "").strip()
+    if carries_userinfo(uri):
+        return None
     try:
         parts = urlsplit(uri)
         port = parts.port
     except ValueError:
         return None
-    if not parts.scheme:
+    if not parts.scheme or not uri[len(parts.scheme) + 1 :].startswith("//"):
         return None
     return TrackingServer(scheme=parts.scheme.lower(), host=parts.hostname, port=port)
 

@@ -10,8 +10,8 @@ reason: "what is in this project and how far along is it" is one question.
 
 ``rename_project`` is **not** here. It is the only project write that changes
 nothing an agent can observe going wrong, and a tool that exists only so a model
-can fix a typo in a name it chose is list-padding. ``update_project`` changes the
-description alone, for the same reason.
+can fix a typo in a name it chose is list-padding. That is why ``update_project``
+takes the description and leaves the name out.
 
 ``delete_project`` **is** here, and it is the widest of the two tools in this
 surface that destroy data (``delete_batch`` is the other). It carries ``confirm``,

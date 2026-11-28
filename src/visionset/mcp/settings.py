@@ -20,7 +20,7 @@ def get_workspace_settings() -> shapes.WorkspaceSettings:
     a time. `tracking.problem` is the refusal a run would meet, worded as its
     remedy. Authentication is reported only as which mode is configured, and
     the tracking server only as scheme, host and port. The values describe this
-    MCP server's own process, read once when it started; changing one takes a
-    restart, and nothing here edits them.
+    MCP server's own process and are read from the environment it started
+    with, so changing one takes a restart, and nothing here edits them.
     """
     return wire.workspace_settings(workspace_settings())

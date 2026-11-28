@@ -161,6 +161,16 @@ def _describe(exc: BaseException) -> str:
     return type(exc).__name__
 
 
+def carries_userinfo(uri: str) -> bool:
+    """Whether an ``@`` comes before the query or fragment, wherever ``urlsplit`` puts it.
+
+    Broader than ``urlsplit``'s own username: ``alice:pw@host`` parses with
+    ``alice`` as its scheme, and ``http://alice:12/34@host`` with ``alice`` as its
+    host, and neither reports a username.
+    """
+    return "@" in uri.split("?", 1)[0].split("#", 1)[0]
+
+
 def tracking_uri() -> str:
     """``MLFLOW_TRACKING_URI``, once it is safe to hand to MLflow.
 
@@ -174,9 +184,14 @@ def tracking_uri() -> str:
             f"VISIONSET_MLFLOW_ENABLED is true, and {URI_VARIABLE} is not set. Set it to "
             "the tracking server's address; tracking never picks a location on its own."
         )
+    if carries_userinfo(uri):
+        raise TrackingUnavailable(
+            f"{URI_VARIABLE} carries credentials. Remove them from the URI and set "
+            "MLFLOW_TRACKING_USERNAME and MLFLOW_TRACKING_PASSWORD, or "
+            "MLFLOW_TRACKING_TOKEN, instead."
+        )
     try:
         parts = urlsplit(uri)
-        carries_credentials = parts.username is not None or parts.password is not None
         carries_query = bool(parts.query or parts.fragment)
         parts.port  # noqa: B018 - a malformed port raises here rather than inside MLflow
     except ValueError:
@@ -186,12 +201,6 @@ def tracking_uri() -> str:
             f"{URI_VARIABLE} carries a query string or fragment, which MLflow would append "
             "request paths after. Give the server's base address, and put a token in "
             "MLFLOW_TRACKING_TOKEN."
-        )
-    if carries_credentials:
-        raise TrackingUnavailable(
-            f"{URI_VARIABLE} carries credentials. Remove them from the URI and set "
-            "MLFLOW_TRACKING_USERNAME and MLFLOW_TRACKING_PASSWORD, or "
-            "MLFLOW_TRACKING_TOKEN, instead."
         )
     return uri
 

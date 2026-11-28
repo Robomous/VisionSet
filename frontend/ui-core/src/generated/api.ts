@@ -3668,8 +3668,8 @@ export interface paths {
          * Get Workspace Settings
          * @description The version, the MLflow tracking status and the job executor's values.
          *
-         *     Read-only, and read once when the process started, so a change takes a
-         *     restart. No secret is returned: tracking reports which authentication mode
+         *     Read-only, and read from the environment the process started with, so a
+         *     change takes a restart. No secret is returned: tracking reports which authentication mode
          *     is configured and whether certificates are, never their values, and the
          *     tracking server only as scheme, host and port.
          */
@@ -8407,7 +8407,7 @@ export interface components {
         };
         /**
          * WorkspaceSettingsOut
-         * @description The read-only settings of the process answering, read once when it started.
+         * @description The read-only settings of the process answering, from the environment it started with.
          *
          *     Changing any of them takes a restart. Nothing here is editable over HTTP.
          */

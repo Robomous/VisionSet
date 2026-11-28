@@ -74,7 +74,7 @@ class ExecutorStatus(BaseModel):
 
 
 class WorkspaceSettings(BaseModel):
-    """The read-only settings of the process answering, read once when it started."""
+    """The read-only settings of the process answering, from the environment it started with."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 

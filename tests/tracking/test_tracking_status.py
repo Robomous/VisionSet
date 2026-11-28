@@ -81,18 +81,40 @@ def test_an_address_with_no_scheme_or_a_bad_port_reports_no_server(
     assert tracking_status().server is None
 
 
-def test_a_uri_carrying_credentials_reports_the_host_and_the_refusal(
-    monkeypatch: pytest.MonkeyPatch,
+@pytest.mark.parametrize(
+    "uri",
+    [
+        "https://someone:hunter2@tracking.example/path",
+        "someone:hunter2@tracking.example:5000",
+        "someone@tracking.example",
+        "http://someone:12/hunter2@tracking.example",
+        "https://someone:hunter2/x@tracking.example",
+        "https://someone:hunter2@x@tracking.example",
+        "file://someone:hunter2@/var/mlruns",
+    ],
+)
+def test_a_uri_carrying_credentials_reports_no_server_and_the_refusal(
+    monkeypatch: pytest.MonkeyPatch, uri: str
 ) -> None:
-    _enable(monkeypatch, "https://someone:hunter2@tracking.example/path")
+    """Every spelling of userinfo, including the ones ``urlsplit`` reads as a scheme or host."""
+    _enable(monkeypatch, uri)
 
     status = tracking_status()
 
-    assert status.server == TrackingServer(scheme="https", host="tracking.example", port=None)
+    assert status.server is None
     assert status.problem is not None
     assert "carries credentials" in status.problem
     assert "hunter2" not in status.model_dump_json()
     assert "someone" not in status.model_dump_json()
+
+
+@pytest.mark.parametrize("uri", ["someone:hunter2", "mlflow-store:relative/path"])
+def test_a_scheme_with_no_authority_reports_no_server(
+    monkeypatch: pytest.MonkeyPatch, uri: str
+) -> None:
+    _enable(monkeypatch, uri)
+
+    assert tracking_status().server is None
 
 
 def test_enabled_without_a_uri_reports_the_refusal(monkeypatch: pytest.MonkeyPatch) -> None:

@@ -569,7 +569,7 @@ class ExecutorStatusOut(BaseModel):
 
 
 class WorkspaceSettingsOut(BaseModel):
-    """The read-only settings of the process answering, read once when it started.
+    """The read-only settings of the process answering, from the environment it started with.
 
     Changing any of them takes a restart. Nothing here is editable over HTTP.
     """

@@ -27,6 +27,8 @@ _SECRETS: Final = (
     "uri-password-secret",
     "uri-path-secret",
     "uri-query-secret",
+    "uri-pw",
+    "word-secret",
     "username-secret",
     "password-secret",
     "token-secret",
@@ -37,10 +39,6 @@ _SECRETS: Final = (
 _ENVIRONMENT: Final = {
     "VISIONSET_MLFLOW_ENABLED": "true",
     "VISIONSET_MLFLOW_EXPERIMENT": "roads",
-    "MLFLOW_TRACKING_URI": (
-        "https://uri-user-secret:uri-password-secret@tracking.example:8443"
-        "/uri-path-secret?key=uri-query-secret"
-    ),
     "MLFLOW_TRACKING_USERNAME": "username-secret",
     "MLFLOW_TRACKING_PASSWORD": "password-secret",
     "MLFLOW_TRACKING_TOKEN": "token-secret",
@@ -67,9 +65,34 @@ def _cli_settings() -> tuple[dict[str, Any], str]:
     return json.loads(result.stdout), result.output
 
 
+_CLEAN_SERVER: Final = {"scheme": "https", "host": "tracking.example", "port": 8443}
+
+
+@pytest.mark.parametrize(
+    ("uri", "server"),
+    [
+        ("https://tracking.example:8443/uri-path-secret", _CLEAN_SERVER),
+        (
+            "https://uri-user-secret:uri-password-secret@tracking.example:8443"
+            "/uri-path-secret?key=uri-query-secret",
+            None,
+        ),
+        ("https://uri-user-secret:uri-password-secret@tracking.example:8443", None),
+        ("uri-user-secret:uri-password-secret@tracking.example:5000", None),
+        ("uri-user-secret@tracking.example", None),
+        ("http://uri-user-secret:12/uri-pw@tracking.example", None),
+        ("https://uri-user-secret:pass/word-secret@tracking.example", None),
+        ("https://uri-user-secret:uri-password-secret@x@tracking.example", None),
+    ],
+)
 def test_every_surface_publishes_the_same_settings_and_no_secret(
-    tmp_path: Path, configured: None
+    tmp_path: Path,
+    configured: None,
+    monkeypatch: pytest.MonkeyPatch,
+    uri: str,
+    server: dict[str, Any] | None,
 ) -> None:
+    monkeypatch.setenv("MLFLOW_TRACKING_URI", uri)
     root = tmp_path / "ws"
     token = api_workspace(root)
     with TestClient(served_app(root), headers={"Authorization": f"Bearer {token}"}) as client:
@@ -87,7 +110,9 @@ def test_every_surface_publishes_the_same_settings_and_no_secret(
     tracking = rest["tracking"]
     assert tracking["enabled"] is True
     assert tracking["experiment"] == "roads"
-    assert tracking["server"] == {"scheme": "https", "host": "tracking.example", "port": 8443}
+    assert tracking["server"] == server
+    if server is None:
+        assert "carries" in tracking["problem"]
     assert tracking["auth"] == "basic"
     assert tracking["ca_bundle_configured"] is True
     assert tracking["client_certificate_configured"] is True
