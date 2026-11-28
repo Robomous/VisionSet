@@ -205,6 +205,41 @@
     },
     {
       "asset_id": "1ad26c67-2b52-553f-ae2d-30346d8e20cc",
+      "attributes": {
+        "condition": "faded"
+      },
+      "confidence": 0.87,
+      "geometry": {
+        "points": [
+          [
+            40.0,
+            30.0
+          ],
+          [
+            40.0,
+            30.0
+          ],
+          [
+            52.5,
+            61.25
+          ]
+        ],
+        "type": "keypoints",
+        "visibility": [
+          2,
+          1,
+          0
+        ]
+      },
+      "id": "2d7ee8c5-776b-5695-a4e8-ced1170f0ab5",
+      "job_id": null,
+      "label_class": "sign",
+      "model_ref": "yolo-v8n@1",
+      "provenance": "model",
+      "schema_version": 3
+    },
+    {
+      "asset_id": "1ad26c67-2b52-553f-ae2d-30346d8e20cc",
       "attributes": {},
       "confidence": null,
       "geometry": {
@@ -334,6 +369,7 @@
     "bbox",
     "classification_tag",
     "cuboid_3d",
+    "keypoints",
     "mask",
     "obb",
     "polygon",
@@ -360,6 +396,7 @@
           "bbox",
           "polygon"
         ],
+        "keypoints": null,
         "name": "sign"
       },
       {
@@ -368,6 +405,7 @@
         "geometries": [
           "polygon"
         ],
+        "keypoints": null,
         "name": "lane"
       },
       {
@@ -376,6 +414,7 @@
         "geometries": [
           "polyline"
         ],
+        "keypoints": null,
         "name": "centerline"
       },
       {
@@ -384,6 +423,7 @@
         "geometries": [
           "polyline_3d"
         ],
+        "keypoints": null,
         "name": "lane_3d"
       },
       {
@@ -392,6 +432,7 @@
         "geometries": [
           "cuboid_3d"
         ],
+        "keypoints": null,
         "name": "car_3d"
       },
       {
@@ -400,6 +441,7 @@
         "geometries": [
           "obb"
         ],
+        "keypoints": null,
         "name": "ship"
       },
       {
@@ -408,7 +450,37 @@
         "geometries": [
           "mask"
         ],
+        "keypoints": null,
         "name": "road"
+      },
+      {
+        "attributes": [],
+        "color": null,
+        "geometries": [
+          "keypoints"
+        ],
+        "keypoints": {
+          "names": [
+            "left_eye",
+            "right_eye",
+            "nose"
+          ],
+          "skeleton": [
+            [
+              2,
+              0
+            ],
+            [
+              0,
+              1
+            ],
+            [
+              1,
+              2
+            ]
+          ]
+        },
+        "name": "face"
       },
       {
         "attributes": [
@@ -424,6 +496,7 @@
         "geometries": [
           "classification_tag"
         ],
+        "keypoints": null,
         "name": "weather"
       }
     ],

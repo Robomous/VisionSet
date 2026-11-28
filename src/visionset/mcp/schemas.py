@@ -161,9 +161,11 @@ def get_schema(
 
     Read this before writing any annotation: `add_annotations` judges every label
     against the version its batch pinned, and a class name or geometry the schema
-    does not declare is refused. `available_versions` lists every version ever
-    created, oldest first; `active_version` is the highest, which is what the next
-    `approve_batch` will pin.
+    does not declare is refused. A class's `keypoints`, when not null, fixes how
+    many points each of its keypoints annotations carries and what each one is.
+    `available_versions` lists every version ever created, oldest first;
+    `active_version` is the highest, which is what the next `approve_batch` will
+    pin.
 
     A project that has never had `create_schema_version` called on it has no
     schema at all, and this reports that rather than inventing an empty one.
@@ -318,6 +320,9 @@ def create_schema_version(
     `description` is this version's commit message: say what changed and why.
     It is stored verbatim and can never be edited, so write it as a record rather
     than as a note to yourself. Omitting it is legal.
+
+    A keypoints class may carry a `keypoints` spec (`names` in point order,
+    `skeleton` as index pairs); its annotations then carry one point per name.
 
     Three refusals to expect. A class naming a geometry VisionSet has not
     implemented is rejected outright. A narrowing change is rejected until you

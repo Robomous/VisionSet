@@ -68,6 +68,7 @@ from visionset.kernel.domain import (
     ClassificationGeometry,
     Cuboid3DGeometry,
     GeometryType,
+    KeypointsGeometry,
     Manifest,
     ManifestAnnotation,
     ManifestAsset,
@@ -312,6 +313,7 @@ def _annotation(
             ObbGeometry()
             | ClassificationGeometry()
             | PolylineGeometry()
+            | KeypointsGeometry()
             | Polyline3DGeometry()
             | Cuboid3DGeometry()
         ):

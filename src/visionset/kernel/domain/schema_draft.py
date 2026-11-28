@@ -24,7 +24,7 @@ catches the whole family and no caller has to know which of the two rules refuse
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Literal
+from typing import Annotated, Literal
 from uuid import UUID, uuid4
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
@@ -33,6 +33,7 @@ from visionset.kernel.domain.schema import (
     Attribute,
     AttributeValue,
     GeometryType,
+    KeypointSpec,
     LabelClass,
     SchemaProvenance,
 )
@@ -72,6 +73,28 @@ class DraftAttribute(BaseModel):
         )
 
 
+DraftKeypointIndex = Annotated[int, Field(strict=True)]
+"""A draft edge's end: an integer, never a coerced bool or float, though it may dangle."""
+
+
+class DraftKeypointSpec(BaseModel):
+    """A keypoint spec being written: names may be blank and edges may dangle."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    names: tuple[str, ...] = ()
+    skeleton: tuple[tuple[DraftKeypointIndex, DraftKeypointIndex], ...] = ()
+
+    def to_keypoint_spec(self) -> KeypointSpec:
+        """This spec as the published contract would have it.
+
+        Raises:
+            ValueError: no names, a blank or repeated name, or an edge that is
+                out of range, a self-loop or a repeat.
+        """
+        return KeypointSpec(names=self.names, skeleton=self.skeleton)
+
+
 class DraftLabelClass(BaseModel):
     """One class being written: a name that may be blank, shapes that may be none."""
 
@@ -81,19 +104,24 @@ class DraftLabelClass(BaseModel):
     geometries: tuple[GeometryType, ...] = ()
     color: str | None = None
     attributes: tuple[DraftAttribute, ...] = ()
+    keypoints: DraftKeypointSpec | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
 
     def to_label_class(self) -> LabelClass:
         """This class as the published contract would have it.
 
         Raises:
-            ValueError: a blank name, no geometry, or any attribute that will
-                not convert.
+            ValueError: a blank name, no geometry, any attribute that will
+                not convert, or a keypoint spec that will not convert or sits on
+                a class not accepting keypoints.
         """
         return LabelClass(
             name=self.name,
             geometries=self.geometries,
             color=self.color,
             attributes=tuple(attribute.to_attribute() for attribute in self.attributes),
+            keypoints=None if self.keypoints is None else self.keypoints.to_keypoint_spec(),
         )
 
 

@@ -156,6 +156,7 @@ import { topmostAnnotationAt } from "../../core/geometry/hitTest";
 import { withinBounds } from "../../core/geometry/primitives";
 import { assetTolerances } from "../../core/geometry/tolerance";
 import type { Projected3DLabel } from "../../core/geometry/projection";
+import type { KeypointLabel } from "../../core/geometry/keypoints";
 import { affordanceAt, viewerAffordanceAt } from "../../core/interaction/affordance";
 import { transition } from "../../core/interaction/machine";
 import { runEffects } from "../../core/interaction/runEffects";
@@ -209,13 +210,14 @@ import {
 import type { Viewport } from "../viewport";
 import { AnnotationLayer } from "./AnnotationLayer";
 import { Overlay3DLayer } from "./Overlay3DLayer";
+import { KeypointLayer } from "./KeypointLayer";
 import { createDecodedAssetImage, type DecodedAssetImage } from "./decodedAssetImage";
 import { useAnnotatorSnapshot } from "./hooks";
 import { digitFromCode, isComposing, isTextEntry } from "./keyboard";
 import { classColor, editedId, paintAnnotation, paintHighlightedVertex, paintSuggestions } from "./paint";
 import type { PaintedSuggestion } from "./paint";
 import { stageScreenSizes } from "./Shapes";
-import { withoutHidden } from "./visibility";
+import { keypointsWithoutHidden, withoutHidden } from "./visibility";
 import { TransientLayer } from "./TransientLayer";
 
 /** The states a press must hold the pointer for. `drawing-polygon` is not one. */
@@ -336,6 +338,12 @@ export interface AnnotatorCanvasProps {
    * layer's `memo`.
    */
   readonly overlay3d?: readonly Projected3DLabel[];
+  /**
+   * Keypoints annotations (`keypointLabels`), drawn read-only beneath the
+   * annotations and outside the document, like `overlay3d`. One whose id is in
+   * `hiddenIds` is not drawn. Memoize it.
+   */
+  readonly keypoints?: readonly KeypointLabel[];
   /**
    * Anything core cannot do and this adapter does not own — a help sheet, a
    * "next asset". `reset-zoom` never arrives: the zoom is the adapter's.
@@ -550,6 +558,7 @@ export function AnnotatorCanvas({
   onViewChange,
   hiddenIds,
   overlay3d,
+  keypoints,
   onHostAction,
   onAnnotationMenu,
   bindings,
@@ -1421,6 +1430,10 @@ export function AnnotatorCanvas({
     () => withoutHidden(snapshot.rendered, hiddenIds),
     [snapshot.rendered, hiddenIds],
   );
+  const visibleKeypoints = useMemo(
+    () => (keypoints === undefined ? undefined : keypointsWithoutHidden(keypoints, hiddenIds)),
+    [keypoints, hiddenIds],
+  );
 
   /**
    * Where the pointer is **for the tools**, which is nowhere while the hand is on.
@@ -1637,6 +1650,9 @@ export function AnnotatorCanvas({
           >
             {overlay3d !== undefined && (
               <Overlay3DLayer labels={overlay3d} schema={snapshot.document.schema} />
+            )}
+            {visibleKeypoints !== undefined && (
+              <KeypointLayer labels={visibleKeypoints} classes={snapshot.document.schema.classes} zoom={view.zoom} />
             )}
             <AnnotationLayer
               committed={visibleCommitted}

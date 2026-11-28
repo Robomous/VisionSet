@@ -25,13 +25,14 @@ from tests.cli._flow import (
     workspace,
 )
 
-from visionset.kernel.domain import Annotation, BboxGeometry
+from visionset.kernel.domain import Annotation, BboxGeometry, GeometryType
 from visionset.kernel.services import (
     WORKSPACE_ENV_VAR,
     AnnotationService,
     BatchService,
     JobService,
     WorkspaceService,
+    schema_service,
 )
 from visionset.server import models
 from visionset.server.models import SchemaVersionCreate
@@ -171,13 +172,63 @@ def test_a_blank_class_name_exits_two_and_says_where(root: Path, tmp_path: Path)
     assert "classes.0.name" in usage_error(result)
 
 
-def test_an_unimplemented_geometry_exits_one(root: Path, tmp_path: Path) -> None:
-    # ``keypoints`` is a legal ``GeometryType`` member, so the document parses; it is
-    # the *service* that refuses it. A domain refusal, therefore exit 1.
+def test_an_unimplemented_geometry_exits_one(
+    root: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # A legal ``GeometryType`` member parses; it is the *service* that refuses one
+    # with no implementation. A domain refusal, therefore exit 1. Every member is
+    # implemented today, so the set is narrowed to keep the guard reachable.
+    monkeypatch.setattr(
+        schema_service,
+        "IMPLEMENTED_GEOMETRIES",
+        frozenset(GeometryType) - {GeometryType.KEYPOINTS},
+    )
     path = _document(tmp_path, [{"name": "face", "geometries": ["keypoints"]}])
     result = run(root, "schema", "apply", str(path), "-p", "road-signs")
     assert result.exit_code == 1, result.output
-    assert "Error:" in result.stderr
+    assert "no geometry implementation" in result.stderr
+
+
+_SPEC = {"names": ["left_eye", "right_eye", "nose"], "skeleton": [[2, 0], [0, 1]]}
+_FACE = {"name": "face", "geometries": ["keypoints"], "keypoints": _SPEC}
+
+
+def test_a_keypoint_spec_applies_and_lists_back_verbatim(root: Path, tmp_path: Path) -> None:
+    path = _document(tmp_path, [{"name": "sign", "geometries": ["bbox"]}, _FACE])
+    ok(root, "schema", "apply", str(path), "-p", "road-signs")
+
+    (version,) = payload(root, "schema", "list", "-p", "road-signs")["items"]
+    classes = {one["name"]: one for one in version["classes"]}
+
+    assert classes["face"]["keypoints"] == _SPEC
+    assert classes["sign"]["keypoints"] is None
+
+
+def test_a_listed_class_applies_back_unchanged(root: Path, tmp_path: Path) -> None:
+    # The ``--json`` class is also the input shape, so a printed spec re-applies as is.
+    ok(root, "schema", "apply", str(_document(tmp_path, [_FACE])), "-p", "road-signs")
+    (version,) = payload(root, "schema", "list", "-p", "road-signs")["items"]
+    again = tmp_path / "again.json"
+    again.write_text(json.dumps({"classes": version["classes"]}), encoding="utf-8")
+
+    assert ok(root, "schema", "apply", str(again), "-p", "road-signs") == "1"
+
+
+def test_an_invalid_keypoint_spec_exits_two_and_says_why(root: Path, tmp_path: Path) -> None:
+    looped = {**_FACE, "keypoints": {"names": ["a", "b"], "skeleton": [[0, 1], [1, 0]]}}
+    result = run(root, "schema", "apply", str(_document(tmp_path, [looped])), "-p", "road-signs")
+    assert result.exit_code == 2, result.output
+    assert "appears twice" in usage_error(result)
+
+
+def test_a_draft_keeps_an_unfinished_keypoint_spec(root: Path, tmp_path: Path) -> None:
+    unfinished = {"names": ["left_eye", ""], "skeleton": [[0, 3]]}
+    path = _document(tmp_path, [{**_FACE, "keypoints": unfinished}])
+    ok(root, "schema", "draft", "set", str(path), "-p", "road-signs")
+
+    draft = payload(root, "schema", "draft", "show", "-p", "road-signs")
+
+    assert draft["classes"][0]["keypoints"] == unfinished
 
 
 # --- refusing a narrowing change: exit 1, retryable with a flag ---------------

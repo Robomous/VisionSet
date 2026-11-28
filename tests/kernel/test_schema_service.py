@@ -50,7 +50,12 @@ from visionset.kernel.domain import (
     SchemaProvenance,
 )
 from visionset.kernel.ports import UnitOfWork
-from visionset.kernel.services import ProjectService, SchemaService, WorkspaceService
+from visionset.kernel.services import (
+    ProjectService,
+    SchemaService,
+    WorkspaceService,
+    schema_service,
+)
 
 SIGN = LabelClass(name="sign", geometries=(GeometryType.BBOX,))
 LANE = LabelClass(name="lane", geometries=(GeometryType.POLYGON,))
@@ -443,8 +448,16 @@ def test_a_hex_color_is_accepted(tmp_path: Path, color: str) -> None:
     workspace.close()
 
 
-def test_an_unsupported_geometry_is_reported_as_an_invalid_schema(tmp_path: Path) -> None:
+def test_an_unsupported_geometry_is_reported_as_an_invalid_schema(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """One ``except InvalidSchema`` covers every way a version can be malformed."""
+    # Every GeometryType is implemented today; narrow the set to keep the guard tested.
+    monkeypatch.setattr(
+        schema_service,
+        "IMPLEMENTED_GEOMETRIES",
+        frozenset(GeometryType) - {GeometryType.KEYPOINTS},
+    )
     workspace, projects, schemas = _services(tmp_path)
     project = projects.create("signs")
     with pytest.raises(InvalidSchema):

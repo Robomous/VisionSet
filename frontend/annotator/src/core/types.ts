@@ -25,15 +25,14 @@
  * Two vocabularies, one union — the kernel's own split, kept: `GeometryType`
  * names nine geometries, because that is what a `LabelClass` declares and what
  * the API publishes; `Geometry` has five variants, because that is what this
- * engine draws. Naming `keypoints` is legal in a schema and refused at
- * the annotation, by the kernel (`UNSUPPORTED_GEOMETRY`) and by `parseGeometry`
- * here. A `mask` is carried, never drawn. See `docs/content/schemas.md`.
+ * engine draws. See `docs/content/schemas.md`.
  *
- * Three more variants, `polyline_3d`, `cuboid_3d` and `mask`, never enter that scene:
- * `StoredGeometry` admits them, `parseAnnotation` parses them, and
- * `documentFromWire` leaves them out, so a job holding one loads and the image
- * editor never sends them back changed or deleted. On an image a host draws them
- * read-only through `projectLabels3D`, against the asset's calibration. On a
+ * Four more variants, `polyline_3d`, `cuboid_3d`, `mask` and `keypoints`, never
+ * enter that scene: `StoredGeometry` admits them, `parseAnnotation` parses them,
+ * and `documentFromWire` leaves them out, so a job holding one loads and the image
+ * editor never sends them back changed or deleted. On an image a host draws the
+ * 3D ones read-only through `projectLabels3D`, against the asset's calibration,
+ * and keypoints read-only through `keypointLabels`; a mask is not drawn. On a
  * scan a `cuboid_3d` is a `ScanAnnotation`, edited by the sibling engine under
  * `pointcloud/edit/` in a document of its own.
  *
@@ -62,7 +61,7 @@ export const GEOMETRY_TYPES = [
   "polyline_3d",
 ] as const;
 
-/** The vocabulary a `LabelClass` declares. Nine names; seven have a model. */
+/** The vocabulary a `LabelClass` declares. Nine names, each with a model. */
 export type GeometryType = (typeof GEOMETRY_TYPES)[number];
 
 /**
@@ -76,6 +75,7 @@ export const IMPLEMENTED_GEOMETRY_TYPES = [
   "bbox",
   "classification_tag",
   "cuboid_3d",
+  "keypoints",
   "mask",
   "obb",
   "polygon",
@@ -262,8 +262,26 @@ export type Geometry =
   | PolylineGeometry
   | ClassificationGeometry;
 
+/**
+ * Named points in asset pixels, in order: the position in `points` is the
+ * keypoint's identity, and the class's `KeypointSpec`, when it has one, names
+ * point `i` at `names[i]`. `visibility` follows the polyline's rules, except that
+ * an `UNLABELED` keypoint is a slot with no position worth drawing. Carried past
+ * the scene and drawn read-only through `keypointLabels`.
+ */
+export interface KeypointsGeometry {
+  readonly type: "keypoints";
+  readonly points: readonly Point[];
+  readonly visibility: readonly VertexVisibility[] | undefined;
+}
+
 /** Every geometry the wire can carry, drawn or not. */
-export type StoredGeometry = Geometry | Polyline3DGeometry | Cuboid3DGeometry | MaskGeometry;
+export type StoredGeometry =
+  | Geometry
+  | Polyline3DGeometry
+  | Cuboid3DGeometry
+  | MaskGeometry
+  | KeypointsGeometry;
 
 /** One stored annotation as the wire sends it, whether or not the scene can hold it. */
 export type StoredAnnotation = Omit<Annotation, "geometry"> & {
@@ -382,16 +400,30 @@ export interface Attribute {
  * `color` is the kernel's own field — a renderer choosing its own palette when
  * it is null is a rendering decision, not a document one.
  *
- * The members are `GeometryType`, all nine, not just the carryable five. A
- * schema may legally declare `mask`; an annotation may not carry one. Keeping the
- * wide type here is what lets a class list load intact and the refusal happen
- * where a user can be told about it.
+ * The members are `GeometryType`, all nine, not just the five the scene draws.
+ * Keeping the wide type here is what lets a class list load intact and a host
+ * say where a class cannot be drawn.
+ *
+ * `keypoints` is the class's keypoint spec, `null` when it declares none. Optional
+ * on the type so a host building a class by hand need not name it; `parseLabelClass`
+ * always sets it.
  */
 export interface LabelClass {
   readonly name: string;
   readonly geometries: readonly GeometryType[];
   readonly color: string | null;
   readonly attributes: readonly Attribute[];
+  readonly keypoints?: KeypointSpec | null;
+}
+
+/**
+ * The named points of a keypoints class and the edges joining them. Mirrors
+ * `KeypointSpecBody`. `skeleton` pairs index into `names`; an edge says how the
+ * points are drawn and constrains no coordinate.
+ */
+export interface KeypointSpec {
+  readonly names: readonly string[];
+  readonly skeleton: readonly (readonly [number, number])[];
 }
 
 /**

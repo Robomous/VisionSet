@@ -686,6 +686,14 @@ class DisallowedGeometry(InvalidAnnotation):
     """
 
 
+class KeypointCountMismatch(InvalidAnnotation):
+    """A keypoints annotation does not carry one point per keypoint its class names.
+
+    The class's keypoint spec fixes the count and the order, so a missing or extra
+    point cannot be placed: nothing pads, truncates or reorders the points.
+    """
+
+
 class AnnotationGeometryOutOfBounds(InvalidAnnotation):
     """A spatial annotation has no overlap with its measured asset, or a mask is not its size."""
 

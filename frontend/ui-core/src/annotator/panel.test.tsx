@@ -14,6 +14,7 @@
 import {
   AnnotatorStore,
   documentFromWire,
+  keypointLabels,
   scanDocumentFromWire,
   selectOnly,
   type ScanDocument,
@@ -30,6 +31,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useRef, type JSX } from "react";
 
 import { AnnotatorPanel } from "./AnnotatorPanel";
+import { KEYPOINTS_READ_ONLY } from "./toolChoices";
 import { TooltipProvider } from "@robomous/ui-core";
 import { stubResizeObserver } from "../testing/resizeObserver.js";
 
@@ -267,6 +269,101 @@ describe("a scan's 3D labels (#1061)", () => {
     render(mount(storeWith([]), { scan: { store: scanStoreOf(), onRemove: null }, labels3D: [path] }));
     expect(screen.getByTestId("object-count").textContent).toBe("2 objects");
     expect(screen.getByTestId("object-row-1").textContent).toContain("2. vehicle");
+  });
+});
+
+describe("keypoints, listed read-only (#1158)", () => {
+  const PERSON = {
+    name: "person",
+    geometries: ["keypoints"],
+    color: "#a855f7",
+    attributes: [],
+    keypoints: { names: ["head", "hip", "knee"], skeleton: [[0, 1], [1, 2]] },
+  };
+  const WITH_PERSON = { ...SCHEMA, classes: [...SCHEMA.classes, PERSON] };
+  const pose = (id: string) => ({
+    id,
+    label_class: "person",
+    geometry: { type: "keypoints", points: [[10, 10], [10, 40], [20, 70]], visibility: [2, 1, 0] },
+  }) as const;
+  const KEYPOINTS = keypointLabels([pose("k1"), pose("k2"), pose("k3")], [PERSON] as never);
+
+  function keypointPanel(overrides: Partial<Parameters<typeof AnnotatorPanel>[0]> = {}): JSX.Element {
+    return mount(storeWith([annotation("a", "vehicle", "bbox")], WITH_PERSON), { keypoints: KEYPOINTS, ...overrides });
+  }
+
+  it("lists the keypoints class, disabled with the tool strip's reason, and counts it", async () => {
+    render(keypointPanel());
+
+    const row = screen.getByTestId("class-row-person");
+    expect(row.textContent).toContain("person");
+    expect(row.textContent).toContain("keypoints");
+    expect(row.hasAttribute("disabled")).toBe(true);
+    expect(screen.getByTestId("class-count").textContent).toBe("5 classes");
+
+    await userEvent.hover(screen.getByTestId("class-row-person-reason"));
+    expect((await screen.findByRole("tooltip")).textContent).toBe(KEYPOINTS_READ_ONLY);
+  });
+
+  it("lists the keypoints class on a schema with nothing else to draw", () => {
+    render(mount(storeWith([], { ...SCHEMA, classes: [PERSON] }), { keypoints: KEYPOINTS }));
+    expect(screen.getByTestId("class-row-person")).toBeDefined();
+    expect(screen.getByTestId("class-count").textContent).toBe("1 class");
+  });
+
+  it("does not arm the keypoints class from the filter's Enter", async () => {
+    const onActivateClass = vi.fn();
+    render(keypointPanel({ onActivateClass }));
+    await userEvent.type(screen.getByTestId("class-filter"), "person{Enter}");
+    expect(onActivateClass).not.toHaveBeenCalled();
+  });
+
+  it("lists and counts each keypoints label after the drawn objects, read-only", async () => {
+    render(keypointPanel());
+
+    expect(screen.getByTestId("object-count").textContent).toBe("4 objects");
+    for (const index of [1, 2, 3]) {
+      const row = screen.getByTestId(`object-row-${index}`);
+      expect(row.dataset["readOnly"]).toBe("true");
+      expect(row.textContent).toContain("person");
+      expect(row.textContent).toContain("keypoints");
+      expect(row.textContent).toContain(`#${index + 1}`);
+      expect(within(row).queryByTestId(`object-select-${index}`)).toBeNull();
+      expect(within(row).queryByTestId(`object-delete-${index}`)).toBeNull();
+    }
+
+    await userEvent.hover(screen.getByTestId("object-read-only-1"));
+    expect((await screen.findByRole("tooltip")).textContent).toContain(KEYPOINTS_READ_ONLY);
+  });
+
+  it("filters keypoints rows by class like any other", async () => {
+    render(keypointPanel());
+    await userEvent.type(screen.getByTestId("object-filter"), "pers");
+    expect(screen.queryByTestId("object-row-0")).toBeNull();
+    expect(screen.getByTestId("object-row-1")).toBeDefined();
+  });
+
+  it("asks the page to hide one keypoints label, and to show it again", async () => {
+    const changes: ReadonlySet<string>[] = [];
+    const { rerender } = render(keypointPanel({ onHiddenChange: (next) => changes.push(next) }));
+
+    await userEvent.click(screen.getByTestId("object-visibility-2"));
+    expect([...changes[0]]).toEqual(["k2"]);
+
+    rerender(keypointPanel({ hiddenIds: new Set(["k2"]), onHiddenChange: (next) => changes.push(next) }));
+    expect(screen.getByTestId("object-row-2").dataset["hidden"]).toBe("true");
+    expect(screen.getByTestId("object-row-1").dataset["hidden"]).toBe("false");
+    expect(screen.getByTestId("object-count").textContent).toBe("4 objects");
+    await userEvent.click(screen.getByTestId("object-visibility-2"));
+    expect([...changes[1]]).toEqual([]);
+  });
+
+  it("selects nothing in the document from a keypoints row", async () => {
+    const store = storeWith([annotation("a", "vehicle", "bbox")], WITH_PERSON);
+    render(mount(store, { keypoints: KEYPOINTS }));
+    await userEvent.click(screen.getByTestId("object-read-only-1"));
+    expect(store.selection.size).toBe(0);
+    expect(store.document.annotations.size).toBe(1);
   });
 });
 

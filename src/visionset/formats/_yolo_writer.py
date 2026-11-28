@@ -24,6 +24,7 @@ from visionset.kernel.domain import (
     ClassificationGeometry,
     Cuboid3DGeometry,
     Geometry,
+    KeypointsGeometry,
     Manifest,
     ManifestAnnotation,
     ManifestAsset,
@@ -84,6 +85,7 @@ def derive_task(manifest: Manifest, accepted: frozenset[Task]) -> Task:
                 case (
                     ObbGeometry()
                     | PolylineGeometry()
+                    | KeypointsGeometry()
                     | Polyline3DGeometry()
                     | Cuboid3DGeometry()
                     | MaskGeometry()
@@ -218,6 +220,7 @@ def _as_box(annotation: ManifestAnnotation, *, obb_as_box: bool = False) -> Bbox
         case (
             ClassificationGeometry()
             | PolylineGeometry()
+            | KeypointsGeometry()
             | Polyline3DGeometry()
             | Cuboid3DGeometry()
             | MaskGeometry()
@@ -240,6 +243,7 @@ def _as_ring(annotation: ManifestAnnotation) -> list[tuple[float, float]] | None
             ObbGeometry()
             | ClassificationGeometry()
             | PolylineGeometry()
+            | KeypointsGeometry()
             | Polyline3DGeometry()
             | Cuboid3DGeometry()
             | MaskGeometry()

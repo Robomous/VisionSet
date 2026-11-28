@@ -116,6 +116,7 @@
                 "bbox": "#/components/schemas/BboxBody",
                 "classification_tag": "#/components/schemas/ClassificationBody",
                 "cuboid_3d": "#/components/schemas/Cuboid3DBody",
+                "keypoints": "#/components/schemas/KeypointsBody",
                 "mask": "#/components/schemas/MaskBody",
                 "obb": "#/components/schemas/ObbBody",
                 "polygon": "#/components/schemas/PolygonBody",
@@ -136,6 +137,9 @@
               },
               {
                 "$ref": "#/components/schemas/PolylineBody"
+              },
+              {
+                "$ref": "#/components/schemas/KeypointsBody"
               },
               {
                 "$ref": "#/components/schemas/Polyline3DBody"
@@ -238,6 +242,7 @@
                 "bbox": "#/components/schemas/BboxBody",
                 "classification_tag": "#/components/schemas/ClassificationBody",
                 "cuboid_3d": "#/components/schemas/Cuboid3DBody",
+                "keypoints": "#/components/schemas/KeypointsBody",
                 "mask": "#/components/schemas/MaskBody",
                 "obb": "#/components/schemas/ObbBody",
                 "polygon": "#/components/schemas/PolygonBody",
@@ -258,6 +263,9 @@
               },
               {
                 "$ref": "#/components/schemas/PolylineBody"
+              },
+              {
+                "$ref": "#/components/schemas/KeypointsBody"
               },
               {
                 "$ref": "#/components/schemas/Polyline3DBody"
@@ -396,6 +404,7 @@
                 "bbox": "#/components/schemas/BboxBody",
                 "classification_tag": "#/components/schemas/ClassificationBody",
                 "cuboid_3d": "#/components/schemas/Cuboid3DBody",
+                "keypoints": "#/components/schemas/KeypointsBody",
                 "mask": "#/components/schemas/MaskBody",
                 "obb": "#/components/schemas/ObbBody",
                 "polygon": "#/components/schemas/PolygonBody",
@@ -416,6 +425,9 @@
               },
               {
                 "$ref": "#/components/schemas/PolylineBody"
+              },
+              {
+                "$ref": "#/components/schemas/KeypointsBody"
               },
               {
                 "$ref": "#/components/schemas/Polyline3DBody"
@@ -3256,6 +3268,7 @@
                 "bbox": "#/components/schemas/BboxGeometry",
                 "classification_tag": "#/components/schemas/ClassificationGeometry",
                 "cuboid_3d": "#/components/schemas/Cuboid3DGeometry",
+                "keypoints": "#/components/schemas/KeypointsGeometry",
                 "mask": "#/components/schemas/MaskGeometry",
                 "obb": "#/components/schemas/ObbGeometry",
                 "polygon": "#/components/schemas/PolygonGeometry",
@@ -3276,6 +3289,9 @@
               },
               {
                 "$ref": "#/components/schemas/PolylineGeometry"
+              },
+              {
+                "$ref": "#/components/schemas/KeypointsGeometry"
               },
               {
                 "$ref": "#/components/schemas/Polyline3DGeometry"
@@ -3561,6 +3577,40 @@
         "title": "DraftAttributeBody",
         "type": "object"
       },
+      "DraftKeypointSpecBody": {
+        "additionalProperties": false,
+        "description": "A keypoint spec somebody is still writing: names may be blank and edges may dangle.\n\nEvery rule `KeypointSpecBody` states is checked when the draft is published.",
+        "properties": {
+          "names": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Names",
+            "type": "array"
+          },
+          "skeleton": {
+            "default": [],
+            "items": {
+              "maxItems": 2,
+              "minItems": 2,
+              "prefixItems": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "integer"
+                }
+              ],
+              "type": "array"
+            },
+            "title": "Skeleton",
+            "type": "array"
+          }
+        },
+        "title": "DraftKeypointSpecBody",
+        "type": "object"
+      },
       "DraftLabelClassBody": {
         "additionalProperties": false,
         "description": "One class being written: a name that may be blank, shapes that may be none.\n\n`geometries` has no minimum here and does on `LabelClassBody`, which is the\ndifference between the two types. Publishing the draft applies the minimum.",
@@ -3591,6 +3641,16 @@
             },
             "title": "Geometries",
             "type": "array"
+          },
+          "keypoints": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DraftKeypointSpecBody"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "name": {
             "default": "",
@@ -4632,6 +4692,128 @@
         "type": "object"
       },
       "JsonValue": {},
+      "KeypointSpecBody": {
+        "additionalProperties": false,
+        "description": "The named points of a keypoints class, in order, and the edges joining them.\n\n`names[i]` names point `i` of every keypoints annotation of the class, so an\nannotation carries exactly one point per name, in this order. Names are\nstripped, never blank, and unique ignoring case. `skeleton` lists undirected\nedges as pairs of indices into `names`: an edge joins two different points\nand no pair appears twice in either order. It says how the points are drawn\nand constrains no coordinate.",
+        "properties": {
+          "names": {
+            "items": {
+              "type": "string"
+            },
+            "minItems": 1,
+            "title": "Names",
+            "type": "array"
+          },
+          "skeleton": {
+            "default": [],
+            "items": {
+              "maxItems": 2,
+              "minItems": 2,
+              "prefixItems": [
+                {
+                  "minimum": 0.0,
+                  "type": "integer"
+                },
+                {
+                  "minimum": 0.0,
+                  "type": "integer"
+                }
+              ],
+              "type": "array"
+            },
+            "title": "Skeleton",
+            "type": "array"
+          }
+        },
+        "required": [
+          "names"
+        ],
+        "title": "KeypointSpecBody",
+        "type": "object"
+      },
+      "KeypointsBody": {
+        "additionalProperties": false,
+        "description": "At least one keypoint as finite `(x, y)` asset pixels, in order.\n\nThe position in `points` is the keypoint's identity. When the class declares\na keypoint spec, `points` carries exactly one point per name, in the spec's\norder, or the write is refused with `KEYPOINT_COUNT_MISMATCH`; without one,\nany count of at least one is accepted. Points are never reordered, padded or\ntruncated. `visibility` follows the polyline's rules exactly: one state per\npoint (0 unlabeled, 1 occluded, 2 visible), or absent; never null.",
+        "properties": {
+          "points": {
+            "items": {
+              "maxItems": 2,
+              "minItems": 2,
+              "prefixItems": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "number"
+                }
+              ],
+              "type": "array"
+            },
+            "title": "Points",
+            "type": "array"
+          },
+          "type": {
+            "const": "keypoints",
+            "title": "Type",
+            "type": "string"
+          },
+          "visibility": {
+            "items": {
+              "$ref": "#/components/schemas/VertexVisibility"
+            },
+            "title": "Visibility",
+            "type": "array"
+          }
+        },
+        "required": [
+          "type",
+          "points"
+        ],
+        "title": "KeypointsBody",
+        "type": "object"
+      },
+      "KeypointsGeometry": {
+        "additionalProperties": false,
+        "description": "An ordered set of at least one ``(x, y)`` keypoint in pixels.\n\n**The position in the list is the keypoint's identity.** When the class\ndeclares a :class:`~visionset.kernel.domain.schema.KeypointSpec`, point ``i``\nis the keypoint the spec names at ``i`` and the count must equal the spec's;\nthat rule needs the schema, so the annotation writer checks it. Nothing ever\nsorts, deduplicates or truncates the list: two keypoints may share a pixel.\n\nCoordinates are finite. ``visibility`` is the polyline's optional\n:class:`VertexVisibility` field under the same validator, one state per\npoint, so an unlabeled keypoint keeps its slot and says so with ``0``.",
+        "properties": {
+          "points": {
+            "items": {
+              "maxItems": 2,
+              "minItems": 2,
+              "prefixItems": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "number"
+                }
+              ],
+              "type": "array"
+            },
+            "minItems": 1,
+            "title": "Points",
+            "type": "array"
+          },
+          "type": {
+            "const": "keypoints",
+            "default": "keypoints",
+            "title": "Type",
+            "type": "string"
+          },
+          "visibility": {
+            "items": {
+              "$ref": "#/components/schemas/VertexVisibility"
+            },
+            "title": "Visibility",
+            "type": "array"
+          }
+        },
+        "required": [
+          "points"
+        ],
+        "title": "KeypointsGeometry",
+        "type": "object"
+      },
       "LabelClassBody": {
         "additionalProperties": false,
         "description": "One labelable class, and the geometries an annotation of it may carry.",
@@ -4662,6 +4844,16 @@
             "minItems": 1,
             "title": "Geometries",
             "type": "array"
+          },
+          "keypoints": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/KeypointSpecBody"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "name": {
             "title": "Name",
@@ -5921,6 +6113,7 @@
                 "bbox": "#/components/schemas/BboxBody",
                 "classification_tag": "#/components/schemas/ClassificationBody",
                 "cuboid_3d": "#/components/schemas/Cuboid3DBody",
+                "keypoints": "#/components/schemas/KeypointsBody",
                 "mask": "#/components/schemas/MaskBody",
                 "obb": "#/components/schemas/ObbBody",
                 "polygon": "#/components/schemas/PolygonBody",
@@ -5941,6 +6134,9 @@
               },
               {
                 "$ref": "#/components/schemas/PolylineBody"
+              },
+              {
+                "$ref": "#/components/schemas/KeypointsBody"
               },
               {
                 "$ref": "#/components/schemas/Polyline3DBody"
@@ -7845,6 +8041,7 @@
                 "bbox": "#/components/schemas/BboxGeometry",
                 "classification_tag": "#/components/schemas/ClassificationGeometry",
                 "cuboid_3d": "#/components/schemas/Cuboid3DGeometry",
+                "keypoints": "#/components/schemas/KeypointsGeometry",
                 "mask": "#/components/schemas/MaskGeometry",
                 "obb": "#/components/schemas/ObbGeometry",
                 "polygon": "#/components/schemas/PolygonGeometry",
@@ -7865,6 +8062,9 @@
               },
               {
                 "$ref": "#/components/schemas/PolylineGeometry"
+              },
+              {
+                "$ref": "#/components/schemas/KeypointsGeometry"
               },
               {
                 "$ref": "#/components/schemas/Polyline3DGeometry"
@@ -13334,7 +13534,7 @@
         ]
       },
       "patch": {
-        "description": "Replace stored annotations whole, judged against the same pinned version.\n\nAddressed by `id` and by nothing else \u2014 annotations are never reached by\nindex or position. There is no `asset_id` on the body because the stored one\nwins: moving a label from one asset to another is a delete and an add, not an\nedit, and doing it silently would take an asset's last annotation away\nwithout anything saying so. Who made a label is kept the same way: a\n`provenance` other than the stored one is 422 `INVALID_ANNOTATION`, and\n`model_ref` and `confidence` are taken from the stored annotation. An edit\nchanges what a label says, never who made it.\n\nAll-or-nothing, and `detail.index` names the culprit, exactly as on the POST.\nAn asset whose labeling is over is 409 `ASSET_NOT_WRITABLE`, as on the POST,\nand so are the two gates around it: a batch that is not open for annotation\nis 409 `BATCH_NOT_IN_ANNOTATION` and a job that was completed is 409\n`JOB_FINISHED`. An annotation a track observes keeps the track's class: an\nedit to any other class is 409 `TRACK_CLASS_MISMATCH`, so change the track's\nclass instead, and its geometry type: an edit to another is 409\n`TRACK_GEOMETRY_MISMATCH`. An edit is a write, and every gate that stops a new label\nstops a replacement too \u2014 including 409 `CALIBRATION_MISSING` and 422\n`CALIBRATION_RESOLUTION_MISMATCH` for a 3D label, and on a scan 409\n`CALIBRATION_MISSING` for a source declaring no frame and 422\n`INVALID_ANNOTATION` for a `bbox`, `obb`, `polygon`, `polyline` or `mask`.",
+        "description": "Replace stored annotations whole, judged against the same pinned version.\n\nAddressed by `id` and by nothing else \u2014 annotations are never reached by\nindex or position. There is no `asset_id` on the body because the stored one\nwins: moving a label from one asset to another is a delete and an add, not an\nedit, and doing it silently would take an asset's last annotation away\nwithout anything saying so. Who made a label is kept the same way: a\n`provenance` other than the stored one is 422 `INVALID_ANNOTATION`, and\n`model_ref` and `confidence` are taken from the stored annotation. An edit\nchanges what a label says, never who made it.\n\nAll-or-nothing, and `detail.index` names the culprit, exactly as on the POST.\nAn asset whose labeling is over is 409 `ASSET_NOT_WRITABLE`, as on the POST,\nand so are the two gates around it: a batch that is not open for annotation\nis 409 `BATCH_NOT_IN_ANNOTATION` and a job that was completed is 409\n`JOB_FINISHED`. An annotation a track observes keeps the track's class: an\nedit to any other class is 409 `TRACK_CLASS_MISMATCH`, so change the track's\nclass instead, and its geometry type: an edit to another is 409\n`TRACK_GEOMETRY_MISMATCH`. An edit is a write, and every gate that stops a new label\nstops a replacement too \u2014 including 409 `CALIBRATION_MISSING` and 422\n`CALIBRATION_RESOLUTION_MISMATCH` for a 3D label, and on a scan 409\n`CALIBRATION_MISSING` for a source declaring no frame and 422\n`INVALID_ANNOTATION` for a `bbox`, `obb`, `polygon`, `polyline`, `keypoints`\nor `mask`.",
         "operationId": "update_annotations",
         "parameters": [
           {
@@ -13445,7 +13645,7 @@
         ]
       },
       "post": {
-        "description": "Store annotations, judged against the version this job's batch pinned.\n\nAll-or-nothing: every annotation is validated before any of them is written,\nso a payload with one bad box stores nothing at all. A half-labeled asset is\nnot a state a client can reach.\n\nA refusal that is about one item carries `detail.index` \u2014 the position in the\narray you sent \u2014 because nothing was written and the message alone cannot say\nwhich one it was. `schema_version` is not yours to set: the pinned version is\nstamped onto whatever you send, and comes back on the response.\n\nAn unknown job is 404 `JOB_NOT_FOUND`. The batch must be `in_annotation`, or\nthis is 409 `BATCH_NOT_IN_ANNOTATION`, and the job itself must still be open:\none that was completed is 409 `JOB_FINISHED`, and a completed job has no way\nback, so the remedy is a new job over those assets rather than a retry. An\nasset the job does not carry is 422 `ASSET_NOT_IN_JOB`.\n\nAn annotation the pinned version does not describe is 422\n`INVALID_ANNOTATION`, which is the general answer; the specific ones carry\ntheir own codes \u2014 `LABEL_CLASS_NOT_IN_SCHEMA`, `DISALLOWED_GEOMETRY`,\n`MISSING_REQUIRED_ATTRIBUTE` and their kin \u2014 so a client that wants to say\nwhat is wrong reads the code rather than the status.\n\nThe asset must also still be open for labeling \u2014 `unannotated` or\n`annotated`. One that was skipped, submitted for review or accepted is 409\n`ASSET_NOT_WRITABLE`, and the message names the state it is in. The remedy is\na progress move where the table allows one (`skipped` back to `unannotated`);\n`accepted` has no exit, so correcting it means a new batch. Read\n`allowed_actions` on the batch's asset listing rather than guessing: it\ndeclares `annotate` exactly when this will be accepted.\n\nA 3D label (`polyline_3d`, `cuboid_3d`) on an image is read against its\nasset's calibration \u2014 the asset's own, else its source's. With neither this\nis 409 `CALIBRATION_MISSING`, and with one measured at another size than the\nasset it is 422 `CALIBRATION_RESOLUTION_MISMATCH`; set a fitting calibration\nand resend.\n\nOn a point-cloud scan a 3D label is read against the frame its source\ndeclares and needs no calibration; a source declaring no frame is 409\n`CALIBRATION_MISSING`. A scan has no pixels, so a `bbox`, `obb`, `polygon`,\n`polyline` or `mask` on one is 422 `INVALID_ANNOTATION`.\n\nA `mask` whose `size` is not the asset's `[height, width]` is 422\n`ANNOTATION_GEOMETRY_OUT_OF_BOUNDS`.",
+        "description": "Store annotations, judged against the version this job's batch pinned.\n\nAll-or-nothing: every annotation is validated before any of them is written,\nso a payload with one bad box stores nothing at all. A half-labeled asset is\nnot a state a client can reach.\n\nA refusal that is about one item carries `detail.index` \u2014 the position in the\narray you sent \u2014 because nothing was written and the message alone cannot say\nwhich one it was. `schema_version` is not yours to set: the pinned version is\nstamped onto whatever you send, and comes back on the response.\n\nAn unknown job is 404 `JOB_NOT_FOUND`. The batch must be `in_annotation`, or\nthis is 409 `BATCH_NOT_IN_ANNOTATION`, and the job itself must still be open:\none that was completed is 409 `JOB_FINISHED`, and a completed job has no way\nback, so the remedy is a new job over those assets rather than a retry. An\nasset the job does not carry is 422 `ASSET_NOT_IN_JOB`.\n\nAn annotation the pinned version does not describe is 422\n`INVALID_ANNOTATION`, which is the general answer; the specific ones carry\ntheir own codes \u2014 `LABEL_CLASS_NOT_IN_SCHEMA`, `DISALLOWED_GEOMETRY`,\n`MISSING_REQUIRED_ATTRIBUTE` and their kin \u2014 so a client that wants to say\nwhat is wrong reads the code rather than the status.\n\nThe asset must also still be open for labeling \u2014 `unannotated` or\n`annotated`. One that was skipped, submitted for review or accepted is 409\n`ASSET_NOT_WRITABLE`, and the message names the state it is in. The remedy is\na progress move where the table allows one (`skipped` back to `unannotated`);\n`accepted` has no exit, so correcting it means a new batch. Read\n`allowed_actions` on the batch's asset listing rather than guessing: it\ndeclares `annotate` exactly when this will be accepted.\n\nA 3D label (`polyline_3d`, `cuboid_3d`) on an image is read against its\nasset's calibration \u2014 the asset's own, else its source's. With neither this\nis 409 `CALIBRATION_MISSING`, and with one measured at another size than the\nasset it is 422 `CALIBRATION_RESOLUTION_MISMATCH`; set a fitting calibration\nand resend.\n\nOn a point-cloud scan a 3D label is read against the frame its source\ndeclares and needs no calibration; a source declaring no frame is 409\n`CALIBRATION_MISSING`. A scan has no pixels, so a `bbox`, `obb`, `polygon`,\n`polyline`, `keypoints` or `mask` on one is 422 `INVALID_ANNOTATION`.\n\nA `mask` whose `size` is not the asset's `[height, width]` is 422\n`ANNOTATION_GEOMETRY_OUT_OF_BOUNDS`. A `keypoints` of a class whose keypoint\nspec names another number of points is 422 `KEYPOINT_COUNT_MISMATCH`.",
         "operationId": "add_annotations",
         "parameters": [
           {

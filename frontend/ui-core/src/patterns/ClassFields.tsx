@@ -27,7 +27,8 @@ import { refusalProse } from "../data/refusals";
 import { Badge, Button, Collapsible, CollapsibleContent, CollapsibleTrigger, FieldDescription, Input, InputGroup, InputGroupAddon, InputGroupInput, Kbd, Label, Popover, PopoverContent, PopoverTrigger, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, Switch, ToggleGroup, ToggleGroupItem, cn } from "@robomous/ui-core";
 import type { AttributeBody, GeometryType, LabelClassBody, OfferedGeometries } from "../screens/queries";
 import { ErrorState } from "./AsyncStates";
-import { CLASS_PALETTE, describeGeometries, hexOf, swatchOf } from "./classFieldsRules";
+import { CLASS_PALETTE, describeGeometries, hexOf, swatchOf, withGeometries } from "./classFieldsRules";
+import { KeypointSpecFields } from "./KeypointSpec";
 import { PropertyRow } from "./PropertyRow";
 import { ShapeGlyph } from "./ShapeGlyph";
 
@@ -142,6 +143,8 @@ function StackedFields({
           <OfferFailure offered={offered} slot={slot} />
         </fieldset>
       </div>
+
+      <KeypointSpecFields declared={declared} slot={slot} layout="stacked" />
 
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-2">
@@ -398,7 +401,7 @@ function GeometryGroup({
         // Kept in the order they were first ticked, as the stored set always was.
         const next = [...elsewhere, ...(picked as GeometryType[])];
         if (next.length === 0) return;
-        onChange({ ...declared, geometries: next });
+        onChange(withGeometries(declared, next));
       }}
     >
       {geometries.map((geometry) => {
@@ -522,7 +525,7 @@ function InspectorFields({
                 const kept = declared.geometries.filter((one) => chosen.has(one));
                 const held = new Set(kept);
                 const added = (picked as GeometryType[]).filter((one) => !held.has(one));
-                onChange({ ...declared, geometries: [...kept, ...added] });
+                onChange(withGeometries(declared, [...kept, ...added]));
               }}
               data-testid={`class-geometry-${slot}`}
               // 8px outside, 5px inside a 3px gutter: the corners share a centre.
@@ -556,6 +559,7 @@ function InspectorFields({
             <OfferFailure offered={offered} slot={slot} />
           </span>
         </PropertyRow>
+        <KeypointSpecFields declared={declared} slot={slot} layout="rows" />
         {note !== undefined && (
           <PropertyRow label="In use" align="start">
             <span className="block pt-1.5 text-pretty text-muted-foreground">{note}</span>
@@ -924,6 +928,7 @@ export function ClassReadout({ declared, index }: { readonly declared: LabelClas
             ))}
           </span>
         </PropertyRow>
+        <KeypointSpecFields declared={declared} slot={`past-${index}`} layout="rows" />
       </div>
       <section className="flex flex-col border-t">
         <h3 className="flex min-h-11 items-center px-4 pt-1 font-medium">

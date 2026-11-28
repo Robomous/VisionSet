@@ -172,9 +172,7 @@ export function groupGeometries(
  * source and one transform rather than two lists free to drift apart again.
  *
  * Total over the union by `satisfies`, exactly as `GEOMETRY_CATEGORY` above, so a
- * ninth member fails the build until somebody names it. The four with no
- * implementation are named too: a schema may legally declare `mask`, and the
- * surface that has to refuse it should refuse it in words.
+ * tenth member fails the build until somebody names it.
  */
 export const GEOMETRY_LABELS = {
   bbox: "box",

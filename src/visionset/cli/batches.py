@@ -94,8 +94,7 @@ GeometryOption = Annotated[
         "--geometry",
         help="Write only this shape of what the model answers; repeat for several. Omit for "
         "every shape the model produces. A shape the model does not produce is refused. "
-        f"Only {', '.join(sorted(g.value for g in IMPLEMENTED_GEOMETRIES))} exist today; "
-        "the other values name planned shapes.",
+        f"Implemented: {', '.join(sorted(g.value for g in IMPLEMENTED_GEOMETRIES))}.",
     ),
 ]
 """Which of the model's shapes a pre-label run writes. Shared by both launches.

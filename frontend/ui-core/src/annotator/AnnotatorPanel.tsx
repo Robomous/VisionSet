@@ -72,7 +72,6 @@
 import {
   annotationsInDrawOrder,
   classNamed,
-  drawableGeometries,
   hotkeyForClass,
   isTagAnnotation,
   isTaggableClass,
@@ -87,6 +86,7 @@ import {
   type AnnotationSchema,
   type AnnotatorStore,
   type AttributeValue,
+  type KeypointLabel,
   type LabelClass,
   type ScanAnnotation,
   type ScanDocument,
@@ -104,6 +104,7 @@ import { missingRequired, rowSummary, withAttribute } from "./attributes";
 import { ClassRegion } from "./ClassRegion";
 import { keepCanvasFocus } from "./keepCanvasFocus";
 import { ReassignMenu, type ClassLock } from "./ReassignMenu";
+import { KEYPOINTS_READ_ONLY, listedInPanel } from "./toolChoices";
 import { VertexRegion } from "./VertexRegion";
 import type { WireAnnotation } from "./jobQueries";
 
@@ -156,6 +157,11 @@ export interface AnnotatorPanelProps {
    */
   readonly labels3D?: readonly WireAnnotation[];
   /**
+   * The frame's keypoints, which the document does not hold: listed, counted and
+   * hidden through `hiddenIds`, never selected or edited.
+   */
+  readonly keypoints?: readonly KeypointLabel[];
+  /**
    * A scan's cuboids and polylines, from the scan editor's store: a row selects its label, and
    * deletes it through the same command log as the keyboard, unless `readOnly`
    * or the scan cannot be edited.
@@ -189,6 +195,7 @@ export interface TrackMark {
 
 const NO_TRACK_MARKS: ReadonlyMap<string, TrackMark> = new Map();
 const NO_CLASS_LOCKS: ReadonlyMap<string, ClassLock> = new Map();
+const NO_KEYPOINTS: readonly KeypointLabel[] = [];
 
 export function AnnotatorPanel({
   store,
@@ -202,6 +209,7 @@ export function AnnotatorPanel({
   classFilterRef,
   onAddClass,
   labels3D = [],
+  keypoints = NO_KEYPOINTS,
   scan = null,
   layout = "card",
   onReturnFocus,
@@ -229,7 +237,7 @@ export function AnnotatorPanel({
   const drawableClasses =
     snapshot.document.asset.modality === "point_cloud"
       ? []
-      : schema.classes.filter((declared) => drawableGeometries(declared).length > 0);
+      : schema.classes.filter(listedInPanel);
 
   const query = filter.trim().toLowerCase();
   // Numbered by **draw order**, never by position in the filtered list: the number
@@ -246,7 +254,10 @@ export function AnnotatorPanel({
   const rows3D = labels3D
     .map((label, index) => ({ label, index: drawn.length + cuboids.length + index }))
     .filter((row) => row.label.label_class.toLowerCase().includes(query));
-  const total = drawn.length + cuboids.length + labels3D.length;
+  const keypointRows = keypoints
+    .map((label, index) => ({ label, index: drawn.length + cuboids.length + labels3D.length + index }))
+    .filter((row) => row.label.labelClass.toLowerCase().includes(query));
+  const total = drawn.length + cuboids.length + labels3D.length + keypoints.length;
 
   const lane =
     snapshot.selection.size === 1
@@ -384,7 +395,7 @@ export function AnnotatorPanel({
       />
 
       <div className="vs-scroll-fade-y min-h-0 flex-1 overflow-y-auto" data-testid="objects-scroller">
-        {rows.length + cuboidRows.length + rows3D.length === 0 ? (
+        {rows.length + cuboidRows.length + rows3D.length + keypointRows.length === 0 ? (
           <p
             className="px-1 py-4 text-center text-xs text-muted-foreground"
             data-testid="objects-empty"
@@ -449,6 +460,16 @@ export function AnnotatorPanel({
                   <span className="text-muted-foreground">· {geometryLabel3D(label.geometry)}</span>
                 </span>
               </li>
+            ))}
+            {keypointRows.map(({ label, index }) => (
+              <KeypointRow
+                key={label.id}
+                label={label}
+                index={index}
+                color={classColor(classNamed(snapshot.document, label.labelClass), label.labelClass)}
+                hidden={hiddenIds.has(label.id)}
+                onToggleVisible={() => toggleHidden(label.id)}
+              />
             ))}
           </ul>
         )}
@@ -826,12 +847,15 @@ function RowActions({
   hidden,
   onToggleVisible,
   onRemove,
+  deletable = true,
 }: {
   readonly index: number;
   readonly selected: boolean;
   readonly hidden: boolean;
   readonly onToggleVisible: () => void;
   readonly onRemove?: () => void;
+  /** `false` for a label nothing here can delete, which then has no delete button at all. */
+  readonly deletable?: boolean;
 }): JSX.Element {
   const number = index + 1;
   const reveal = cn(
@@ -851,17 +875,19 @@ function RowActions({
       >
         {hidden ? <EyeOff className="size-3.5" /> : <Eye className="size-3.5" />}
       </Button>
-      <Button
-        variant="ghost"
-        size="icon-xs"
-        aria-label={`Delete object ${number}`}
-        className={cn("relative", reveal)}
-        data-testid={`object-delete-${index}`}
-        onClick={onRemove}
-        disabled={onRemove === undefined}
-      >
-        <Trash2 className="size-3.5" />
-      </Button>
+      {deletable && (
+        <Button
+          variant="ghost"
+          size="icon-xs"
+          aria-label={`Delete object ${number}`}
+          className={cn("relative", reveal)}
+          data-testid={`object-delete-${index}`}
+          onClick={onRemove}
+          disabled={onRemove === undefined}
+        >
+          <Trash2 className="size-3.5" />
+        </Button>
+      )}
     </>
   );
 }
@@ -919,6 +945,51 @@ function CuboidRow({
       >
         <Trash2 className="size-3.5" />
       </Button>
+    </li>
+  );
+}
+
+/** One keypoints label: listed and hideable, never selected or edited, with the tool strip's reason on hover. */
+function KeypointRow({
+  label,
+  index,
+  color,
+  hidden,
+  onToggleVisible,
+}: {
+  readonly label: KeypointLabel;
+  readonly index: number;
+  readonly color: string;
+  readonly hidden: boolean;
+  readonly onToggleVisible: () => void;
+}): JSX.Element {
+  const number = index + 1;
+  return (
+    <li
+      data-testid={`object-row-${index}`}
+      data-hidden={hidden ? "true" : "false"}
+      data-read-only="true"
+      className={cn(
+        "group flex h-8 items-center gap-1 rounded-md border border-transparent pr-1 pl-px hover:bg-muted",
+        hidden && "opacity-50",
+      )}
+    >
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <span
+            data-testid={`object-read-only-${index}`}
+            className="flex h-6 min-w-0 items-center gap-1.5 px-1.5 text-sm"
+          >
+            <span aria-hidden="true" className="size-2.5 shrink-0 rounded-sm" style={{ background: color }} />
+            <span className="truncate">{label.labelClass}</span>
+            <span className="truncate text-xs text-muted-foreground">{geometryLabel("keypoints")}</span>
+            <span className="sr-only">{KEYPOINTS_READ_ONLY}</span>
+          </span>
+        </TooltipTrigger>
+        <TooltipContent side="left">{KEYPOINTS_READ_ONLY}</TooltipContent>
+      </Tooltip>
+      <span className="ml-auto shrink-0 pr-1 text-xs text-muted-foreground tabular-nums">#{number}</span>
+      <RowActions index={index} selected={false} hidden={hidden} onToggleVisible={onToggleVisible} deletable={false} />
     </li>
   );
 }

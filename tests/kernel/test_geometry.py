@@ -12,6 +12,7 @@ from visionset.kernel.domain import (
     Cuboid3DGeometry,
     Geometry,
     GeometryType,
+    KeypointsGeometry,
     LabelClass,
     MaskGeometry,
     ObbGeometry,
@@ -32,6 +33,7 @@ VARIANTS = [
     Polyline3DGeometry(points=[(-1.5, 1.2, 8.0), (-1.4, 1.2, 20.0)]),
     Cuboid3DGeometry(center=(-1.5, 0.8, 12.0), size=(4.2, 1.8, 1.5), yaw=0.3),
     MaskGeometry(size=(2, 3), counts="131N"),
+    KeypointsGeometry(points=[(4.0, 4.0), (6.0, 2.0)]),
     ClassificationGeometry(),
 ]
 
@@ -257,10 +259,9 @@ def test_the_domain_does_not_impose_one_format_s_ordering_rule() -> None:
     assert PolylineGeometry(points=descending).points[0] == (0.0, 90.0)
 
 
-def test_unimplemented_and_unknown_geometry_tags_are_rejected() -> None:
-    for tag in ["keypoints", "hexagon"]:
-        with pytest.raises(ValidationError, match="union_tag_invalid"):
-            geometry_adapter.validate_python({"type": tag})
+def test_an_unknown_geometry_tag_is_rejected() -> None:
+    with pytest.raises(ValidationError, match="union_tag_invalid"):
+        geometry_adapter.validate_python({"type": "hexagon"})
 
 
 def test_variants_reject_fields_belonging_to_another_variant() -> None:
@@ -317,10 +318,10 @@ def test_implemented_geometries_names_exactly_the_variants_of_the_union() -> Non
         GeometryType.POLYLINE_3D,
         GeometryType.CUBOID_3D,
         GeometryType.MASK,
+        GeometryType.KEYPOINTS,
         GeometryType.CLASSIFICATION_TAG,
     }
-    assert IMPLEMENTED_GEOMETRIES == from_the_union == expected
-    assert set(GeometryType) > IMPLEMENTED_GEOMETRIES  # the rest is roadmap
+    assert IMPLEMENTED_GEOMETRIES == from_the_union == expected == set(GeometryType)
 
 
 def test_geometry_intersects_asset_skips_an_unmeasured_frame() -> None:

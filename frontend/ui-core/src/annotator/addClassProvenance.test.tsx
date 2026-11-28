@@ -41,7 +41,16 @@ const ASSET = "44444444-4444-4444-8444-444444444444";
 const SCHEMA = {
   project_id: PROJECT,
   version: 1,
-  classes: [{ name: "sign", geometries: ["bbox"], color: null, attributes: [] }],
+  classes: [
+    { name: "sign", geometries: ["bbox"], color: null, attributes: [], keypoints: null },
+    {
+      name: "face",
+      geometries: ["keypoints"],
+      color: null,
+      attributes: [],
+      keypoints: { names: ["left_eye", "right_eye"], skeleton: [[0, 1]] },
+    },
+  ],
   description: null,
   created_at: null,
   provenance: "curated",
@@ -315,8 +324,23 @@ it("publishes a whole session as one version, in the order they were written", a
   expect(flush).toBeDefined();
   const body = JSON.parse(flush!.body) as { classes: { name: string }[]; note: string };
   // Composed on the **active** version's classes, then the session's, in order.
-  expect(body.classes.map((entry) => entry.name)).toEqual(["sign", "cone", "barrier"]);
+  expect(body.classes.map((entry) => entry.name)).toEqual(["sign", "face", "cone", "barrier"]);
   expect(body.note).toBe('Added classes "cone" and "barrier" from the annotation view');
+});
+
+it("carries an existing class's keypoint spec into the version it publishes", async () => {
+  renderWithData(mount(<AnnotationPage jobId={JOB} />));
+
+  await userEvent.click(await screen.findByTestId("class-add"));
+  await userEvent.type(await screen.findByTestId("class-name-new"), "cone");
+  await userEvent.click(screen.getByTestId("add-class-submit"));
+
+  await waitFor(() =>
+    expect(posted.some((request) => request.path.endsWith("/schema/drafts/annotation/publish"))).toBe(true),
+  );
+  const flush = draftWrites[draftWrites.length - 1];
+  const body = JSON.parse(flush!.body) as { classes: { name: string; keypoints?: unknown }[] };
+  expect(body.classes.find((entry) => entry.name === "face")?.keypoints).toEqual(SCHEMA.classes[1].keypoints);
 });
 
 /**
@@ -357,7 +381,7 @@ it("offers the server's geometries in the add-a-class dialog", async () => {
 
   expect(await screen.findByTestId("class-geometry-new-cuboid_3d")).toHaveProperty("disabled", false);
   expect(await screen.findByTestId("class-geometry-new-mask")).toHaveProperty("disabled", false);
-  expect(screen.queryByTestId("class-geometry-new-keypoints")).toBeNull();
+  expect(await screen.findByTestId("class-geometry-new-keypoints")).toHaveProperty("disabled", false);
 });
 
 /**

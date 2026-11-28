@@ -101,6 +101,43 @@ describe("what the dialog refuses before it asks", () => {
     );
   });
 
+  it("keeps the existing class's keypoint spec when it widens it", async () => {
+    const spec = { names: ["left_eye", "right_eye"], skeleton: [[0, 1]] };
+    const withFace = {
+      ...ACTIVE,
+      classes: [...ACTIVE.classes, { name: "face", geometries: ["keypoints"], color: null, attributes: [], keypoints: spec }],
+    } as unknown as SchemaVersion;
+    const onSubmit = vi.fn();
+    render(mount({ active: withFace, onSubmit }));
+
+    await userEvent.type(screen.getByTestId("class-name-new"), "face");
+    await userEvent.click(screen.getByTestId("class-geometry-new-polygon"));
+    await userEvent.click(screen.getByTestId("class-geometry-new-bbox"));
+    await userEvent.click(screen.getByTestId("add-class-submit"));
+
+    expect(onSubmit).toHaveBeenCalledWith(
+      [{ name: "face", geometries: ["keypoints", "polygon"], color: null, attributes: [], keypoints: spec }],
+      expect.anything(),
+    );
+  });
+
+  it("refuses to publish a resumed draft whose keypoint spec would not publish, and says why", async () => {
+    const face = { name: "face", geometries: ["keypoints"], color: null, attributes: [], keypoints: { names: ["nose", "tail"], skeleton: [[0, 2]] } };
+    const serverDraft = { project_id: ACTIVE.project_id, kind: "annotation", classes: [face], note: "", based_on: 3, revision: 1, updated_at: "2024-01-01T00:00:00Z" };
+    render(mount({ serverDraft: serverDraft as unknown as Parameters<typeof AddClassDialog>[0]["serverDraft"] }));
+
+    expect((await screen.findByTestId("add-class-keypoint-spec-error")).textContent).toContain(
+      "“face”: Skeleton edge (0, 2) points past the 2 named keypoints.",
+    );
+    expect(screen.getByTestId("add-class-submit")).toHaveProperty("disabled", true);
+
+    await userEvent.click(screen.getByRole("button", { name: "Remove face" }));
+    await userEvent.type(screen.getByTestId("class-name-new"), "crossing");
+
+    expect(screen.queryByTestId("add-class-keypoint-spec-error")).toBeNull();
+    expect(screen.getByTestId("add-class-submit")).toHaveProperty("disabled", false);
+  });
+
   it("still refuses a name typed twice in one sitting, which has nothing to offer", async () => {
     // The other collision, and the one that stays a refusal: both entries are
     // being written now, so merging them would be guessing which was meant.
@@ -197,7 +234,7 @@ describe("what it submits", () => {
         (option) => option.textContent ?? "",
       );
 
-    expect(membersOf(basic)).toEqual(["box", "rotated box", "polygon", "mask", "tag"]);
+    expect(membersOf(basic)).toEqual(["box", "rotated box", "polygon", "mask", "keypoints", "tag"]);
     expect(membersOf(robotics)).toEqual(["polyline", "3D box", "3D polyline"]);
   });
 

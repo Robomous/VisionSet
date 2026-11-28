@@ -9,17 +9,21 @@ import {
   hotkeyForClass,
   type AnnotationSchema,
   type GeometryType,
+  type LabelClass,
   type Tool,
 } from "@visionset/annotator";
 
 import { geometryLabel } from "../data/geometryCategory";
 
+/** Why a keypoints label is listed but cannot be drawn, selected or edited. */
+export const KEYPOINTS_READ_ONLY =
+  "Keypoints can't be drawn or edited here yet; stored keypoints are shown as they are.";
+
 /**
  * Why a declared geometry has no tool yet, keyed by the geometry.
  *
- * Holds `mask`: a schema may declare it and stored masks are carried, but nothing
- * here draws or edits one. The day `keypoints` is declared in a schema, an entry
- * here is what makes the strip say so without anyone remembering that it should.
+ * Holds `mask` and `keypoints`: a schema may declare either and stored ones are
+ * carried — keypoints drawn read-only — but nothing here draws or edits one.
  *
  * The record is typed on `string` rather than on the geometry union so an entry
  * can name a geometry `drawableGeometries` never returns, which is the case it
@@ -27,7 +31,18 @@ import { geometryLabel } from "../data/geometryCategory";
  */
 const PENDING_TOOLS: Readonly<Record<string, string>> = {
   mask: "Masks can't be drawn or edited here yet; stored masks are kept as they are.",
+  keypoints: KEYPOINTS_READ_ONLY,
 };
+
+/**
+ * Why a class whose stored labels are shown read-only cannot be drawn with, or
+ * `null` when it can be drawn with or has nothing shown. A keypoints class with
+ * no drawable geometry is such a class; the reason is the strip's own.
+ */
+export function readOnlyClassReason(declared: LabelClass): string | null {
+  if (drawableGeometries(declared).length > 0) return null;
+  return declared.geometries.includes("keypoints") ? KEYPOINTS_READ_ONLY : null;
+}
 
 /**
  * What each drawing tool is called on the strip.
@@ -137,4 +152,9 @@ export function accepts(
 ): boolean {
   const declared = schema.classes.find((one) => one.name === activeClass);
   return declared !== undefined && drawableGeometries(declared).some((one) => one === tool);
+}
+
+/** Whether the panel's class list carries this class: drawable, or shown read-only. */
+export function listedInPanel(declared: LabelClass): boolean {
+  return drawableGeometries(declared).length > 0 || readOnlyClassReason(declared) !== null;
 }

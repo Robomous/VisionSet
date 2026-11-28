@@ -24,10 +24,11 @@
  *    half-drawn shape is allowed to be belongs to the document model, not to the
  *    parser of stored annotations.
  *
- * 3. **A declared-but-unimplemented geometry gets its own message.** `keypoints` is a
- *    real `GeometryType` with no model, not a typo, and the refusal says so —
+ * 3. **A declared-but-unimplemented geometry gets its own message.** A real
+ *    `GeometryType` with no model is not a typo, and the refusal says so —
  *    because someone reading it needs to know the answer is "not yet" rather than
- *    "you misspelled it". One name still has no model.
+ *    "you misspelled it". Every name has a model today; the guard stays for the
+ *    next one the kernel declares before it implements it.
  *
  * The schema and the asset bring a fourth rule:
  *
@@ -79,6 +80,8 @@ import {
   type Calibration,
   type Cuboid3DGeometry,
   type Geometry,
+  type KeypointSpec,
+  type KeypointsGeometry,
   type LabelClass,
   type MaskGeometry,
   type Point,
@@ -175,6 +178,7 @@ const POLYLINE_KEYS = ["type", "points"] as const;
 const POLYLINE_OPTIONAL_KEYS = ["visibility"] as const;
 const VERTEX_VISIBILITIES: readonly number[] = Object.values(VERTEX_VISIBILITY);
 const MASK_KEYS = ["type", "size", "counts"] as const;
+const KEYPOINT_SPEC_REQUIRED_KEYS = ["names"] as const;
 const CUBOID_KEYS = ["type", "center", "size", "yaw"] as const;
 const CLASSIFICATION_KEYS = ["type"] as const;
 
@@ -356,6 +360,12 @@ export function parseGeometry(value: unknown): Geometry {
       `geometry.type "mask" is carried untouched: this engine neither draws nor edits a raster mask`,
     );
   }
+  if (geometry.type === "keypoints") {
+    throw new WireFormatError(
+      `geometry.type "keypoints" is carried untouched: keypointLabels draws it read-only, ` +
+        `and this engine does not edit it`,
+    );
+  }
   return geometry;
 }
 
@@ -433,6 +443,8 @@ export function parseStoredGeometry(value: unknown): StoredGeometry {
       return parseCuboid3D(value);
     case "mask":
       return parseMask(value);
+    case "keypoints":
+      return parseKeypoints(value);
     default:
       requireExactKeys(value, CLASSIFICATION_KEYS, "classification_tag geometry");
       return { type: "classification_tag" };
@@ -450,6 +462,21 @@ function parsePolyline3D(value: Record<string, unknown>): Polyline3DGeometry {
   );
   return {
     type: "polyline_3d",
+    points: parsed,
+    visibility:
+      "visibility" in value ? requireVisibility(value["visibility"], parsed.length) : undefined,
+  };
+}
+
+function parseKeypoints(value: Record<string, unknown>): KeypointsGeometry {
+  requireExactKeys(value, POLYLINE_KEYS, "keypoints geometry", POLYLINE_OPTIONAL_KEYS);
+  const points = value["points"];
+  if (!Array.isArray(points) || points.length === 0) {
+    throw new WireFormatError("geometry.points must be a non-empty array");
+  }
+  const parsed = points.map((point, index) => requirePoint(point, `geometry.points[${index}]`));
+  return {
+    type: "keypoints",
     points: parsed,
     visibility:
       "visibility" in value ? requireVisibility(value["visibility"], parsed.length) : undefined,
@@ -568,10 +595,9 @@ export function parseAttribute(value: unknown): Attribute {
 /**
  * One labelable class.
  *
- * Each member of `geometries` is validated against the **eight**, not the four:
- * declaring `mask` is legal in a schema and refused at the annotation. Narrowing
- * here would make a whole class list unloadable because of one class nobody was
- * going to draw with.
+ * Each member of `geometries` is validated against all nine, not the five the
+ * scene draws. Narrowing here would make a whole class list unloadable because of
+ * one class nobody was going to draw with.
  *
  * An empty list is refused. The kernel cannot produce one, so a class carrying
  * one is a document this does not understand — and every reader downstream
@@ -609,7 +635,46 @@ export function parseLabelClass(value: unknown): LabelClass {
         ? null
         : requireNullableString(value["color"], `class ${name} color`),
     attributes: attributes === undefined ? [] : attributes.map(parseAttribute),
+    keypoints:
+      value["keypoints"] === undefined || value["keypoints"] === null
+        ? null
+        : parseKeypointSpec(value["keypoints"], name),
   };
+}
+
+/**
+ * A class's keypoint spec: names in order and the edges between them. Shape only —
+ * blank or repeated names and dangling edges are the kernel's to refuse, and a
+ * renderer skips an edge whose endpoint an annotation does not carry.
+ */
+function parseKeypointSpec(value: unknown, className: string): KeypointSpec {
+  const what = `class ${className} keypoints`;
+  if (!isRecord(value)) {
+    throw new WireFormatError(`${what} must be an object or null`);
+  }
+  allowUndeclaredKeys(value, KEYPOINT_SPEC_REQUIRED_KEYS, what);
+  const skeleton = value["skeleton"];
+  if (skeleton !== undefined && !Array.isArray(skeleton)) {
+    throw new WireFormatError(`${what} skeleton must be an array`);
+  }
+  return {
+    names: requireStringArray(value["names"], `${what} names`),
+    skeleton: (skeleton ?? []).map((edge: unknown, index: number) => requireEdge(edge, `${what} skeleton[${index}]`)),
+  };
+}
+
+function requireEdge(value: unknown, what: string): readonly [number, number] {
+  if (!Array.isArray(value) || value.length !== 2) {
+    throw new WireFormatError(`${what} must be a pair of point indices`);
+  }
+  const index = (end: unknown, at: number): number => {
+    const parsed = requireNumber(end, `${what}[${at}]`);
+    if (!Number.isInteger(parsed) || parsed < 0) {
+      throw new WireFormatError(`${what}[${at}] must be a point index, a whole number from 0`);
+    }
+    return parsed;
+  };
+  return [index(value[0], 0), index(value[1], 1)];
 }
 
 /** One version of the labeling contract, classes in the order it declares them. */

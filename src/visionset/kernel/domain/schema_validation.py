@@ -4,11 +4,12 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 
-from visionset.kernel.domain.geometry import Geometry
+from visionset.kernel.domain.geometry import Geometry, KeypointsGeometry
 from visionset.kernel.domain.schema import AnnotationSchema, AttributeValue
 from visionset.kernel.errors import (
     DisallowedGeometry,
     InvalidAttributeValue,
+    KeypointCountMismatch,
     LabelClassNotInSchema,
     MissingRequiredAttribute,
     UnknownAttribute,
@@ -40,6 +41,18 @@ def validate_schema_annotation(
         raise DisallowedGeometry(
             f"class {declared_class.name!r} accepts {allowed} in schema version "
             f"{schema.version}, but this annotation carries a {geometry.type.value}"
+        )
+
+    spec = declared_class.keypoints
+    if (
+        isinstance(geometry, KeypointsGeometry)
+        and spec is not None
+        and len(geometry.points) != len(spec.names)
+    ):
+        raise KeypointCountMismatch(
+            f"class {declared_class.name!r} names {len(spec.names)} keypoints in schema version "
+            f"{schema.version} ({', '.join(spec.names)}), but this annotation carries "
+            f"{len(geometry.points)} points; send one point per keypoint, in that order"
         )
 
     declared_attributes = {attribute.name: attribute for attribute in declared_class.attributes}

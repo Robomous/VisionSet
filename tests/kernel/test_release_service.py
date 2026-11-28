@@ -77,6 +77,7 @@ from visionset.kernel.services import (
     ReleaseService,
     SchemaService,
     WorkspaceService,
+    release_service,
 )
 from visionset.kernel.services.release_service import _compatibility
 
@@ -1435,8 +1436,16 @@ def test_a_target_carrying_everything_the_format_writes_changes_nothing(tmp_path
     fixture.close()
 
 
-def test_a_declared_geometry_no_annotation_can_carry_is_never_a_row(tmp_path: Path) -> None:
+def test_a_declared_geometry_no_annotation_can_carry_is_never_a_row(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """A schema naming a roadmap geometry describes a trainer, not a loss."""
+    # Every GeometryType is implemented today; narrow the set to keep the rule tested.
+    monkeypatch.setattr(
+        release_service,
+        "IMPLEMENTED_GEOMETRIES",
+        frozenset(GeometryType) - {GeometryType.KEYPOINTS},
+    )
     fixture = Fixture(tmp_path)
     release, manifest = _mixed_manifest(fixture)
     widened = manifest.model_copy(

@@ -163,6 +163,29 @@ describe("the tools a schema can reach", () => {
     });
   });
 
+  it("gives a schema declaring keypoints a disabled keypoints choice with its reason", () => {
+    const withPose = {
+      ...SCHEMA,
+      classes: [...SCHEMA.classes, { name: "face", geometries: ["keypoints"], color: null, attributes: [] }],
+    } as typeof SCHEMA;
+    const onActivateClass = vi.fn();
+    render(mount({ schema: withPose, onActivateClass }));
+
+    expect(toolChoices(withPose).filter((choice) => choice.unavailable !== null)).toEqual([
+      {
+        tool: "keypoints",
+        label: "Keypoints",
+        labelClass: null,
+        hotkey: "—",
+        unavailable: "Keypoints can't be drawn or edited here yet; stored keypoints are shown as they are.",
+      },
+    ]);
+    const button = screen.getByTestId("tool-keypoints");
+    expect(button.getAttribute("aria-disabled")).toBe("true");
+    fireEvent.click(button);
+    expect(onActivateClass).not.toHaveBeenCalled();
+  });
+
   it("names each geometry's first declaring class, in authored order", () => {
     // The activated class is what makes the tool derive; `pedestrian` declaring
     // bbox second must not be what the box button reaches for, because the digit

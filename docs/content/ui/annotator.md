@@ -226,7 +226,7 @@ on screen at once. On a frame of a sequence source a fourth, Tracks, sits under 
 question about the sequence rather than the frame, *what follows this object from frame to frame*.
 
 **A region with nothing to show is not rendered**, and its divider goes with it: no class
-anything can be drawn with, or no class declaring a tag. A heading over an empty box is a
+anything can be drawn with and no keypoints class, or no class declaring a tag. A heading over an empty box is a
 claim that something is missing. Annotations is the exception and always renders — an empty
 frame is the normal state of a fresh one, and it says so in words.
 
@@ -234,9 +234,12 @@ frame is the normal state of a fresh one, and it says so in words.
 opening the add-a-class dialog; then a `Filter classes…` input; then the rows described
 above. Its height is **content-driven and stated in rows**: a floor of 3 rows' worth, one
 row per class after that, a ceiling of 8, after which the region is fixed and the list
-scrolls inside it. The count it is computed from is the **schema's drawable classes**,
-never the filtered ones — a height that tracked the filter would reflow the region below it
-on every keystroke. The header and the filter are not rows and do not scroll away.
+scrolls inside it. The count it is computed from is the **schema's listed classes** — the
+drawable ones and any keypoints class — never the filtered ones — a height that tracked the filter would reflow the region below it
+on every keystroke. The header and the filter are not rows and do not scroll away. A
+keypoints class nothing can draw is listed and counted as a disabled row reading `keypoints`;
+hovering it shows the Keypoints tool's reason, it has no hotkey chip, and a filter's Enter
+skips it.
 
 **Tags (middle).** Rendered only when the pinned schema declares a `classification_tag`
 class. Header — the word `Tags` and the assigned count — then one line of meta prose,
@@ -264,7 +267,10 @@ the class name at the class rows' size, then a muted, truncating summary of the 
 values (a select's, number's or string's value; a boolean by its name when it is true; the
 shape's name too, where the class accepts more than one geometry and so the class alone does
 not tell two rows apart), then a small warning dot when a required attribute has no value,
-then the model mark, and the object's number at the end. Selected = accent border + tint,
+then the model mark, and the object's number at the end. A keypoints label is listed after
+the drawn shapes, numbered and counted with them, as `[swatch class keypoints] … #N [eye]`: it
+cannot be selected or deleted, hovering it shows the Keypoints tool's reason, and its eye hides
+it from the canvas like any other row. Selected = accent border + tint,
 hidden = 50% opacity. The whole row is the select target; the class name, the mark and the
 two icons sit on it as controls of their own. Selecting from a row does not take keyboard focus:
 the press leaves focus where it was, and if it was outside the canvas it moves to the canvas,
@@ -498,7 +504,14 @@ allow — and, **with a class selected, only that class's own**: offering a poly
 under a boxes-only class would answer *what can I draw here* with a lie. With no class
 selected it is the schema's union. A `mask` class can be declared, and the strip lists a disabled
 Mask button carrying the reason, because the annotator has no tool to draw or edit one; stored masks
-are kept as they are. Switching to a class that forbids the active tool never
+are kept as they are. A `keypoints` class gets a disabled Keypoints button likewise: the annotator
+draws its labels read-only and has no tool to place or move their points yet. A visible keypoint is
+a filled dot in the class colour, an occluded one a hollow dot whose outline is six even dashes,
+and an unlabeled one is not drawn; the class's skeleton edges join drawn points at full opacity,
+dashed where an end is occluded, and no edge reaches an unlabeled point. Every point and edge sits
+on the dark halo a shape's label carries, so it reads at any zoom on any picture. Keypoints are
+listed in the panel and hidden there or by the rail like any object, but never selected, and a
+save never sends them. Switching to a class that forbids the active tool never
 strands it — the derived tool resolves to the class's first allowed shape — and the route to
 a different class's geometry is the class list, which is where choosing a class belongs.
 **The rail picks how to draw; it does not add classes** — a class is added from the panel's
@@ -538,8 +551,8 @@ canvas keeps the keyboard.
 
 **At the rail's foot, the two controls about looking rather than drawing**: hide/show all
 objects (`Eye` / `EyeOff`, pressed while everything is hidden), which writes the same hidden
-set as the panel's per-row eyes — all hidden ↔ none hidden — and is disabled with its reason
-on a frame with no objects; then help. It has no key.
+set as the panel's per-row eyes — all hidden ↔ none hidden, keypoints included — and is
+disabled with its reason on a frame with no objects; then help. It has no key.
 
 **Undo and redo** are in the island, with the other moves made on every frame — see *The
 layout*.

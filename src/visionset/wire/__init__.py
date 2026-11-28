@@ -93,6 +93,7 @@ from visionset.kernel.domain import (
     DatasetStats,
     DownloadSize,
     DraftAttribute,
+    DraftKeypointSpec,
     DraftLabelClass,
     ExportCompatibility,
     ExportFileMapping,
@@ -109,6 +110,8 @@ from visionset.kernel.domain import (
     IngestFailure,
     IngestJob,
     IntegrityCheck,
+    KeypointsGeometry,
+    KeypointSpec,
     LabelClass,
     MaskGeometry,
     ObbGeometry,
@@ -211,6 +214,14 @@ def attribute(value: Attribute) -> shapes.Attribute:
     }
 
 
+def keypoint_spec(value: KeypointSpec | DraftKeypointSpec) -> shapes.KeypointSpec:
+    """A keypoints class's point names in order, and its skeleton as index pairs."""
+    return {
+        "names": list(value.names),
+        "skeleton": [list(edge) for edge in value.skeleton],
+    }
+
+
 def label_class(value: LabelClass) -> shapes.LabelClass:
     """One class of a schema version. Also the *input* shape ``schema apply`` reads."""
     return {
@@ -220,6 +231,7 @@ def label_class(value: LabelClass) -> shapes.LabelClass:
         "geometries": [geometry.value for geometry in value.geometries],
         "color": value.color,
         "attributes": [attribute(a) for a in value.attributes],
+        "keypoints": None if value.keypoints is None else keypoint_spec(value.keypoints),
     }
 
 
@@ -257,6 +269,7 @@ def draft_label_class(value: DraftLabelClass) -> shapes.DraftLabelClass:
         "geometries": [geometry.value for geometry in value.geometries],
         "color": value.color,
         "attributes": [draft_attribute(a) for a in value.attributes],
+        "keypoints": None if value.keypoints is None else keypoint_spec(value.keypoints),
     }
 
 
@@ -744,6 +757,14 @@ def geometry(value: Geometry) -> shapes.Geometry:
             if value.visibility is not None:
                 polyline["visibility"] = [_vertex_visibility(v) for v in value.visibility]
             return polyline
+        case KeypointsGeometry():
+            keypoints: shapes.KeypointsGeometry = {
+                "type": "keypoints",
+                "points": [list(p) for p in value.points],
+            }
+            if value.visibility is not None:
+                keypoints["visibility"] = [_vertex_visibility(v) for v in value.visibility]
+            return keypoints
         case Polyline3DGeometry():
             path: shapes.Polyline3DGeometry = {
                 "type": "polyline_3d",

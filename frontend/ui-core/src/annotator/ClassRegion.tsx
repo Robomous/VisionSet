@@ -35,11 +35,13 @@
  * the rule does not know which rows those are. Knowing would take a measurement;
  * a wrapped row is absorbed by the scroller instead, exactly as a ninth class is.
  *
- * ## Only classes something can be drawn with
+ * ## Only classes something can be drawn with, and keypoints
  *
  * A class declaring nothing but `classification_tag` is not listed here: it has
  * no canvas gesture, and the Tags section below is where it is assigned. The
  * height rule reads the same count, so it does not size a region it has no row in.
+ * A keypoints class is listed and counted, though nothing draws one: its labels are
+ * on the canvas, so its row is there disabled, carrying the tool strip's reason.
  *
  * ## Hotkeys are the schema's order and nothing else's
  *
@@ -63,9 +65,10 @@ import { useState, type JSX, type RefObject } from "react";
 
 import { formatGeometries, geometryLabel } from "../data/geometryCategory";
 import { classColor } from "../palette";
-import { Button, Input } from "@robomous/ui-core";
+import { Button, Input, Tooltip, TooltipContent, TooltipTrigger } from "@robomous/ui-core";
 import { ClassListRow } from "../patterns/DataDisplay";
 import { MAX_CLASS_ROWS, MIN_CLASS_ROWS, classListHeight } from "./classRegionLayout";
+import { listedInPanel, readOnlyClassReason } from "./toolChoices";
 
 export interface ClassRegionProps {
   readonly schema: AnnotationSchema;
@@ -114,19 +117,18 @@ export function ClassRegion({
   const [filter, setFilter] = useState("");
 
   /**
-   * The classes this region is about: the ones something can be drawn with.
+   * The classes this region is about: the ones something can be drawn with, and
+   * keypoints classes, listed read-only.
    *
    * A tag-only class has no canvas gesture, so a row here would arm a tool the
    * canvas cannot answer. Everything below counts from this, so it does not size
    * the region either. `hotkeyForClass` is deliberately not derived from it —
    * digits are schema positions and the tag chips show the same ones.
    */
-  const drawableClasses = schema.classes.filter(
-    (declared) => drawableGeometries(declared).length > 0,
-  );
+  const listedClasses = schema.classes.filter(listedInPanel);
 
   const query = filter.trim().toLowerCase();
-  const shown = drawableClasses.filter((declared) =>
+  const shown = listedClasses.filter((declared) =>
     declared.name.toLowerCase().includes(query),
   );
 
@@ -152,7 +154,7 @@ export function ClassRegion({
   function onKeyDown(event: React.KeyboardEvent<HTMLInputElement>): void {
     if (event.key !== "Enter") return;
     event.preventDefault();
-    const first = shown[0];
+    const first = shown.find((declared) => readOnlyClassReason(declared) === null);
     // Nothing matched what was typed, so Enter means the row that is actually
     // on screen — creating it. The same fallthrough the top-bar field had, and
     // the reason the create row is a row rather than a button underneath: it is
@@ -170,7 +172,7 @@ export function ClassRegion({
         <span className="text-sm font-medium">Classes</span>
         <div className="flex items-center gap-2">
           <span className="text-xs text-muted-foreground" data-testid="class-count">
-            {drawableClasses.length} class{drawableClasses.length === 1 ? "" : "es"}
+            {listedClasses.length} class{listedClasses.length === 1 ? "" : "es"}
           </span>
           {/* The same dialog the tool strip's `+` opens, with the same session
               semantics — one session publishes one version, and the
@@ -204,7 +206,7 @@ export function ClassRegion({
         className="h-8"
       />
 
-      {drawableClasses.length === 0 ? (
+      {listedClasses.length === 0 ? (
         // An invitation rather than an empty list: a project with no classes yet
         // cannot draw anything, and a list showing nothing explains none of that.
         <p
@@ -219,9 +221,9 @@ export function ClassRegion({
           // The one inline dimension in this file, and it is arithmetic rather
           // than a token: the rule is *rows*, and no utility names a multiple of
           // a row height. `classListHeight` is the single spelling of it.
-          style={{ height: `${classListHeight(drawableClasses.length)}px` }}
+          style={{ height: `${classListHeight(listedClasses.length)}px` }}
           data-testid="class-list"
-          data-rows={Math.min(Math.max(drawableClasses.length, MIN_CLASS_ROWS), MAX_CLASS_ROWS)}
+          data-rows={Math.min(Math.max(listedClasses.length, MIN_CLASS_ROWS), MAX_CLASS_ROWS)}
         >
           {shown.length === 0 && creatable === null ? (
             <p
@@ -287,6 +289,28 @@ function ClassRow({
    * and the Tags section is where it is assigned.
    */
   const drawable = drawableGeometries(declared);
+  const refusal = readOnlyClassReason(declared);
+  if (refusal !== null) {
+    // The disabled row takes no pointer events, so the wrapper holds the hover
+    // and the reason opens on it, as the tool strip's disabled button does.
+    return (
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <div className="cursor-not-allowed" data-testid={`class-row-${declared.name}-reason`}>
+            <ClassListRow
+              testId={`class-row-${declared.name}`}
+              name={declared.name}
+              geometry={geometryLabel("keypoints")}
+              color={classColor(declared, declared.name)}
+              refusal={refusal}
+              className="pointer-events-none pl-1.5 pr-2"
+            />
+          </div>
+        </TooltipTrigger>
+        <TooltipContent side="left">{refusal}</TooltipContent>
+      </Tooltip>
+    );
+  }
   const picker =
     onActivateTool === undefined
       ? undefined

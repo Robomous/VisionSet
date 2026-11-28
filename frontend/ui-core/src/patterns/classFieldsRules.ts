@@ -87,3 +87,13 @@ export const CLASS_PALETTE = [
   "#0284C7",
   "#4F46E5",
 ] as const;
+
+/**
+ * The class drawn as `geometries`. Unticking keypoints drops the spec with it:
+ * the person chose to stop drawing keypoints, and a spec on a class without the
+ * geometry is one publish refuses and this editor cannot otherwise remove.
+ */
+export function withGeometries(declared: LabelClassBody, geometries: readonly GeometryType[]): LabelClassBody {
+  if (geometries.includes("keypoints") || declared.keypoints == null) return { ...declared, geometries: [...geometries] };
+  return { ...declared, geometries: [...geometries], keypoints: null };
+}

@@ -42,6 +42,7 @@ from visionset.kernel.domain import (
     Dataset,
     DatasetStats,
     DraftAttribute,
+    DraftKeypointSpec,
     DraftLabelClass,
     ExportCompatibility,
     ExportFileMapping,
@@ -54,6 +55,8 @@ from visionset.kernel.domain import (
     IngestFailureKind,
     IngestJob,
     IngestState,
+    KeypointsGeometry,
+    KeypointSpec,
     LabelClass,
     ObbGeometry,
     OrphanGuard,
@@ -129,6 +132,23 @@ SCHEMA_VERSION = AnnotationSchema(
     # writes it as text and the round-trip gate is what catches a drifting format.
     description="added the faded condition",
     created_at=_WHEN,
+)
+
+#: A keypoints class with a spec whose skeleton is not in index order, so a projection
+#: that sorted or dropped edges has something to lose.
+KEYPOINT_SPEC = KeypointSpec(
+    names=("left_eye", "right_eye", "nose"),
+    skeleton=((2, 0), (0, 1), (1, 2)),
+)
+KEYPOINT_CLASS = LabelClass(
+    name="face", geometries=(GeometryType.KEYPOINTS,), keypoints=KEYPOINT_SPEC
+)
+
+#: A spec still being written: a blank name and a dangling edge, both legal in a draft.
+DRAFT_KEYPOINT_CLASS = DraftLabelClass(
+    name="face",
+    geometries=(GeometryType.KEYPOINTS,),
+    keypoints=DraftKeypointSpec(names=("left_eye", ""), skeleton=((0, 5),)),
 )
 
 #: ``based_on`` and the attribute's ``options``/``default`` are non-null on purpose, for the
@@ -337,10 +357,28 @@ MASK = rasterize_rings(
     width=160,
 )
 
+# Three points matching `KEYPOINT_CLASS`'s spec, two of them at the same pixel and one
+# of each visibility state, so a projection that deduplicated, reordered or dropped
+# the states has something to lose.
+KEYPOINTS = KeypointsGeometry(
+    points=[(40.0, 30.0), (40.0, 30.0), (52.5, 61.25)],
+    visibility=(VertexVisibility.VISIBLE, VertexVisibility.OCCLUDED, VertexVisibility.UNLABELED),
+)
+
 # Every geometry variant gets its own sample rather than one standing for the
-# union: they are eight components on the wire, and a projection that dropped
+# union: they are nine components on the wire, and a projection that dropped
 # `points` would still round-trip through the bbox model.
-GEOMETRIES = (BBOX, POLYGON, POLYLINE, POLYLINE_3D, CUBOID_3D, CLASSIFICATION, OBB, MASK)
+GEOMETRIES = (
+    BBOX,
+    POLYGON,
+    POLYLINE,
+    POLYLINE_3D,
+    CUBOID_3D,
+    CLASSIFICATION,
+    OBB,
+    MASK,
+    KEYPOINTS,
+)
 
 ANNOTATION = Annotation(
     asset_id=ASSET.id,

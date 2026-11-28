@@ -116,6 +116,14 @@ is carried untouched in the same way: it parses as a `StoredGeometry`, `document
 out of the scene, nothing draws, selects or edits it, and it goes back unchanged on save;
 `parseGeometry` refuses it explicitly.
 
+A `keypoints` annotation (`{type: "keypoints", points, visibility?}`, pixel points in order) is
+carried the same way and rendered read-only: `parseLabelClass` reads the class's keypoint spec
+(`LabelClass.keypoints`, `null` when unset), `keypointLabels` (pure, in core) turns the carried
+annotations into the points and spec edges to draw, and the React adapter's `KeypointLayer` draws
+them beneath the committed annotations, as `Overlay3DLayer` draws projected 3D labels. Nothing
+hit-tests, selects or edits a keypoint; there is no keypoint drawing tool yet. It goes back
+unchanged on save, and `parseGeometry` refuses it explicitly.
+
 | Piece | Image engine | Scan editor |
 | --- | --- | --- |
 | Document | `AnnotationDocument` (`documentFromWire`) | `ScanDocument` (`scanDocumentFromWire`), `cuboid_3d` and `polyline_3d` |

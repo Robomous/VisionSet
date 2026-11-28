@@ -13,11 +13,11 @@
  * | 3 | `daytime` (tag) | `toggle-tag` — a panel row, never the canvas |
  * | 4 | `pedestrian` (bbox) | a **second** bbox class: 1 → 4 must not abandon a half-drawn box |
  * | 5 | `centerline` (polyline) | the polyline tool |
- * | 6 | `pose` (keypoints) | a geometry no annotation can carry — `select`, and nothing drawable |
+ * | 6 | `pose` (keypoints) | a geometry with no drawing tool — `select`, and nothing drawable |
  *
  * The sixth is the one that looks like a mistake and is not. `keypoints` is a legal
- * `GeometryType` for a `LabelClass` and is not one of the four an `Annotation` can
- * carry; `toolFor` answers `select` for it, and `drawableGeometry` answers `null`.
+ * `GeometryType` for a `LabelClass` that this engine carries and draws read-only but
+ * has no tool for; `toolFor` answers `select` for it, and `drawableGeometries` answers `[]`.
  * Keeping it here is what makes the demo show that state rather than pretend it
  * cannot happen.
  *

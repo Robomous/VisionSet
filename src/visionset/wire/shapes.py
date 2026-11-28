@@ -53,11 +53,18 @@ class Attribute(TypedDict):
 
 
 @closed
+class KeypointSpec(TypedDict):
+    names: list[str]
+    skeleton: list[list[int]]
+
+
+@closed
 class LabelClass(TypedDict):
     name: str
     geometries: list[str]
     color: str | None
     attributes: list[Attribute]
+    keypoints: KeypointSpec | None
 
 
 @closed
@@ -85,6 +92,7 @@ class DraftLabelClass(TypedDict):
     geometries: list[str]
     color: str | None
     attributes: list[DraftAttribute]
+    keypoints: KeypointSpec | None
 
 
 @closed
@@ -411,6 +419,13 @@ class PolylineGeometry(TypedDict):
 
 
 @closed
+class KeypointsGeometry(TypedDict):
+    type: Literal["keypoints"]
+    points: list[list[float]]
+    visibility: NotRequired[list[Literal[0, 1, 2]]]
+
+
+@closed
 class Polyline3DGeometry(TypedDict):
     type: Literal["polyline_3d"]
     points: list[list[float]]
@@ -442,6 +457,7 @@ Geometry = (
     | ObbGeometry
     | PolygonGeometry
     | PolylineGeometry
+    | KeypointsGeometry
     | Polyline3DGeometry
     | Cuboid3DGeometry
     | MaskGeometry

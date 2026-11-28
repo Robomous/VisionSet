@@ -206,16 +206,13 @@ straight into the document it hashes, so a set whose order depended on how a cal
 would make two identical schemas produce two different release hashes. Class *order* is
 authored and preserved; geometry order carries no meaning and nobody can read one into it.
 
-`GeometryType` names nine geometries; eight have a model in the `Geometry` union today -
-`bbox`, `obb`, `polygon`, `polyline`, `mask`, `polyline_3d`, `cuboid_3d` and `classification_tag`.
-Only `keypoints` is still reserved.
+`GeometryType` names nine geometries, and every one has a model in the `Geometry` union -
+`bbox`, `obb`, `polygon`, `polyline`, `mask`, `keypoints`, `polyline_3d`, `cuboid_3d` and
+`classification_tag`.
 `IMPLEMENTED_GEOMETRIES` is read *off* the union, so shipping a variant widens it with no
-second edit, and `create_version` refuses a class naming anything outside it:
-
-```python
-LabelClass(name="pose", geometries=(GeometryType.KEYPOINTS,))  # constructs fine
-schemas.create_version(project.id, [that])  # UnsupportedGeometry
-```
+second edit, and `create_version` refuses a class naming anything outside it with
+`UnsupportedGeometry`. Today that set is all of `GeometryType`, so no class can reach the
+refusal; it stays for the next member added to the enum before its model joins the union.
 
 `GET /geometries` publishes the same set, so a client offering shapes reads it rather than
 keeping a copy: the schema editor's picker has no list of its own.
@@ -230,7 +227,51 @@ silently reinterpreted.
 Declaring a class whose geometry has no implementation would create a class nobody could
 ever label. Refusing at the schema is better than discovering it at the first annotation.
 
-**`mask` (#1162) is the newest: a run-length encoded raster over the whole asset.** A class may
+### A keypoints class may name its points and join them
+
+**`keypoints` (#1158) is an ordered set of pixel points, optionally described by a spec.** A class
+accepting it may carry `keypoints`, an optional spec of two fields:
+
+```json
+{ "name": "person", "geometries": ["keypoints"],
+  "keypoints": { "names": ["nose", "left_eye", "right_eye"], "skeleton": [[0, 1], [0, 2]] } }
+```
+
+| Field | Rule |
+| --- | --- |
+| `names` | the points in order; at least one; each stripped and non-blank; unique ignoring case |
+| `skeleton` | undirected edges as `[i, j]` index pairs into `names`; strict integers in range, no self-loop, no pair twice in either order. It says how the points are drawn and constrains no coordinate |
+
+A spec on a class whose geometries do not include `keypoints` is refused, and an invalid spec is a
+422 `VALIDATION_ERROR`. A schema draft carries the spec loosely and validates it when it is
+published. It is stored in the schema version, so it is pinned with it, and it is omitted when
+unset, so a schema or manifest written before it keeps its bytes and hash.
+
+**The count rule.** With a spec, a keypoints annotation must carry exactly `len(names)` points,
+point `i` being `names[i]`, or it is refused with `KEYPOINT_COUNT_MISMATCH` (422); the release gate
+re-checks the count against the active schema. Without a spec any count of at least one is accepted.
+See [annotations](annotations.md#keypoints-are-an-ordered-list-of-named-positions).
+
+**Evolution.** Position is identity, so changing what a position means is destructive for the
+class's keypoints annotations and is guarded by the same orphan check as removing a geometry:
+
+| Change to a class that accepted `keypoints` | Kind |
+| --- | --- |
+| a spec added | destructive |
+| `names` changed - renamed, added, removed or reordered | destructive |
+| only `skeleton` changed | additive |
+| the spec removed | additive |
+| the `keypoints` geometry added together with a spec | additive |
+
+The guard is the class and the geometry, not the point count: it does not ask whether an existing
+label already carries as many points as the new spec names. So adding a spec to a class, or
+renaming, adding, removing or reordering its `names`, is refused with `SCHEMA_CHANGE_WOULD_ORPHAN`
+while **any** `keypoints` label of that class exists, even one whose count would fit, and
+`allow_destructive` does not lift it. Once no such label remains, the change is an ordinary
+narrowing that needs `allow_destructive` and nothing more. Delete or re-draw those labels first;
+a project with none changes the spec freely.
+
+**`mask` (#1162): a run-length encoded raster over the whole asset.** A class may
 declare it, and `GET /geometries`, the CLI and MCP list it, since each reads the union. One `mask`
 annotation is one instance of one class; see
 [annotations](annotations.md#a-mask-is-run-length-encoded-pixels-over-the-whole-asset). It is a 2D

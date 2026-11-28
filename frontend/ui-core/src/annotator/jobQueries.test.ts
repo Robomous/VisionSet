@@ -127,6 +127,23 @@ describe("planSave", () => {
     expect(plan.updated).toEqual([]);
   });
 
+  it("never plans a write for keypoints, which load, draw read-only and are carried past the scene", () => {
+    const pose: WireAnnotation = {
+      ...loaded("pose"),
+      geometry: { type: "keypoints", points: [[40, 30], [52.5, 61.25]], visibility: [2, 0] },
+    };
+    const server = [loaded("a"), pose];
+    const store = storeOf(server);
+    expect(store.document.annotations.has("pose")).toBe(false);
+    expect(isEmptyPlan(planSave(store.document, server))).toBe(true);
+
+    store.execute({ label: "drop", apply: (d) => ({ ...d, annotations: new Map() }) });
+    const plan = planSave(store.document, server);
+    expect(plan.deleted).toEqual(["a"]);
+    expect(plan.updated).toEqual([]);
+    expect(plan.created).toEqual([]);
+  });
+
   it("plans a delete for one the server has and the document does not", () => {
     const server = [loaded("a"), loaded("b")];
     const store = storeOf(server);
