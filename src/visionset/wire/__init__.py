@@ -127,6 +127,8 @@ from visionset.kernel.domain import (
     PreprocessingRecipe,
     Project,
     ProjectPreview,
+    RecipeAssessment,
+    RecipeCounts,
     RecipeSpec,
     RecipeUsage,
     Release,
@@ -140,6 +142,7 @@ from visionset.kernel.domain import (
     Source,
     SplitRecipe,
     Step,
+    StepCompatibility,
     ThumbnailBackfill,
     TrackDetail,
     TrackStatus,
@@ -1151,6 +1154,48 @@ def recipe_spec(value: RecipeSpec) -> shapes.RecipeSpec:
         "target": value.target,
         "steps": [recipe_step(step) for step in value.steps],
         "variants_per_asset": value.variants_per_asset,
+    }
+
+
+def step_compatibility(value: StepCompatibility) -> shapes.StepCompatibility:
+    """One step's verdict over one kind of label an export carries, or over the step itself."""
+    return {
+        "step": value.step,
+        "version": value.version,
+        "label_class": value.label_class,
+        "geometry": None if value.geometry is None else value.geometry.value,
+        "modality": value.modality,
+        "verdict": value.verdict.value,
+        "reasons": [reason.value for reason in value.reasons],
+        "message": value.message,
+        "annotations": value.annotations,
+    }
+
+
+def recipe_counts(value: RecipeCounts) -> shapes.RecipeCounts:
+    """The files an export of a recipe writes, and the labels a cropping resize costs."""
+    return {
+        "source_files": value.source_files,
+        "augmented_files": value.augmented_files,
+        "train_images": value.train_images,
+        "val_images": value.val_images,
+        "test_images": value.test_images,
+        "dropped_labels": value.dropped_labels,
+        "clipped_labels": value.clipped_labels,
+    }
+
+
+def recipe_assessment(value: RecipeAssessment) -> shapes.RecipeAssessment:
+    """What a recipe would do to one release: its verdicts, and its counts or its refusal."""
+    return {
+        "release_id": str(value.release_id),
+        "format": value.format_name,
+        "target": value.target,
+        "resolution": [step_compatibility(one) for one in value.resolution.entries],
+        "counts": None if value.counts is None else recipe_counts(value.counts),
+        "refusal": None
+        if value.refusal is None
+        else {"code": value.refusal.code, "message": value.refusal.message},
     }
 
 

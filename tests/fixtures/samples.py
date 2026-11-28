@@ -25,6 +25,7 @@ from visionset.kernel.domain import (
     Asset,
     AssetProgress,
     Attribute,
+    AugmentationResolution,
     AugmentOp,
     AugmentStep,
     Batch,
@@ -67,6 +68,10 @@ from visionset.kernel.domain import (
     PreprocessingRecipe,
     Project,
     ProjectPreview,
+    ReasonCode,
+    RecipeAssessment,
+    RecipeCounts,
+    RecipeRefusal,
     RecipeSpec,
     RecipeUsage,
     Release,
@@ -82,9 +87,11 @@ from visionset.kernel.domain import (
     Source,
     SourceKind,
     SplitRecipe,
+    StepCompatibility,
     ThumbnailBackfill,
     TimeRange,
     TransformedAnnotation,
+    Verdict,
     VertexVisibility,
     VideoMetadata,
     VideoProvenance,
@@ -574,4 +581,69 @@ EXPORT_RESULT_WITH_RECIPE = EXPORT_RESULT.model_copy(
         "augmented_annotation_count": 3,
         "preprocessing": EXPORT_PREPROCESSING,
     }
+)
+
+#: Every verdict, and an entry about the step as a whole beside a label's entry,
+#: so both halves of each nullable leaf are projected.
+RECIPE_RESOLUTION = AugmentationResolution(
+    entries=(
+        StepCompatibility(
+            step="resize",
+            version=None,
+            label_class="sign",
+            geometry=GeometryType.BBOX,
+            modality="image",
+            verdict=Verdict.CONDITIONAL,
+            reasons=(ReasonCode.LOSS_REQUIRES_CONSENT,),
+            message="resize over class 'sign' (bbox): a fill resize can cut a bbox down.",
+            annotations=5,
+        ),
+        StepCompatibility(
+            step="hflip",
+            version=1,
+            label_class="sign",
+            geometry=GeometryType.BBOX,
+            modality="image",
+            verdict=Verdict.SUPPORTED,
+            reasons=(),
+            message="hflip over class 'sign' (bbox): supported.",
+            annotations=3,
+        ),
+        StepCompatibility(
+            step="hflip",
+            version=1,
+            label_class=None,
+            geometry=None,
+            modality=None,
+            verdict=Verdict.REFUSED,
+            reasons=(ReasonCode.REQUIRES_SPLIT,),
+            message="hflip: variants are drawn for the train fold only.",
+            annotations=0,
+        ),
+    )
+)
+
+RECIPE_ASSESSMENT = RecipeAssessment(
+    release_id=RELEASE.id,
+    format_name="dummy",
+    target="yolo11",
+    resolution=RECIPE_RESOLUTION,
+    counts=RecipeCounts(
+        source_files=5,
+        augmented_files=6,
+        train_images=9,
+        val_images=1,
+        test_images=1,
+        dropped_labels=1,
+        clipped_labels=2,
+    ),
+)
+
+RECIPE_ASSESSMENT_REFUSED = RecipeAssessment(
+    release_id=RELEASE.id,
+    format_name="dummy",
+    resolution=RECIPE_RESOLUTION,
+    refusal=RecipeRefusal(
+        code="AUGMENTATION_REQUIRES_SPLIT", message="the release has no split recipe"
+    ),
 )

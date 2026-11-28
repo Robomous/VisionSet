@@ -936,3 +936,84 @@ def test_the_compatibility_report_is_unchanged_by_a_recipe(
 
     assert with_recipe.status_code == 200, with_recipe.text
     assert with_recipe.json() == plain.json()
+
+
+# --- assessing a draft recipe ----------------------------------------------------
+
+
+def _assessed(client: TestClient, release: str, spec: Any, **params: Any) -> Any:
+    return client.post(f"/releases/{release}/recipe-assessment", params=params, json=spec)
+
+
+def test_a_draft_recipe_is_assessed_with_its_counts_and_creates_no_job(
+    client: TestClient, release: str
+) -> None:
+    with_exporters(client.app, WritingExporter())
+    before = client.get("/background-jobs").json()["total"]
+
+    response = _assessed(client, release, LETTERBOX, format="writing")
+
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert (body["release_id"], body["format"], body["target"]) == (release, "writing", None)
+    assert body["refusal"] is None
+    assert body["counts"] == {
+        "source_files": 3,
+        "augmented_files": 0,
+        "train_images": None,
+        "val_images": None,
+        "test_images": None,
+        "dropped_labels": 0,
+        "clipped_labels": 0,
+    }
+    assert {entry["step"] for entry in body["resolution"]} == {"resize"}
+    assert {entry["verdict"] for entry in body["resolution"]} == {"supported"}
+    assert client.get("/background-jobs").json()["total"] == before
+
+
+def test_a_draft_the_export_would_refuse_is_answered_with_that_refusal_not_a_409(
+    tmp_path: Path, client: TestClient, release: str
+) -> None:
+    with_exporters(client.app, WritingExporter())
+    _recipe(tmp_path, client, release, "flips", FLIPS)
+
+    assessed = _assessed(client, release, FLIPS, target="writing")
+    checked = client.get(
+        f"/releases/{release}/export-compatibility",
+        params={"target": "writing", "recipe": "flips"},
+    )
+
+    assert assessed.status_code == 200, assessed.text
+    assert checked.status_code == 409, checked.text
+    body = assessed.json()
+    assert body["target"] == "writing"
+    assert body["counts"] is None
+    assert body["refusal"] == {
+        "code": checked.json()["code"],
+        "message": checked.json()["message"],
+    }
+    assert ["requires_split"] in [entry["reasons"] for entry in body["resolution"]]
+
+
+def test_the_assessment_takes_the_exports_address_and_refuses_what_it_refuses(
+    client: TestClient, release: str
+) -> None:
+    with_exporters(client.app, WritingExporter())
+
+    both = _assessed(client, release, LETTERBOX, target="writing", format="writing")
+    neither = _assessed(client, release, LETTERBOX)
+    unknown_target = _assessed(client, release, LETTERBOX, target="nope")
+    unknown_format = _assessed(client, release, LETTERBOX, format="nope")
+    unknown_release = _assessed(client, str(uuid4()), LETTERBOX, format="writing")
+    bad_spec = _assessed(client, release, {**LETTERBOX, "variants_per_asset": 2}, format="writing")
+
+    for response, status, code in (
+        (both, 422, "VALIDATION_ERROR"),
+        (neither, 422, "VALIDATION_ERROR"),
+        (unknown_target, 404, "EXPORT_TARGET_NOT_FOUND"),
+        (unknown_format, 404, "EXPORT_FORMAT_NOT_FOUND"),
+        (unknown_release, 404, "RELEASE_NOT_FOUND"),
+        (bad_spec, 422, "VALIDATION_ERROR"),
+    ):
+        assert response.status_code == status, response.text
+        assert response.json()["code"] == code

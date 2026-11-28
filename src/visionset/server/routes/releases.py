@@ -50,6 +50,8 @@ from visionset.server.errors import documented
 from visionset.server.models import (
     BackgroundJobOut,
     ExportCompatibilityOut,
+    RecipeAssessmentOut,
+    RecipeSpecBody,
     ReleaseCreate,
     ReleaseOut,
     ReleasePage,
@@ -343,6 +345,49 @@ def check_export(
     return ExportCompatibilityOut.of(
         ReleaseService(workspace).check_export(
             release_id, exporter, target=target, recipe=spec, drivers=drivers
+        )
+    )
+
+
+@router.post("/{release_id}/recipe-assessment", responses=documented(404))
+def assess_recipe(
+    workspace: WorkspaceDep,
+    exporters: ExportersDep,
+    drivers: DriversDep,
+    release_id: UUID,
+    address: AddressQuery,
+    body: RecipeSpecBody,
+) -> RecipeAssessmentOut:
+    """Say what a draft recipe would do to this release, for one target or format.
+
+    The body is the spec itself, saved or not, in the shape a recipe is stored
+    with. The answer is every verdict the recipe receives over what the export
+    would carry — per step, class, geometry and modality, with reasons — and
+    then either the files an export of it would write (base images,
+    augmented variants, each fold's images, and the labels a `fill` or
+    `center_crop` resize cuts away or down) or the refusal that export would
+    answer with instead, as its error `code` and `message`. A recipe problem
+    is never an error status here: `refusal` is set exactly when
+    `POST /releases/{release_id}/export?recipe=` would refuse the same spec
+    with a 409 or a 500, and with the same code and message. Whether the
+    format or a cropping resize needs `allow_lossy` is
+    `GET /releases/{release_id}/export-compatibility`'s answer.
+
+    Exactly one of `target` and `format`, as for export; both or neither is a
+    422 `VALIDATION_ERROR`, and so is a spec that breaks the recipe grammar.
+    An unknown release is 404 `RELEASE_NOT_FOUND`, an unknown target 404
+    `EXPORT_TARGET_NOT_FOUND` and an unknown format 404
+    `EXPORT_FORMAT_NOT_FOUND`. A target two installed formats both declare is
+    500 `EXPORT_TARGET_CONFLICT`, and a release whose manifest blob is gone
+    is 500 `WORKSPACE_CORRUPT`.
+
+    A POST because a draft is a body and not a stored name; it writes nothing
+    and answers the same thing every time for the same spec.
+    """
+    exporter, target = _addressed(exporters, address)
+    return RecipeAssessmentOut.of(
+        ReleaseService(workspace).assess_recipe(
+            release_id, exporter, body.to_domain(), target=target, drivers=drivers
         )
     )
 

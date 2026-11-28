@@ -54,6 +54,7 @@ from visionset.kernel.domain.preprocessing import (
 )
 from visionset.kernel.domain.release import Manifest, SplitAssignment
 from visionset.kernel.domain.schema import GeometryType
+from visionset.kernel.domain.vocabulary import OpenVocabulary
 from visionset.kernel.errors import AugmentationIncompatible
 
 
@@ -65,8 +66,13 @@ class Verdict(StrEnum):
     REFUSED = "refused"
 
 
-class ReasonCode(StrEnum):
-    """Why a step is conditional or refused for a label. Closed: a new reason is a new member."""
+class ReasonCode(OpenVocabulary):
+    """Why a step is conditional or refused for a label. A new reason is a new member.
+
+    Open on the wire because it travels only as an entry's list of reasons, which
+    a client renders member by member: a reason an older client never compiled
+    against must not cost it the whole assessment.
+    """
 
     MODALITY_UNSUPPORTED = "modality_unsupported"
     GEOMETRY_UNSUPPORTED = "geometry_unsupported"

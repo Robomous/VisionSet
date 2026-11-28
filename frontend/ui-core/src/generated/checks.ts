@@ -447,6 +447,24 @@ export const checkProviderOut: Check<Schemas["ProviderOut"]> =
 export const checkProviderPage: Check<Schemas["ProviderPage"]> =
   /*#__PURE__*/ object({ "items": [true, arrayOf(checkProviderOut)], "total": [true, isInteger] } as const);
 
+export const checkRecipeCountsOut: Check<Schemas["RecipeCountsOut"]> =
+  /*#__PURE__*/ object({ "augmented_files": [true, isInteger], "clipped_labels": [true, isInteger], "dropped_labels": [true, isInteger], "source_files": [true, isInteger], "test_images": [true, either([isInteger, isNull] as const)], "train_images": [true, either([isInteger, isNull] as const)], "val_images": [true, either([isInteger, isNull] as const)] } as const);
+
+export const checkRecipeRefusalOut: Check<Schemas["RecipeRefusalOut"]> =
+  /*#__PURE__*/ object({ "code": [true, isString], "message": [true, isString] } as const);
+
+export const checkReasonCode: Check<Schemas["ReasonCode"]> =
+  /*#__PURE__*/ openOneOf(["modality_unsupported", "geometry_unsupported", "task_unsupported", "semantics_unrepresentable", "driver_unavailable", "loss_requires_consent", "requires_split", "unknown_combination"] as const);
+
+export const checkVerdict: Check<Schemas["Verdict"]> =
+  /*#__PURE__*/ oneOf(["supported", "conditional", "refused"] as const);
+
+export const checkStepCompatibilityOut: Check<Schemas["StepCompatibilityOut"]> =
+  /*#__PURE__*/ object({ "annotations": [true, isInteger], "geometry": [true, either([checkGeometryType, isNull] as const)], "label_class": [true, either([isString, isNull] as const)], "message": [true, isString], "modality": [true, either([oneOf(["image", "point_cloud"] as const), isNull] as const)], "reasons": [true, arrayOf(checkReasonCode)], "step": [true, isString], "verdict": [true, checkVerdict], "version": [true, either([isInteger, isNull] as const)] } as const);
+
+export const checkRecipeAssessmentOut: Check<Schemas["RecipeAssessmentOut"]> =
+  /*#__PURE__*/ object({ "counts": [true, either([checkRecipeCountsOut, isNull] as const)], "format": [true, isString], "refusal": [true, either([checkRecipeRefusalOut, isNull] as const)], "release_id": [true, isString], "resolution": [true, arrayOf(checkStepCompatibilityOut)], "target": [true, either([isString, isNull] as const)] } as const);
+
 export const checkSplitGrouping: Check<Schemas["SplitGrouping"]> =
   /*#__PURE__*/ oneOf(["group_label"] as const);
 
@@ -590,6 +608,7 @@ export const checkAddAnnotations = checkAnnotationPage;
 export const checkAddBatchAssets = checkBatchMembershipOut;
 export const checkAppendVideoImportFrames = checkVideoImportOut;
 export const checkApproveBatch = checkBatchOut;
+export const checkAssessRecipe = checkRecipeAssessmentOut;
 export const checkAssignJob = checkJobOut;
 export const checkCancelBackgroundJob = checkBackgroundJobOut;
 export const checkCheckConnectionIntegrity = checkBackgroundJobOut;
