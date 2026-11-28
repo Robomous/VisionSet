@@ -211,6 +211,8 @@ class RunBoundedTest(unittest.TestCase):
             "import os, sys, time; os.setsid(); "
             f"open({str(pidfile)!r}, 'w').write(str(os.getpid())); time.sleep(30)"
         )
+        fds = Path("/proc/self/fd")
+        open_fds = len(list(fds.iterdir())) if fds.is_dir() else 0
         start = time.monotonic()
         try:
             result = self.run_script(
@@ -218,6 +220,8 @@ class RunBoundedTest(unittest.TestCase):
             )
             self.assertLess(time.monotonic() - start, 5)
             self.assertEqual((result.returncode, result.stdout), (0, b"partial\n"))
+            if fds.is_dir():
+                self.assertEqual(len(list(fds.iterdir())), open_fds)
         finally:
             if pidfile.exists():
                 os.kill(int(pidfile.read_text(encoding="utf-8")), signal.SIGKILL)

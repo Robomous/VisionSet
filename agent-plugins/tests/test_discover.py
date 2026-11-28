@@ -6,11 +6,13 @@ import ast
 import json
 import ntpath
 import posixpath
+import sys
 import tempfile
 import unittest
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
+from unittest import mock
 
 import _support
 from discover import (
@@ -351,6 +353,17 @@ class CheckoutTest(unittest.TestCase):
         self.assertEqual(chosen(s.discover(project="/srv/wt/src/pkg"))[2], venv)
         self.assertEqual(s.run.probed(), [venv])
 
+    def test_a_worktree_inside_its_main_checkout_stops_at_the_worktree(self) -> None:
+        s = Scene()
+        s.fs.mkdir("/srv/main/.git")
+        gitdir = "gitdir: /srv/main/.git/worktrees/wt\n"
+        s.fs.file("/srv/main/wt/.git", executable=False, text=gitdir)
+        s.install("/srv/main/.venv/bin/visionset")
+        inner = s.install("/srv/main/wt/.venv/bin/visionset", "0.0.1b1")
+        result = s.discover(project="/srv/main/wt")
+        self.assertIsNone(result.selected)
+        self.assertEqual([x.candidate.path for x in result.skipped], [inner])
+
     def test_without_git_the_nearest_marker_is_the_root(self) -> None:
         s = Scene()
         s.fs.file("/srv/p/pyproject.toml", executable=False)
@@ -585,8 +598,10 @@ class SkipReasonTest(unittest.TestCase):
                 self.assertNotIn(secret[:9], reason)
 
     def test_non_ascii_digits_are_not_a_version(self) -> None:
-        self.s.install(self.target, "\u0660.\u0660.\u0661b\u0664")
-        self.assertIn("printed no version", self.skipped(self.target))
+        for printed in ("\u0660.0.1b4", "0.0.1b\u0664", "0.\u0660.1b4"):
+            with self.subTest(printed=printed):
+                self.s.install(self.target, printed)
+                self.assertIn("printed no version", self.skipped(self.target))
 
     def test_probes_run_without_interpreter_steering_variables(self) -> None:
         self.s.env.update(PYTHONPATH="/evil", PYTHONSTARTUP="/evil.py", PYTHONHOME="/x", HOME=HOME)
@@ -757,6 +772,13 @@ class WindowsTest(unittest.TestCase):
         self.s.install("C:tools\\visionset.exe")
         self.s.env["PATH"] = "\\tools;C:tools"
         self.assertEqual(self.s.discover(project=None), Discovery(None, ()))
+
+
+class HostTest(unittest.TestCase):
+    def test_case_folding_follows_the_platform(self) -> None:
+        for platform, folded in (("darwin", True), ("linux", False)):
+            with self.subTest(platform=platform), mock.patch.object(sys, "platform", platform):
+                self.assertEqual(Host.current().fold_case, folded)
 
 
 class RedactionTest(unittest.TestCase):
