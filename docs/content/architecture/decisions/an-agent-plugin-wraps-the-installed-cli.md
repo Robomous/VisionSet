@@ -132,13 +132,25 @@ the resolution order in `runtime/discover.py`, and its contract tests hold each 
   user install therefore wins with a project environment first on `PATH`. Relative `PATH`
   entries are not searched.
 - **The checkout** is the nearest directory above the project holding `.git` (a directory or a
-  worktree's file), else the nearest holding `pyproject.toml`, `.venv` or `venv`. The walk stops
-  below the home directory, so a dotfiles repository does not turn `~/.local/bin` into a project.
-- **A binary inside the checkout is not run unless the host trusts the project**; the launcher
+  worktree's file), else the nearest holding `pyproject.toml`, `.venv` or `venv`, else the
+  project itself. A submodule's checkout extends to its superproject, and a marker at the
+  filesystem root is ignored. For a project below the home directory the walk stops below home,
+  so a dotfiles repository does not turn `~/.local/bin` into a project; a project at home is its
+  own checkout. Paths are compared without case on macOS and Windows.
+- **No binary inside the checkout is run unless the host trusts the project**, whatever tier
+  found it: a home, pipx or cache directory inside the checkout is gated too. The launcher
   supplies that verdict. The override is exempt, and an activated environment outside the
   checkout needs no trust.
 - **A candidate is accepted after two probes**, `--version` inside the range and `mcp --help`
-  exiting 0. Probes take an argument list and no shell, close stdin, capture and cap output, and
-  are killed at a timeout, with their process group on POSIX. On Windows only `visionset.exe` runs; a
-  `.cmd` or `.bat` shim needs a shell and is refused. Every skip reason is redacted: no home
-  directory, secret-named variable values, credentials in URLs or common token shapes.
+  exiting 0. Probes take an argument list and no shell, close stdin, drop
+  interpreter-steering variables such as `PYTHONPATH` and `PYTHONSTARTUP`, capture and cap output, and are killed at
+  a timeout, with their process group on POSIX. On Windows only `visionset.exe` runs, a `.cmd`
+  or `.bat` shim is refused because it needs a shell, and a drive-relative `PATH` entry is not
+  searched. Every skip reason is redacted: no user's home directory, no value of a secret-named
+  variable, and no credential in a URL, header, key-value pair, flag or common token shape.
+
+Known limits. On Windows a timeout kills only the probe process, not its descendants. The
+launcher runs a path that was probed moments before, and a binary replaced in between is not
+re-checked. The override is trusted, so the launcher work
+([#1259](https://github.com/Robomous/VisionSet/issues/1259)) has to confirm that no host lets
+project-scoped configuration set `VISIONSET_PLUGIN_EXECUTABLE`.
