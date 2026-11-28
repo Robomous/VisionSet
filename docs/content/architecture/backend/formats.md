@@ -136,9 +136,16 @@ part:
   `degraded_detect_rows`, so the `ultralytics` dialect, which does not declare
   it, writes none.
 
-No current exporter writes `keypoints`: none declares it supported or degraded, so every export
-reports each keypoints annotation as dropped through the same compatibility and loss report and
-needs lossy consent. Pose adapters, such as COCO keypoints and YOLO pose, are separate work.
+Two exporters write `keypoints`, as variants of their existing plugins rather than new format
+names: `coco` writes keypoint rows beside its other classes, and `ultralytics` derives a `pose`
+task the way it derives `segment` (`_yolo_writer.derive_task`) and writes `kpt_shape` rows. Both
+derive the row's required box from the labeled points (`formats/_keypoints.py`). A pose layout
+holds one keypoint count and no other row shape, so `ultralytics` refuses a release mixing
+keypoints with boxes or polygons, or two keypoint counts, with `EXPORT_SOURCE_UNREADABLE` before
+writing; the compatibility report cannot see that, because it judges geometries one at a time.
+Every other export reports each keypoints annotation as dropped through the same compatibility
+and loss report and needs lossy consent. On import, `ImportedClass.keypoints` carries the
+source's spec into a derived schema.
 
 Three exporters write a `mask`: `coco`, `coco-panoptic` and `segmentation-png` declare it
 supported, and `coco-panoptic` and `segmentation-png` declare `polygon` degraded because they
