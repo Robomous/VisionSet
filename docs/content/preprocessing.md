@@ -139,17 +139,20 @@ class and geometry that fails, so a refusal names all of them.
 `ReleaseService.assess_recipe(release_id, exporter, recipe, target=, drivers=)` answers the
 same question for a draft, saved or not, and never raises for the recipe. Its
 `RecipeAssessment` holds the resolution, the target it is for, and exactly one of `counts` or
-`refusal`. `refusal` is the code and message the export would refuse the recipe with, caught
-from the same transform pre-flight and export run, so an assessment refuses exactly when the
-export would. `counts` are the export's files: `source_files` (one per image the format is
-handed), `augmented_files`, `train_images`, `val_images` and `test_images` (each fold's files, a
-train image's variants included; null without a split), and `dropped_labels` and
-`clipped_labels`, what a cropping resize cuts away or down. Consent is not part of it: whether
-the format or the crop needs `allow_lossy` is the compatibility report's answer. A
-single-tag format that leaves untagged pictures out (`classification-dir`) writes fewer source
-images than `source_files` says; the report's `untagged_assets` counts them. An unknown release
-or a damaged manifest still raises. The assessment transforms the whole manifest, as an
-export's pre-flight does; twenty thousand assets at eight variants took about seven seconds on
+`refusal`. `refusal` is the code and message an export of the recipe with `allow_lossy` would
+refuse it with, caught from the same transform pre-flight and export run and from the format
+itself. Consent is not part of it: without `allow_lossy`, a lossy format or a cropping resize is
+refused for the loss first, and the compatibility report says whether it will be. `counts` are
+what the export writes, counted the way the export counts them: the format is handed what the
+export would hand it and run into a scratch directory, reading a one-pixel stand-in for every
+image, and every image it reads is recorded. So `source_files` and `augmented_files` are the
+images the format reads - `classification-dir` leaves out an untagged picture, and `mot` and
+`cvat-video` write only the frames of a tracked sequence - and `train_images`, `val_images` and
+`test_images` are those files per fold (null without a split). `dropped_labels` and
+`clipped_labels` are what a cropping resize cuts away or down. A format that refuses the layout
+it is handed, such as a pose export beside boxes, is reported as the export would raise it. An
+unknown release or a damaged manifest still raises. The assessment transforms the whole manifest
+and runs the format over it; twenty thousand assets at eight variants took about 28 seconds on
 one desktop core when it was measured.
 
 What the export carries is `carried_by(manifest, folds)` over the manifest the export hands its

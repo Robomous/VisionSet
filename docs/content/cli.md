@@ -649,7 +649,8 @@ its own copy.
 form, except that `--target` here addresses the export rather than recording the spec's own.
 It prints every step's verdict per class and geometry, then the images the export would write -
 source images, augmented variants, each fold's images, and the labels a cropping resize cuts away
-or down - or the refusal the export would answer with, and exits 1 then, on `export --check`'s
+or down, counted as the export counts the images the format reads - or the refusal the export
+would answer with given `--allow-lossy`, and exits 1 then, on `export --check`'s
 precedent. Nothing is saved or written. `--json` prints `visionset.wire.recipe_assessment`, the
 document the REST route and the `assess_recipe` tool publish.
 

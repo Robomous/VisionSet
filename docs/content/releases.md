@@ -554,13 +554,15 @@ it came from.
 
 `ReleaseService.assess_recipe(release_id, exporter, recipe, target=, drivers=)` asks the same
 question of a draft recipe and answers instead of raising: the resolver's verdicts, then either
-the files the export would write - `source_files` and `augmented_files` to match those two
-counts, each fold's images, and the labels a cropping resize cuts - or the refusal the export
-would raise, as its error code and message. It runs the transform `check_export` runs and
-catches only the recipe refusals listed above, so the two cannot disagree; an unknown release or
-a damaged manifest still raises. Over REST it is `POST /releases/{id}/recipe-assessment`, with
-the spec as the body and the export's `target` or `format`; the CLI's `recipe assess` and MCP's
-`assess_recipe` answer from the same call. See
+the files the export would write or the refusal it would raise with `allow_lossy`, as its error
+code and message. It runs the transform `check_export` runs, then the format itself into a
+scratch directory, and catches only the recipe refusals listed above, so the two cannot
+disagree. `source_files` and `augmented_files` equal the export's `source_file_count` and
+`augmented_file_count`, because both count the images the format reads. Consent is not judged:
+the loss a lossy format or a cropping resize asks `allow_lossy` for is `check_export`'s answer.
+An unknown release or a damaged manifest still raises. Over REST it is
+`POST /releases/{id}/recipe-assessment`, with the spec as the body and the export's `target` or
+`format`; the CLI's `recipe assess` and MCP's `assess_recipe` answer from the same call. See
 [preprocessing.md](preprocessing.md#which-step-serves-which-label).
 
 ### Export targets

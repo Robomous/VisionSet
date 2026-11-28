@@ -227,13 +227,15 @@ keypoints a target trains for pose. `check_export` with the same
 ## Assessing a draft recipe
 
 `assess_recipe` takes a spec rather than a recipe name, so a recipe can be judged
-before it is saved. It never refuses for the recipe: what `export_release` would
-refuse it with comes back as `refusal` (`code` and `message`), beside `resolution`,
-every step's verdict and reasons per class and geometry. When nothing refuses,
-`counts` says what the export would write: `source_files`, `augmented_files`, the
-files in each fold (null without a split) and the labels a cropping resize cuts
-away (`dropped_labels`) or down (`clipped_labels`). Whether the export then needs
-`allow_lossy` is `check_export`'s answer.
+before it is saved. It never refuses for the recipe: what `export_release` with
+`allow_lossy=true` would refuse it with comes back as `refusal` (`code` and
+`message`), beside `resolution`, every step's verdict and reasons per class and
+geometry. When nothing refuses, `counts` says what the export would write:
+`source_files` (the images the format reads), `augmented_files`, the files in each
+fold (null without a split) and the labels a cropping resize cuts away
+(`dropped_labels`) or down (`clipped_labels`). Consent is not judged: without
+`allow_lossy`, a lossy format or a cropping resize is refused for the loss first,
+and `check_export` says whether it will be.
 """
 
 SCHEMA_CHANGES: Final = """\

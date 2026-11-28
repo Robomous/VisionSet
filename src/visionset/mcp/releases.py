@@ -250,8 +250,10 @@ def assess_recipe(
     `center_crop` resize can cut labels, which needs `allow_lossy`) or `refused`,
     with `reasons`. Then exactly one of: `counts`, the files the export would write
     (base images, augmented variants, each fold's images, labels cut away or
-    down), or `refusal`, the `code` and `message` `export_release` would refuse
-    the same recipe with. A recipe problem is never an error here.
+    down), or `refusal`, the `code` and `message` `export_release` with
+    `allow_lossy=true` would refuse the same recipe with. A recipe problem is
+    never an error here; whether the export needs `allow_lossy` is `check_export`'s
+    answer.
 
     Details: visionset://export
     """

@@ -3638,15 +3638,20 @@ export interface paths {
          *     The body is the spec itself, saved or not, in the shape a recipe is stored
          *     with. The answer is every verdict the recipe receives over what the export
          *     would carry — per step, class, geometry and modality, with reasons — and
-         *     then either the files an export of it would write (base images,
-         *     augmented variants, each fold's images, and the labels a `fill` or
+         *     then either the files an export of it would write (the images the format
+         *     reads, augmented variants, each fold's images, and the labels a `fill` or
          *     `center_crop` resize cuts away or down) or the refusal that export would
-         *     answer with instead, as its error `code` and `message`. A recipe problem
-         *     is never an error status here: `refusal` is set exactly when
-         *     `POST /releases/{release_id}/export?recipe=` would refuse the same spec
-         *     with a 409 or a 500, and with the same code and message. Whether the
-         *     format or a cropping resize needs `allow_lossy` is
-         *     `GET /releases/{release_id}/export-compatibility`'s answer.
+         *     answer with instead, as its error `code` and `message`. The format is run
+         *     over what the export would hand it, into a scratch directory removed
+         *     afterwards, so a format that leaves an image out is counted without it,
+         *     and a layout the format refuses is reported as the export job would fail.
+         *
+         *     A recipe problem is never an error status here. `refusal` is set exactly
+         *     when an export of the same spec, with `allow_lossy=true`, would refuse it,
+         *     and carries that refusal's code and message. Consent is not judged: an
+         *     export without `allow_lossy` of a lossy format, or through a cropping
+         *     resize, is refused for the loss before the recipe, and
+         *     `GET /releases/{release_id}/export-compatibility` is that answer.
          *
          *     Exactly one of `target` and `format`, as for export; both or neither is a
          *     422 `VALIDATION_ERROR`, and so is a spec that breaks the recipe grammar.

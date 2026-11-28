@@ -17,12 +17,13 @@ nothing was being distributed. This is the first version that is.
   saved or not, would do to one release for one target or format: the compatibility resolver's verdict for every step
   over each class, geometry and modality the export would carry, then either the files the export would write
   (`source_files`, `augmented_files`, each fold's images, and the labels a `fill` or `center_crop` resize cuts away or
-  down) or the refusal it would raise, as its error code and message. It never raises for the recipe: the refusal is
-  caught from the same transform `check_export` and `export` run, so the two cannot disagree. Served as
-  `POST /releases/{release_id}/recipe-assessment` (the spec as the body, exactly one of `target` and `format`), the
-  `assess_recipe` MCP tool and `visionset recipe assess`. The resolver's reason codes are published as an open
-  vocabulary, `ReasonCode`. Over twenty thousand assets at eight variants an assessment took about seven seconds on
-  one desktop core when measured, and a performance test guards against a regression.
+  down) or the refusal an export with `allow_lossy` would raise, as its error code and message. It never raises for
+  the recipe: the refusal is caught from the same transform `check_export` and `export` run, and from the format run
+  into a scratch directory, which is also how the counts equal the export's - both count the images the format reads.
+  Served as `POST /releases/{release_id}/recipe-assessment` (the spec as the body, exactly one of `target` and
+  `format`), the `assess_recipe` MCP tool and `visionset recipe assess`. The resolver's reason codes are published as
+  an open vocabulary, `ReasonCode`. Over twenty thousand assets at eight variants an assessment took about 28 seconds
+  on one desktop core when measured, and a performance test guards against a regression.
 - **Workspace settings, read-only, on every surface.** `GET /settings`, `visionset settings --json` and the MCP tool
   `get_workspace_settings` publish one object built below the surfaces: the VisionSet version, the MLflow tracking
   status (enabled, experiment, the tracking server's scheme, host and port, which authentication mode is configured,
