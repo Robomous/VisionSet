@@ -116,3 +116,41 @@ through any client.
 Several things are left to later work: the data directory used when a client gives none, the
 version a plugin-created runtime installs, how the launcher finds the project under Codex, and
 the interpreter command on macOS and Windows.
+
+## Settled by discovery
+
+[#1257](https://github.com/Robomous/VisionSet/issues/1257) implemented the first four steps of
+the resolution order in `runtime/discover.py`, and its contract tests hold each rule below.
+
+- **The override is `VISIONSET_PLUGIN_EXECUTABLE`**, an absolute path to the console script.
+  An empty value counts as unset. It is checked like any candidate, and when it fails discovery
+  reports why and tries nothing else.
+- **A candidate's tier comes from where it was found**, never from where a link resolves. A
+  `PATH` directory is a project one when it lies inside the checkout or is the scripts directory
+  of an active `VIRTUAL_ENV`, a non-base `CONDA_PREFIX` or `UV_PROJECT_ENVIRONMENT`; every other
+  absolute `PATH` directory, and the pipx, uv tool and `pip --user` locations, is a user one. A
+  user install therefore wins with a project environment first on `PATH`. Relative `PATH`
+  entries are not searched.
+- **The checkout** is the nearest directory above the project holding `.git` (a directory or a
+  worktree's file), else the nearest holding `pyproject.toml`, `.venv` or `venv`, else the
+  project itself. A submodule's checkout extends to its superproject, and a marker at the
+  filesystem root is ignored. For a project below the home directory the walk stops below home,
+  so a dotfiles repository does not turn `~/.local/bin` into a project; a project at home is its
+  own checkout. Paths are compared without case on macOS and Windows.
+- **No binary inside the checkout is run unless the host trusts the project**, whatever tier
+  found it: a home, pipx or cache directory inside the checkout is gated too. The launcher
+  supplies that verdict. The override is exempt, and an activated environment outside the
+  checkout needs no trust.
+- **A candidate is accepted after two probes**, `--version` inside the range and `mcp --help`
+  exiting 0. Probes take an argument list and no shell, close stdin, drop
+  interpreter-steering variables such as `PYTHONPATH` and `PYTHONSTARTUP`, capture and cap output, and are killed at
+  a timeout, with their process group on POSIX. On Windows only `visionset.exe` runs, a `.cmd`
+  or `.bat` shim is refused because it needs a shell, and a drive-relative `PATH` entry is not
+  searched. Every skip reason is redacted: no user's home directory, no value of a secret-named
+  variable, and no credential in a URL, header, key-value pair, flag or common token shape.
+
+Known limits. On Windows a timeout kills only the probe process, not its descendants. The
+launcher runs a path that was probed moments before, and a binary replaced in between is not
+re-checked. The override is trusted, so the launcher work
+([#1259](https://github.com/Robomous/VisionSet/issues/1259)) has to confirm that no host lets
+project-scoped configuration set `VISIONSET_PLUGIN_EXECUTABLE`.

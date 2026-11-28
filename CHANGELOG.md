@@ -13,6 +13,14 @@ nothing was being distributed. This is the first version that is.
 
 ### Added
 
+- **Agent-plugin discovery finds an installed `visionset`.** `agent-plugins/packages/visionset/runtime/discover.py`
+  resolves the `VISIONSET_PLUGIN_EXECUTABLE` override, then user installs (`PATH` outside the project, pipx, uv tool,
+  `pip --user`), then project installs (an active virtual or conda environment, `UV_PROJECT_ENVIRONMENT`, `.venv` and
+  `venv` up to the checkout root), then plugin-cached runtimes. The tier comes from where a candidate was found, so a
+  user install wins even with a project environment first on `PATH`. A candidate must report a version inside the
+  bundle's range and answer `mcp --help`, under bounded argument-list probes; a binary inside a checkout the host has
+  not trusted is never run, an invalid override fails without falling back, and skip reasons are redacted. Nothing
+  calls it yet: the bootstrap and the launcher are later work.
 - **The agent-plugin tree.** `agent-plugins/packages/visionset/` is one plugin root for Claude Code and Codex. The
   client manifests, the per-client server declarations and `runtime/bundle.json` are generated from
   `agent-plugins/metadata.json` and `VERSION` by `agent-plugins/tools/render_manifests.py`, committed, and

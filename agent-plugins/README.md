@@ -25,6 +25,7 @@ Python distribution.
 | `packages/visionset/.claude-plugin/plugin.json`, `.mcp.json` | Claude Code manifest and server declaration, **generated** |
 | `packages/visionset/.codex-plugin/plugin.json`, `codex.mcp.json` | Codex manifest and server declaration, **generated** |
 | `packages/visionset/runtime/` | The launcher, standard library only; `bundle.json` in it is **generated** and carries the rendered compatibility range |
+| `packages/visionset/runtime/discover.py` | Finds a compatible installed `visionset`: the `VISIONSET_PLUGIN_EXECUTABLE` override, then user, project and plugin-cached installs |
 | `packages/visionset/skills/` | End-user skills, shared by every client |
 | `schemas/` | Hand-written schemas for the files the generator emits, each citing its source |
 | `tools/` | `render_manifests.py` (generator), `validate_manifests.py` (schema and containment check) |

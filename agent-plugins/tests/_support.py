@@ -14,8 +14,9 @@ AGENT_PLUGINS = REPO / "agent-plugins"
 TOOLS = AGENT_PLUGINS / "tools"
 RUNTIME = AGENT_PLUGINS / "packages" / "visionset" / "runtime"
 
-if str(TOOLS) not in sys.path:
-    sys.path.insert(0, str(TOOLS))
+for _directory in (TOOLS, RUNTIME):
+    if str(_directory) not in sys.path:
+        sys.path.insert(0, str(_directory))
 
 
 def python_files(root: Path) -> list[Path]:
