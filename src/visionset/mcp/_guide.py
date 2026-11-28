@@ -77,7 +77,7 @@ and a batch `delete` is listed only when the server was started with destructive
 
 - `visionset://pre-labeling`: what `get_pre_label_plan`, `pre_label_batch` and
   `pre_label_job` ask, touch, discard and refuse.
-- `visionset://export`: `check_export` and `export_release` statuses, destinations, lossy
-  gates and recipes.
+- `visionset://export`: `check_export`, `assess_recipe` and `export_release` statuses,
+  destinations, lossy gates and recipes.
 - `visionset://schema-changes`: additive versus destructive, and why `is_refused` ignores flags.
 """
