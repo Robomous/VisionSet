@@ -71,7 +71,7 @@ identifies it. Three consequences follow, and all three are by design:
 | Step | Fields | What it does |
 | --- | --- | --- |
 | `resize` | `strategy` (`letterbox`, `stretch`, `fill` or `center_crop`), `width`, `height` (32 to 8192), `pad_value` (0 to 255, default 114) | Every exported image, base and variant, lands at `width × height`. `stretch` scales each axis on its own; `letterbox` keeps the aspect, scales to fit, and pads the rest with `pad_value` - the grey YOLO trainers letterbox with themselves. `fill` keeps the aspect, scales by `max(W'/W, H'/H)` so the image covers the canvas, and crops the overflow, centred. `center_crop` does not scale: it cuts a centred `width × height` window out of the source, and pads with `pad_value` along an axis where the source is smaller than the window. The two cropping strategies can cut labels down or away - see [Cropping](#cropping-what-survives-the-cut). |
-| `augment` | `op` (`hflip`, `brightness_contrast`, `rot90`), `amount` (above 0 and at most 0.5, default 0.2) | One augmentation applied when generating variants. `amount` bounds the brightness and contrast factors and means nothing to the other two. |
+| `augment` | `op` (`hflip`, `brightness_contrast`, `rot90`), `amount` (above 0 and at most 0.5, default 0.2), `version` (default 1), `params` (default none) | One augmentation applied when generating variants. `amount` bounds the brightness and contrast factors and means nothing to the other two. `version` names which [registered version](#the-augmentation-registry) of the op runs, and `params` holds the parameters that version declares beyond `amount` - none, for every op today. Both are SDK-only for now; the REST, CLI and MCP bodies carry neither. |
 
 Cross-field rules, refused with the rule named: at most one `resize` step, and it comes first;
 each `op` at most once; an `augment` step needs `variants_per_asset` of at least 1; and
@@ -79,11 +79,52 @@ each `op` at most once; an `augment` step needs `variants_per_asset` of at least
 target's hints the recipe was written from and is informational - nothing resolves it, and a
 recipe applies to any export.
 
+A step's `version` must be one the registry holds for its `op`, and every key in `params` must be
+a parameter that version declares, of its declared type and inside its range; `amount` is the
+step's own field and never a member of `params`. Each is refused with the reason named. `version`
+and `params` are left out of a stored or hashed step while they hold their legacy values -
+version 1, no params - so a recipe written before they existed keeps its canonical bytes and its
+`recipe_hash`, and so does one that spells `"version": 1` out.
+
 The hints come from the target: `GET /export-targets`, `visionset target list` and
 `list_export_targets` carry `recommended_size`, `recommended_strategy`, `trainer_resizes` and
 `augmentation_common` for each, and a surface preselects from them. Every YOLO target resizes on
 its own, so pre-resizing is a choice about archive size and loading speed rather than a
 requirement.
+
+## The augmentation registry
+
+What an augmentation *is* is declared once, in `AUGMENT_OPERATIONS` (`augment_operations()` lists
+it in its stable order: by op, then version), and never inferred from the code that runs it. Each
+`AugmentOperation` is one `(op, version)` and declares:
+
+| Field | What it says |
+| --- | --- |
+| `parameters` | Every parameter the step carries, with its type (`float`, `int` or `bool`), default and range. `inert` marks one the step validates but the operation never reads. |
+| `family` | `spatial` (moves pixels, and so labels) or `photometric` (changes pixel values only). |
+| `modalities` | What the operation can run on. `image` only; a scan is refused. |
+| `geometries` | What it can transform - read from `AUGMENT_GEOMETRIES`, the table the geometry transform refuses by, never restated. |
+| `tasks` | The trainer tasks it can serve. A task not listed is unsupported, not assumed. |
+| `semantics` | What it does to a label's meaning: `preserves`, `mirrors` (a class named for a side now names the other) or `reorients` (a class tied to up or down may not survive). |
+| `loss` | `lossless` (never cuts a label it supports) or `lossy` (asks the same explicit consent a cropping resize does). |
+| `drivers` | The built-in drivers that apply it. |
+| `preview` | Whether a preview's `showcase` can show it at its declared strength. |
+
+| op | version | family | `amount` | semantics | loss | tasks |
+| --- | --- | --- | --- | --- | --- | --- |
+| `hflip` | 1 | spatial | inert | mirrors | lossless | detect, segment, classify, obb, semantic |
+| `brightness_contrast` | 1 | photometric | bounds both factors | preserves | lossless | detect, segment, classify, pose, obb, semantic |
+| `rot90` | 1 | spatial | inert | reorients | lossless | detect, segment, classify, obb, semantic |
+
+All three run on images, are applied by the built-in Pillow driver and can be previewed. `pose` is
+absent from the two spatial ops because no keypoint geometry yet says which point becomes which
+under a mirror or a turn, and `depth` from all three because no label the system carries is a
+depth map. A registered version is never changed: a different default, draw or behaviour is a
+new version beside it, so a stored recipe keeps meaning what it meant. Nothing reads `tasks`,
+`semantics` or `loss` to refuse an export yet - that is the compatibility resolver's job - but
+they are declared now so that it has one place to read. See
+[An augmentation is a registered version](architecture/decisions/an-augmentation-is-a-registered-version.md)
+for the rule and why it holds.
 
 ## Where the geometry moves, and where the pixels do
 
@@ -178,7 +219,14 @@ other encoding a PNG. No metadata travels.
 
 Variant `k` of an asset is seeded by `sha256(f"{recipe_hash}:{content_hash}:{k}")`, and every
 draw - the brightness and contrast factors, how many quarter turns `rot90` makes - reads a fixed
-position of that digest. `hflip` draws nothing and always mirrors, for the reason `rot90` never
+position of that digest: brightness word 1, contrast word 2, `rot90` word 3. The draws are
+sampled once into a **plan**, `sample_plan(spec, content_hash=, variant=k)`: a frozen
+`VariantPlan` holding one draw per augmentation step in recipe order. It is a function of the
+recipe, the image and `k` alone, and both the geometry transform and the pixel driver read it, so
+neither draws for itself. An operation registered after these three will read its own
+`StepStream` instead - an index-addressed sequence of words derived from the variant seed and the
+step's `(op, version)` under a domain tag - so adding, removing or reordering a step never
+re-rolls another. Nothing draws from a global random source. `hflip` draws nothing and always mirrors, for the reason `rot90` never
 draws zero turns: a variant that came out identical to its source would be the base image under a
 variant's name. The same recipe over the same bytes
 therefore draws the same variant on any machine, and the geometry arithmetic is exact
@@ -266,8 +314,9 @@ The body also takes `showcase`, false by default. With it true the variant's dra
 each step's declared strength - `hflip` mirrors, `rot90` makes one quarter turn, brightness and
 contrast use the full `amount` - so the picture shows what a step *does* rather than one seeded
 draw of it. That is a preview's concern only: an export always takes the seeded path above, and
-the kernel spells the fixed draws as one sentinel seed (`SHOWCASE_SEED`) that both draw functions
-recognise, so the pixel driver and the geometry transform still agree through the same code.
+the kernel spells the fixed draws as one sentinel seed (`SHOWCASE_SEED`) that every draw
+recognises, sampled into a plan with `showcase` set, so the pixel driver and the geometry
+transform still agree through the same code.
 
 ## Refusals
 
@@ -276,7 +325,7 @@ recognise, so the pixel driver and the geometry transform still agree through th
 | `PreprocessingRecipeNotFound` | The project has no recipe under that name. 404. |
 | `PreprocessingRecipeNameTaken` | Another recipe of the project carries that name, or a rename lands on one. Checked before writing and refused by a unique index, the `ReleaseTagTaken` shape. 409. |
 | `InvalidName` | The name is not a slug: lowercase letters, digits, dots, hyphens and underscores, starting with a letter or digit, at most 64 characters. 422. |
-| `VALIDATION_ERROR` | The spec breaks the grammar: two resize steps, a resize after an augmentation, an augmentation repeated, augmentation steps with `variants_per_asset` 0, or variants with no augmentation step. The rule that was broken is the message, in the words above. Refused by the spec model itself, so every surface says the same thing. 422. |
+| `VALIDATION_ERROR` | The spec breaks the grammar: two resize steps, a resize after an augmentation, an augmentation repeated, augmentation steps with `variants_per_asset` 0, variants with no augmentation step, an unknown `op`, a `version` the registry does not hold for it, or a `params` key the version does not declare or a value of the wrong type or out of its range. The rule that was broken is the message, in the words above. Refused by the spec model itself, so every surface says the same thing. 422. |
 | `AugmentationRequiresSplit` | The recipe augments and the release was published without a split recipe. Raised at pre-flight and at export. 409. |
 | `PreprocessingStepUnsupportedGeometry` | A step met a geometry outside the set it declares it can transform - every step declares `supported_geometries` the way an exporter does, and today the exclusions are those the table above marks refused: a `stretch` resize over a rotated box, every resize over a mask, a `fill` or `center_crop` resize over a rotated box, a polyline or keypoints, `rot90` over a polyline, and every step but `brightness_contrast` over a 3D label. Carries `step`, `geometry` and the first `asset_id`. 409. |
 | `LossyExportNotConsented` | A `fill` or `center_crop` resize cuts a label down or away and `allow_lossy` is false - the same refusal, and the same report, as a format that cannot carry a label. Raised by `POST /releases/{id}/export` (before the job is queued), the CLI's `export` and MCP's `export_release`, before anything is written; `GET /releases/{id}/export-compatibility` and `--check` answer 200 with the report instead. 409. |
