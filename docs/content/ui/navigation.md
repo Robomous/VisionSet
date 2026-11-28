@@ -1,13 +1,9 @@
 # Navigation
 
-How a person moves through VisionSet, and how the interface says where they are. This page is
-the canonical sitemap and the UX rules the implementation must satisfy; the routing
-implementation is [`docs/content/ui.md`](../ui.md) and
-[`docs/content/architecture/frontend/app.md`](../architecture/frontend/app.md).
-
-VisionSet is an **application**, not a website. Somebody who walks into a sub-view has to
-be able to walk back out of it *from the screen*, without reaching for the browser and
-without knowing the URL scheme.
+This page defines the browser sitemap and the rules for moving between screens. Each sub-view
+provides a way back to its parent so that links and reloads lead to the same destination.
+See [The browser client](../ui.md) and [App architecture](../architecture/frontend/app.md) for
+the routing implementation.
 
 ## The sitemap
 
@@ -166,8 +162,8 @@ they answer different questions: Home asks *what is waiting on me, anywhere*, wh
 project can answer, and Overview asks *what does this project hold*. So Home carries nothing
 project-scoped — no class distribution, no samples, no schema state — and every row on it is a
 deep link into the screen that owns the thing. Home's resume target is **derived, never
-persisted**, and ranked by progress rather than recency because no timestamp exists on a batch,
-an annotation or an asset's progress.
+persisted**. The server ranks eligible work using `annotation_job_asset.touched_at` and falls
+back to progress for batches without a recorded touch.
 
 **Overview never duplicates a section's full function.** A number on it that has a section to
 answer it is a *door* into that section: the whole card is a real button, keyboard-reachable and

@@ -1,8 +1,9 @@
 # wire
 
 [`src/visionset/wire/`](../../../../src/visionset/wire/) is one hand-written JSON
-projection per resource. It is what `visionset --json` prints and what an MCP tool
-result carries.
+projection per resource. The CLI uses these projections for `--json` output,
+MCP uses them for tool results, and the thumbnail backfill handler uses one
+for its persisted result.
 
 ## Two spellings, not three
 
@@ -28,7 +29,7 @@ flowchart LR
 The server keeps its own pydantic models because `openapi.json` is generated from
 them and a dict cannot do that. So there are two spellings of each shape - and
 **two, never three**: this package exists because the CLI and MCP both needed the
-same twenty projections, and a second hand-written copy is what "promoted, not
+same resource projections, and a second hand-written copy is what "promoted, not
 copied" exists to prevent.
 
 The two are held to each other by
@@ -52,12 +53,10 @@ Leaf encoding is explicit throughout: UUIDs as strings, enums as `.value`, paths
 as strings, timestamps in pydantic's format so the parity gate compares like with
 like.
 
-Almost everything a projection reads is a domain model. The one exception is
-`capabilities_of` from `visionset.inference`, and it is here rather than spelled
-out because which model families this installation serves is a fact this package
-has no way to know - a second copy of that map would be exactly the drift every
-other rule in this file prevents. The direction is the usual one: a sibling below
-the surfaces, importing nothing from here.
+Most projections read kernel domain values. Format matrix projections read
+evidence from `visionset.formats`. Inference projections read plans and resolve
+capabilities and output geometries through `visionset.inference`, which owns the
+installed provider registry.
 
 ## Where it sits
 
@@ -67,9 +66,9 @@ it is written in terms of domain models, so a kernel that could import it would
 close a loop and make a publication decision reachable from the place that decides
 what exists.
 
-Import-linter's independence contract keeps the three surfaces siblings, so
-`wire` cannot import `server/models.py` either - which is why the agreement is a
-test rather than a shared type.
+The shared-library import contract keeps `wire` below the delivery packages.
+The contract test can import both `wire` and `server/models.py` to compare their
+public shapes.
 
 ## Related
 

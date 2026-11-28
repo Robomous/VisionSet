@@ -1,11 +1,8 @@
 # Events
 
-The kernel announces what it did. Nothing in it listens — the bus exists so that the things
-which *will* want to react (search indexing, notifications, webhooks, enterprise hooks) have
-somewhere to attach without a service growing a dependency on them.
-
-An event is a **statement about the past**. It is not a request, queue message, or stored record;
-nothing reads it back.
+Subscribe to events to react to work performed in the current process. Domain services publish
+events after committing their changes. The in-process bus calls subscribers synchronously and
+keeps no delivery history.
 
 ```python
 from visionset.kernel.domain import BatchApproved, DomainEvent, ReleasePublished
@@ -32,7 +29,7 @@ simply the only order that is reproducible, said out loud so nobody infers a sch
 
 ### Emission happens after the commit
 
-Every emitting service does the same thing: the work happens inside `unit_of_work()`, the result
+Every emitting domain service follows the same pattern: the work happens inside `unit_of_work()`, the result
 is bound to a local, the block exits - which is where SQLite actually commits - and only then is
 the event published.
 
@@ -84,22 +81,22 @@ annotation progress already are.
 
 ## The events
 
-Every event carries `id`, `name` and `occurred_at` (timezone-aware UTC, a naive value is
-refused). All of them are frozen with tuple collections, and all of them dump to JSON with no
-custom encoder - which is what makes a webhook a subscriber rather than a rewrite.
+Every event carries `id`, `name`, and `occurred_at`. The timestamp is normalized to UTC and
+requires a time zone. Event models are frozen and serialize to JSON. Sequence fields such as
+`asset_ids` are tuples. The success event for a background job also carries a JSON result mapping.
 
 | Event | Emitted by | Carries |
 | --- | --- | --- |
 | `BatchApproved` | `BatchService.approve` | `batch_id`, `project_id`, `schema_version`, `job_ids`, `asset_count` |
-| `BatchCompleted` | `BatchService.complete` | `batch_id`, `project_id`, `asset_count` |
+| `BatchCompleted` | `BatchService.complete` or `BatchService.finish` | `batch_id`, `project_id`, `asset_count` |
 | `AnnotationsWritten` | `AnnotationService.add` / `enter_unreviewed` / `update` / `delete` | `job_id`, `batch_id`, `operation`, `asset_ids`, `annotation_ids` |
 | `ReleasePublished` | `ReleaseService.publish` | `release_id`, `dataset_id`, `project_id`, `tag`, `manifest_hash`, `schema_version`, `asset_count`, `annotation_count` |
-| `IngestCompleted` | `IngestService.ingest` | `ingest_job_id`, `project_id`, `source_id`, `asset_count` |
+| `IngestCompleted` | `IngestService` | `ingest_job_id`, `project_id`, `source_id`, `asset_count` |
+| `BackgroundJobSucceeded` | Background job dispatcher | `job_id`, `job_type`, `processed`, `result` |
+| `BackgroundJobFailed` | Background job dispatcher | `job_id`, `job_type`, `error`, `attempt` |
 
 `AnnotationsWritten` is one per **call**, not one per box: all four writes are all-or-nothing
-over a whole payload, so one call is one thing that happened. `enter_unreviewed` publishes it
-under `operation: "add"`, the same as `add` itself - the event names the shape of the write, new
-rows landing, not the progress the write happened to leave behind. Its `asset_ids` are
+over a whole payload, so one call is one thing that happened. `enter_unreviewed` reports `add` when it writes labels and `delete` when replacement only removes labels. Its `asset_ids` are
 deduplicated - several boxes on one image are one asset touched.
 
 `ReleasePublished` carries `manifest_hash` so a subscriber can read the entire frozen snapshot
@@ -107,11 +104,13 @@ out of the blob store without being handed it. It is also why publishing writes 
 [dataset change-log](datasets.md) entry: the log records mutations of the trunk, and publishing
 mutates nothing in it. "A release happened" is an event.
 
-`IngestCompleted` was declared in M1 and emitted by nothing until [ingest](ingest.md) wired it -
-the vocabulary was settled in one pass so a subscriber written then already compiled against the
-shape it would be handed, and a test held the line until the emitter arrived deliberately. Its
-`asset_count` is what the run **put in the batch**: assets it created plus assets whose content
-the project already held. A run that fails announces nothing at all.
+`IngestCompleted.asset_count` includes both asset rows created by the run and existing assets
+matched by content. It counts the assets returned by the run, which can complete without
+creating a batch.
+
+If the server runs ingestion in a worker process, the worker has its own bus. Subscribers in
+the API process can observe the background-job outcome on the dispatcher bus. See
+[Background jobs](background-jobs.md#events).
 
 ### `name`, and why it is two types
 

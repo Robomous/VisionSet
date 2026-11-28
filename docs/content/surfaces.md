@@ -1,18 +1,12 @@
 # Surfaces
 
-VisionSet has four ways in: the **browser app**, the **REST API**, the **CLI** and **MCP** (the
-agent surface). They are clients of the same SDK, so a rule is the same everywhere; what differs is
-what each one exposes. This page says, step by step, which surface can do what.
+Use the browser to work visually, REST to connect a separate application, the CLI to script a
+local workspace, or MCP to connect a local agent. Each surface uses the same SDK and enforces
+the same workspace rules.
 
-**Two limits matter before anything else, and the README and the tutorial repeat them:**
-
-- **The CLI cannot create annotations.** `visionset job mark` records progress only. Labels are
-  drawn in the browser app, written over REST or MCP, or produced by a model with `pre-label`.
-- **Video import is a browser feature.** A clip's frames are cut in the browser (range, frame
-  rate, downscale) and posted to the server in a session. `visionset ingest` and the MCP `ingest`
-  tool take a directory of still images, or of point-cloud scans with a frame, and refuse a video
-  file. A script can drive the REST
-  session itself, but must cut the frames; see [ingest.md](ingest.md).
+The browser extracts frames from video and uploads them through the REST video-import session.
+A REST client can drive that session with its own decoded frames. CLI and MCP ingest read local
+directories of still images or point-cloud scans. See [Ingest](ingest.md).
 
 ## What each surface can do
 
@@ -20,6 +14,8 @@ what each one exposes. This page says, step by step, which surface can do what.
 | --- | --- | --- | --- | --- |
 | Create a workspace | - | - | `init` | - |
 | Create a project | yes | yes | `project create` | `create_project` |
+| Edit a project description | - | `PATCH /projects/{id}` | `project update … --description` | `update_project` |
+| Read workspace settings | - | `GET /settings` | `settings` | `get_workspace_settings` |
 | Define a schema | yes | yes | `schema apply`, `schema draft ...` | `create_schema_version`, `*_schema_draft` |
 | Add still images | upload | multipart upload, then an ingest job | `ingest DIR` (a directory on this machine) | `ingest` (same) |
 | Add point-cloud scans | upload, with a frame chosen on the screen | multipart upload with a `frame`, then an ingest job | `ingest DIR --point-clouds FRAME` | `ingest` with `frame` |
@@ -30,7 +26,7 @@ what each one exposes. This page says, step by step, which surface can do what.
 | Create and edit annotations | yes | yes | **no** | `add_annotations`, `update_annotations`, `delete_annotations` |
 | See the image | yes | yes | no | `get_asset_image` |
 | View a scan | a 3D view | `GET .../points` (thinned points) | no | `get_asset_image` (the top-down thumbnail only) |
-| Tracks across a video's frame occurrences | - | `.../occurrences`, `.../tracks`, writes under `/jobs/{id}/tracks` | `track ...` | `list_frame_occurrences`, `list_asset_occurrences`, `*_track`, `*_tracks`, `get_track_status` |
+| Tracks across frame occurrences in a sequence | Tracks region in the annotation workspace | `.../occurrences`, `.../tracks`, writes under `/jobs/{id}/tracks` | `track ...` | `list_frame_occurrences`, `list_asset_occurrences`, `*_track`, `*_tracks`, `get_track_status` |
 | Camera calibration of a source or an asset | - | `GET/PUT/DELETE .../calibration` | `calibration show/set/clear` | `get_calibration`, `set_calibration`, `clear_calibration` |
 | Pre-label with a model | yes | yes | `batch pre-label`, `job pre-label` | `pre_label_batch`, `pre_label_job` |
 | Configure model connections | yes | yes | `inference ...` | `*_inference_connection`, `download_connection_weights` |
@@ -47,9 +43,7 @@ surface, and a dash means the step does not exist on that surface. The CLI and M
 
 ## Scope for 0.0.1: intended limits
 
-The gaps in the table above are decisions, not omissions awaiting a release. Each one follows from
-a rule the architecture states, and none is planned for 0.0.1. Reopening one is a product decision
-of its own, not a bug fix.
+Use the following routes when an operation is available through a different surface.
 
 | Gap | Why it is a limit | What to do instead |
 | --- | --- | --- |
@@ -77,10 +71,10 @@ visionset batch approve "$BATCH" --jobs-of 100 --start
 # label in the app, or pre-label with a model: visionset batch pre-label "$BATCH" CONNECTION
 visionset batch complete "$BATCH" --promote
 visionset release publish --tag v1.0 --project road-signs --split 0.7,0.15,0.15
-visionset export --project road-signs --release v1.0 --target yolo11 --out ./out
+visionset export --project road-signs --release v1.0 --target yolo11 --allow-lossy --out ./out
 ```
 
-**MCP** (the same cycle, and the only agent surface that can write labels): start the server with
+**MCP** (the same cycle with annotation tools): start the server with
 `visionset mcp`, then call `create_project`, `create_schema_version`, `ingest`, `approve_batch`,
 then loop `next_pending_assets`, `get_asset_image`, `add_annotations`, then `finish_batch`,
 `promote_batch`, `publish_release`, `export_release`. [mcp-walkthrough.md](mcp-walkthrough.md)
@@ -93,5 +87,5 @@ only; the commands that create or list them print the ids.
 
 ## When something is refused
 
-Every refusal carries a stable code. [error-codes.md](error-codes.md) lists them with their
-meaning and remedy, and [glossary.md](glossary.md) defines the words used here.
+REST, MCP, and CLI JSON output report domain refusals with a stable code. See the
+[error code reference](error-codes.md) for meanings and recovery options.

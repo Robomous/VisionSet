@@ -1,11 +1,9 @@
 # Background jobs
 
-Work that outlives the request that asked for it: a queue, a dispatcher, and five
-handlers. Introduced by #328.
-
-`docs/content/jobs.md` describes an **annotation** job: a slice of a batch assigned
-to an annotator. Annotation jobs and background jobs share only a name. The API
-therefore uses `/background-jobs`, and the models use a `Background` prefix.
+The server queues long-running operations in the workspace database and runs them in
+worker processes. Use `/background-jobs` to list runs, check progress, cancel work, or
+download an export artifact. [Annotation jobs](jobs.md) describe the workflow for labeling
+a slice of a batch.
 
 ## The shape
 
@@ -35,7 +33,7 @@ handling for one GIL.
 | `assets.backfill_thumbnails` | `visionset/jobs/thumbnails.py` | `POST /projects/{id}/thumbnail-backfill-jobs` |
 | `annotation.pre_label` | `visionset/jobs/prelabel.py` | `POST /jobs/{id}/pre-label`, `POST /batches/{id}/pre-label`, `POST /projects/{id}/batches/pre-label` (one row per job) |
 
-The last three are why the throttled progress below matters: a weight download is
+Several operations can report progress for minutes. A weight download may be
 gigabytes, an integrity check reads every byte of them, and pre-labeling is one
 forward pass per untouched asset - or, where its payload carries
 `replace_model_labels`, per pre-labeled one as well - so all three report for
@@ -63,9 +61,7 @@ brackets the read and the enqueue, even these coalesce the ordinary repetition
 rather than guaranteeing uniqueness. `docs/content/inference.md` and
 `docs/content/batches.md` say what that buys and what it deliberately does not refuse.
 
-Verify, publish and promote are still synchronous. They are
-future job types, not an oversight - each answers inside its request today and
-nobody has been made to wait.
+Release verification, publication, and batch promotion complete within the request.
 
 ## The decisions, and why
 
@@ -223,9 +219,6 @@ MCP tool can report each value beside its default.
 | `VISIONSET_JOB_POLL_INTERVAL_S` | `0.5` | How long the dispatcher sleeps with nothing to claim. An enqueue wakes it immediately, so this only governs the case nobody is watching. |
 | `VISIONSET_JOB_PROGRESS_MIN_INTERVAL_S` | `0.5` | How often a running job may touch its row. |
 
-The four pre-existing bare `os.environ` reads stay where they are; migrating them
-is a change to four shipped surfaces for no behaviour.
-
 With `VISIONSET_MLFLOW_ENABLED=true`, each execution attempt also opens a run on an
 MLflow tracking server. The dispatcher hands a worker the tracking settings and an
 attempt id, never a client, and the run is delivered from a thread beside the job
@@ -247,7 +240,7 @@ answered them.
   column now would mean every future caller choosing a number for no reason.
 - **No scheduled or recurring jobs.** A job exists because a request made one.
 - **No hard cancellation.** See above.
-- **No cross-process events.** A durable outbox is pro/multi-node territory.
+- **Events are process-local.** The API dispatcher publishes its own success and failure events.
 - **No artifact retention policy.** What a job leaves in `<workspace>/exports/`
   stays there until somebody deletes it - no TTL, no size cap, no sweeper, and no
   `DELETE` route. Deliberate: the disk is the user's, and it is the posture blobs

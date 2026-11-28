@@ -1,8 +1,8 @@
 # Batches
 
-A batch is the unit of annotation work: a curated set of project assets processed together.
-Annotation requires a **frozen target** that identifies the assets, schema version, and job
-partition. Approval freezes those values.
+A batch groups project assets into one round of annotation work. While the batch is a draft,
+you can add and remove assets. Approval fixes membership, partitions the assets into jobs,
+and pins the active annotation schema. Start the approved batch to open it for annotation.
 
 ```python
 from visionset.kernel.domain import BySize

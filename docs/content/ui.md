@@ -1,34 +1,16 @@
 # The browser client
 
-This page explains how `@visionset/ui-core` communicates with the API and the
-three decisions inherited by every screen: the API location, the active
-credential, and the response to an invalid credential.
+The browser app uses `@visionset/ui-core` for screens, API access, and shared controls.
+`@visionset/app` supplies routing, layout, and browser-specific configuration. This page explains
+how they apply to the workspace, from signing in through downloading a release.
 
-The **visual** contract is [`DESIGN.md`](../../DESIGN.md) at the repository root. This
-document is the data half.
+See [Navigation](ui/navigation.md) for the sitemap and [DESIGN.md](../../DESIGN.md) for the
+visual contract.
 
 ## What M5 shipped
-
-`@visionset/ui-core` went from a placeholder `tokens.css` and a generated client to
-the whole product: a design system, a data shell, six screens, the annotator's side
-panel and the annotation page. `@visionset/app` is a router, a rail and nothing else.
-
-| | before M5 | after it |
-| --- | --- | --- |
-| `ui-core` vitest | 0 | **107** |
-| Playwright (annotator) | 42 | **76** |
-| Playwright (browser cycle) | - | **1**, against a real server |
-| Python | 1923 | **1932** |
-
-The exit criterion - *"with `visionset server` running, a user completes the entire cycle
-in the browser"* - is not asserted, it is **driven**: `pnpm --filter @visionset/app
-cycle` walks token → project → schema → ingest → approve → annotate → finish →
-complete → promote → publish → verify → export → download against the built bundle
-and the real kernel, on every pull request.
-
-M5 moved neither the storage format nor `openapi.json`: the milestone's one deliberate
-Python touch - #58's SPA deep-link fallback - is an exception handler, and an exception
-handler is not an operation.
+The browser's end-to-end test builds the bundle and runs it against a VisionSet server. Run
+`pnpm --filter @visionset/app cycle` to exercise sign-in, project and schema setup, ingestion,
+annotation, promotion, publication, verification, and export.
 
 ## Routes
 
@@ -37,7 +19,8 @@ handler is not an operation.
 | route | what | behind the token gate |
 | --- | --- | --- |
 | `/` | redirects to `/projects`; there is no Home page | yes |
-| `/projects`, `/projects/:id/overview\|images\|batches\|schema\|dataset` (`?batch=<id>`, `?add=images`), `/projects/:id/ingest` (redirects to `…/overview?add=images`), `/projects/:id/batches/:id` | the product | yes |
+| `/projects`, `/projects/:id/overview\|images\|schema\|dataset` | Projects, Overview, Assets, Classes, and Dataset | yes |
+| `/projects/:id/batches`, `/projects/:id/batches/:batchId`, `/projects/:id/ingest` | Redirects to Overview, opening the batch panel or Add images dialog where applicable | yes |
 | `/models` | model connections, workspace-scoped; `/inference` redirects here | yes |
 | `/settings/about`; `/settings` redirects to the first section | the workspace's Settings page; an unknown section is a 404 | yes |
 | `/jobs/:jobId` (`?asset=<id>`) | the annotation page, outside the shell: the whole viewport, no main rail | yes |
@@ -650,17 +633,15 @@ it, and closing asks the modal whether its draft holds unsaved
 work (`RecipeEditorHandle`, asked at that moment, never mirrored into the page) and, when it
 does, asks *Discard changes to yolo-640?* first — *Keep editing* leaves everything as it was.
 
-**A recipe is written on one page.** The header says *New recipe* or *Edit recipe* (a screen
-reader also hears *Editing yolo-640*); a strip under it holds *Name* and *Model* side by side;
-the body is two panes — **the controls on the left, what they make on the right** — and the
-bottom bar is *Cancel* and the save: *Create recipe*, or *Save changes*, shut until something
-changed. Enter in a field is the save. The modal is 47.5 rem wide, never wider than the window
-less 2 rem, and 24 rem for the saved view; the width follows the view (250 ms, strong ease-out,
-at once under reduced motion). Narrower than 40 rem — judged by the modal's own width, a
-container query, not the window's — the right pane drops under the controls and the two scroll
-as one; side by side, the controls scroll on their own, so the bar is always in view. Escape,
-the close button, *Cancel* or a press outside all close the same way, asking first when the
-draft holds unsaved work.
+**The recipe editor uses one page.** The header reads *New recipe* or *Edit recipe*, with
+*Name* and *Model* below it. The editable settings and preview sit side by side. Below a modal
+width of 40 rem, the preview moves under the settings and both scroll together. In the wider
+layout the settings pane scrolls independently, keeping the bottom bar visible.
+
+The bottom bar offers *Cancel* and either *Create recipe* or *Save changes*. The save action
+becomes available when the draft changes and meets validation. Enter in a field submits the
+draft. Escape, the close button, *Cancel*, and a press outside the modal use the same close
+flow and ask before discarding unsaved edits.
 
 **The first problem down the page holds the save.** It is said once, beside the buttons — two
 lines at most, at the buttons' height, so a problem never moves the bar — in the destructive

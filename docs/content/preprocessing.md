@@ -1,10 +1,8 @@
 # Pre-processing
 
-An optional stage between a release and the files a trainer reads: resize every exported image to
-one size, and write augmented variants of the training images beside their sources. It is
-declared as a **recipe** - a named project resource - and applied at export, by name, beside the
-target. Releases and manifests are untouched: a release is still the frozen inventory it always
-was, and a recipe is what one export chose to do with it.
+Use a pre-processing recipe to resize exported images or create augmented variants of
+training images. Save the recipe on the project, then select it by name when exporting
+a release. This applies the recipe to the export files and preserves the release manifest.
 
 ```python
 from visionset.kernel.domain import AugmentOp, AugmentStep, RecipeSpec, ResizeStep, ResizeStrategy
@@ -431,7 +429,7 @@ transform still agree through the same code.
 
 | | |
 | --- | --- |
-| UI | A release's **Export** section, in the Dataset's column: its **Recipe** list chooses one by name, *No recipe* by default, and its last row writes a new one; the chosen recipe's *Edit* and *Delete* sit at its row's end. A recipe opens in a modal over the page, written on one page — the name and model, the resize and augmentation controls, and beside them a preview of one training image and the images the recipe writes for that release — saved with *Create recipe* or *Save changes*; delete asks first. See [ui.md](ui.md#the-dataset-its-releases-and-getting-the-data-out). |
+| UI | In a release's **Export** section, choose a saved recipe or create one from the **Recipe** list. The dialog shows the name, model, resize, and augmentation controls on one page. When a training image is available, the preview shows how the recipe transforms it and estimates the output counts for each fold. Select **Create recipe** or **Save changes** to keep the draft. Use **Edit** or **Delete** beside the selected recipe to manage it. See [exporting in the browser](ui.md#the-dataset-its-releases-and-getting-the-data-out). |
 | REST | `POST`/`GET /projects/{id}/preprocessing-recipes`, `GET`/`PUT`/`DELETE /projects/{id}/preprocessing-recipes/{name}`, `POST /projects/{id}/preprocessing-preview`; `recipe=` on `POST /releases/{id}/export` and `GET /releases/{id}/export-compatibility`. The job carries the recipe as a snapshot. |
 | CLI | `visionset recipe create NAME -p P --spec FILE` or `--resize letterbox:640x640 --augment hflip,brightness_contrast --variants 2 --target yolo11`; `recipe list`, `show`, `update`, `delete`; `export --recipe NAME`. See [cli.md](cli.md#visionset-release-and-visionset-export). |
 | MCP | `create_preprocessing_recipe`, `list_preprocessing_recipes`, `get_preprocessing_recipe`, `update_preprocessing_recipe`, `delete_preprocessing_recipe` (only with `--allow-destructive`); `recipe` on `export_release` and `check_export`. See [mcp.md](mcp.md#datasets-releases-and-export). |

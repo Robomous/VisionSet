@@ -1,14 +1,10 @@
 # Experiment tracking
 
-VisionSet can record its work as runs on an [MLflow](https://mlflow.org/) tracking server. It is
-**off by default**, it is optional to install, and VisionSet works the same without it. Its job
-database stays the record of what happened; a tracking server receives a copy of the parts listed
-below, on a best-effort basis.
+VisionSet can record operations as runs on an [MLflow](https://mlflow.org/) tracking server.
+Tracking is optional and off by default. Delivery to the tracking server is best-effort.
 
-This page covers the adapter, its configuration, and what it records today: one run for each time
-a [background job](background-jobs.md) is executed, and one for each pre-label, export, ingest or
-weight download the CLI or MCP runs in its own process ([see below](#command-line-and-mcp)).
-Nothing else opens a run. Clicks and edits in the UI are not tracked.
+When enabled, tracking covers each execution of a [background job](background-jobs.md) and each
+pre-label, export, ingest, or model download run inline through the [CLI or MCP](#command-line-and-mcp).
 
 ## Turning it on
 

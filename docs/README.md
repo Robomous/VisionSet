@@ -1,19 +1,13 @@
-# docs
+# Documentation site
 
-The documentation, and the Astro + [Starlight](https://starlight.astro.build) site that renders it.
-
-**`content/` is the documentation. The rest of this directory is one way of looking at it.**
-Everything in `content/` is plain Markdown that renders on GitHub and reads correctly with nothing
-installed — that is a requirement, not a happy accident, because tools and agents read it that way.
-Start at [`content/README.md`](content/README.md). The site never becomes a second copy.
-
-One folder rather than two, so AWS Amplify can deploy it as a monorepo app rooted here and rebuild
-only when something under `docs/` changes — see `../amplify.yml`.
+[Astro](https://astro.build) and [Starlight](https://starlight.astro.build) render the plain
+Markdown in [`content/`](content/README.md). Edit those files to update the docs on GitHub
+and the website. The site builds from its own pnpm workspace and lockfile inside the monorepo.
 
 ## Running it
 
 ```bash
-pnpm install                    # from this directory — it is its own pnpm workspace root
+pnpm install --frozen-lockfile  # from docs/ with the repository's Node and pnpm versions
 pnpm dev                        # http://localhost:4321
 pnpm build                      # static output in dist/
 pnpm preview                    # serve what build produced
@@ -29,54 +23,30 @@ Either way, editing a file under `content/` reloads the page.
 
 ## How `content/` reaches Starlight
 
-`scripts/sync-docs.mjs` projects `content/**/*.md` into `src/content/docs/`, which is
-**generated and git-ignored** — a different directory from `content/`, despite the name. The
-`docsSource()` integration runs it before every `dev`, `build` and `preview`, and re-runs it on
-every change while the dev server is up — so there is no sync step to remember and no way to
-build a stale site.
+The `docsSource()` integration runs [the projection script](scripts/sync-docs.mjs) before
+`dev`, `build`, and `preview`. During development it re-runs when a source page changes.
+The script writes the generated Starlight collection to `src/content/docs/`.
 
-The projection does two things and nothing else:
-
-- **The first `# H1` becomes the frontmatter `title` and is removed from the body.** Starlight
-  requires a title and renders it as the page's `<h1>`; leaving the document's own H1 in place
-  would put two titles on every page. Doing it here rather than in `content/` keeps the documents
-  readable on GitHub, with no YAML block at the top of each one.
-- **Links that would break are rewritten.** A link to another document becomes a path on this
-  site (`install.md` → `/install/`); a link out of `content/` into the repository becomes a GitHub
-  URL (`../../src/visionset/` → `.../tree/main/src/visionset`). Nothing inside a code fence or an
-  inline code span is touched.
-
-No prose is rewritten. Feed the script a document and the output is a function of that document
-alone — `pnpm sync:check` fails if what is on disk disagrees.
-
-Read the header of `scripts/sync-docs.mjs` for why this is a projection rather than a loader
-pointed at `content/`.
+It uses the first level-one heading as Starlight's page title and adds an edit link to the
+source page. Links between documents become site routes such as `/install/`. Links to other
+repository files become GitHub URLs. Code spans and fenced examples keep their original text.
 
 ## Markdown or MDX
 
-**Markdown, by default and almost always.** `content/` is `.md` and stays that way: it is the
-canonical source, it has to render on GitHub, and `.mdx` does not.
-
-Reach for `.mdx` only when a page genuinely needs a Starlight or Astro component — a tabbed
-install matrix, a card grid, a live example. Such a page is a *site* page and belongs outside
-`content/`; put it under `src/pages/` or add it to the collection deliberately, and say in the
-file why it could not be Markdown. A `.mdx` file placed in `content/` breaks the promise that the
-documentation reads without a toolchain.
-
-`tests/scripts/docs_links.test.mjs` checks `.md` **and** `.mdx`, so an MDX page is held to the
-same link rules as everything else.
+Use plain Markdown for pages in `content/` so they render on GitHub. Pages that need an Astro
+or Starlight component belong in the site's `src/pages/` or a deliberately configured
+collection. The repository link tests cover both Markdown and MDX.
 
 ## Checks
 
 ```bash
+pnpm build                      # Starlight projects and renders every page
 pnpm sync:check                 # the projection on disk matches content/
-pnpm build                      # Starlight builds every page
 node scripts/check-links.mjs    # every internal link in dist/ resolves, anchors included
 ```
 
-`bash ../scripts/check.sh docs` runs all three, and the `docs site` CI job runs the same. It is
-not in `check.sh`'s default set: it costs about ten seconds and reaches nothing the application
-suites cover, so it is opt-in for a documentation change rather than a tax on every Python one.
+Run `bash ../scripts/check.sh docs` from this directory to run all three checks. The
+`docs site` CI job runs them for documentation changes.
 
 Two more gates live with the repository's others, because they read `content/` rather than the
 site:

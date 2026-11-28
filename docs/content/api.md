@@ -1,31 +1,26 @@
 # The REST API
 
-The REST surface is a thin SDK client: each route parses input, calls one service, and shapes
-the output. This document covers the parts of the contract shared by all endpoints, including
-the failure format and how clients should interpret it.
+Use REST to work with a running VisionSet server from another process. The
+[OpenAPI specification](../../openapi.json) lists the operations and their request and response
+schemas. This page covers the conventions shared across operations.
 
-The routes themselves are described by [`openapi.json`](../../openapi.json) at the repo root, which
-is generated (`uv run python scripts/export_openapi.py`) and diffed in CI. Never hand-edit it.
-
-For a worked external client, [`examples/http_end_to_end.py`](../../examples/http_end_to_end.py) starts
-`visionset server` on a free port and drives the whole cycle - upload, launch-and-poll ingest,
-annotate, promote, publish, verify, export - with `urllib` and a bearer token, and nothing else. It
-is deliberately dependency-free: a contract only a smart client can drive is not really a contract.
+[The HTTP example](../../examples/http_end_to_end.py) starts a server on a free port and uses
+Python's standard library to upload, poll ingestion, annotate, promote, publish, verify, and
+export. CI checks the committed specification against the output of
+`uv run python scripts/export_openapi.py`.
 
 ## Authentication
 
-Every endpoint except `/health` requires a workspace API token:
+For a protected operation, send the token issued by `visionset token create`:
 
-```
-Authorization: Bearer vst_hK3n...
+```http
+Authorization: Bearer <workspace-token>
 ```
 
-Missing, malformed, unknown and revoked are one identical **401** with a `WWW-Authenticate:
-Bearer` challenge - deliberately indistinguishable, so a client cannot use the response to probe
-which credentials exist. Tokens come from `visionset token create`; the server serves the single
-workspace named by `VISIONSET_WORKSPACE`, and one pointed at something else answers 500
-`NOT_A_WORKSPACE`. See [auth.md](auth.md) for the whole picture, including how to build a
-protected route.
+`GET /health` is public. The OpenAPI document and its interactive viewers are public too.
+The app served by VisionSet can authenticate through a browser session. When neither credential
+validates, a protected operation returns **401** with a `WWW-Authenticate: Bearer` challenge.
+See [Authentication](auth.md) for session eligibility and workspace selection.
 
 ## Conventions
 
@@ -60,7 +55,7 @@ GET    /projects/{project_id}/sources
 GET    /sources/{source_id}
 GET    /sources/{source_id}/occurrences                   frame occurrences, in position order
 GET    /sources/{source_id}/tracks
-POST   /sources/{source_id}/tracks                        empty, of a declared class; video only
+POST   /sources/{source_id}/tracks                        empty, of a declared class; sequence sources only
 GET    /tracks/{track_id}
 GET    /tracks/{track_id}/status                          ?batch_id=, required
 GET    /sources/{source_id}/calibration                   null when none is stated
@@ -104,6 +99,7 @@ POST   /batches/{batch_id}/assets                         draft only
 DELETE /batches/{batch_id}/assets?id=&id=                 draft only
 GET    /jobs/{job_id}
 GET    /jobs/{job_id}/progress
+PUT    /jobs/{job_id}/assignee                            informational assignee
 POST   /jobs/{job_id}/start
 POST   /jobs/{job_id}/complete
 POST   /jobs/{job_id}/pre-label                           launch over one job; replace_model_labels redoes an earlier pass, geometries narrows the shapes
@@ -151,6 +147,7 @@ POST   /inference/connections
 GET    /inference/connections/{connection_id}
 PATCH  /inference/connections/{connection_id}
 DELETE /inference/connections/{connection_id}             no confirmation gate
+POST   /inference/connections/{connection_id}/test-endpoint  test an HTTP connection and record its response
 POST   /inference/connections/{connection_id}/download    launch
 POST   /inference/connections/{connection_id}/check-integrity   launch
 GET    /inference/download-size                           ?model_id=&model_revision=
@@ -163,9 +160,9 @@ GET    /background-jobs/{job_id}                          poll
 GET    /background-jobs/{job_id}/artifact                 bytes
 POST   /background-jobs/{job_id}/cancel
 
-GET    /settings                                          version, tracking status, executor values; read-only
-
-GET    /health                                            the one route needing no token
+GET    /home                                              workspace dashboard data
+GET    /settings                                          version, tracking status, and executor settings
+GET    /health                                            public liveness and version
 ```
 
 Two families sit outside the project tree, and both are workspace-scoped for the same
@@ -487,16 +484,19 @@ job), and joins the pass already live for that project rather than starting a se
 **Request bodies forbid unknown fields.** A misspelled key is a 422 `VALIDATION_ERROR`, never a
 silently ignored one - a typo that looked like it worked is worse than a refusal.
 
-**Only what a service can honour is on the wire.** `PATCH /projects/{id}` takes a name and nothing
-else, because the SDK has no way to update a description. The API does not grow a field it would
-have to fake.
+`PATCH /projects/{id}` updates the project's `name`, `description`, or both in one operation.
+Omitted or null fields keep their current values. An empty description clears it. See
+[Projects](projects.md) for how a rename also updates the dataset name.
 
 **Response shapes are wire models, not domain models.** They live in `server/models.py` and are
 written out field by field, so a field reaches a client because somebody published it and never
 because somebody added it to an entity.
 
-**One endpoint is a projection rather than a resource, and it is the exception that states the
-rule.** `GET /home` composes the workspace's front page - totals across every project, the batch
+`GET /settings` reports the server process's VisionSet version, MLflow tracking status, and
+job executor settings. It requires authentication and returns read-only diagnostics. See
+[Reading the tracking status](tracking.md#reading-the-status).
+
+`GET /home` composes the workspace's front page - totals across every project, the batch
 to carry on with, what is waiting, and a feed derived from timestamps that already exist. It takes
 no path parameters, has no verb but `GET`, and carries **no `allowed_actions`**: there is nothing
 here to act on, only rows pointing at resources that declare their own capabilities. It exists

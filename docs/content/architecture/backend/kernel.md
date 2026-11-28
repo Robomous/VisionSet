@@ -1,11 +1,9 @@
 # kernel
 
 [`src/visionset/kernel/`](../../../../src/visionset/kernel/) is the part of VisionSet
-that knows what a project, a batch and a release *are*. Everything else in the
-repository is a way of reaching it.
-
-It is a hexagon: the domain in the middle, ports on the edge, adapters outside
-them, and services as the only door in.
+that defines projects, batches, and releases and runs their workflows. Services
+coordinate domain rules and depend on ports for operations such as storage,
+image processing, and export.
 
 ## Ports and adapters
 
@@ -48,14 +46,15 @@ service against an object literal.
 | --- | --- | --- |
 | [`domain/`](../../../../src/visionset/kernel/domain/) | pydantic models, the transition tables, the capability tables | Pure values. Imports nothing from the rest of the kernel. |
 | [`ports/`](../../../../src/visionset/kernel/ports/) | `Protocol` declarations | Signatures name domain types and standard-library types. Nothing else. |
-| [`services/`](../../../../src/visionset/kernel/services/) | the eighteen services | The only way to change anything. Take an open `WorkspaceService` and reach ports through it. |
-| [`adapters/`](../../../../src/visionset/kernel/adapters/) | SQLite, the filesystem, Pillow, the standard-library scan reader | The only place a third-party library is named. |
+| [`services/`](../../../../src/visionset/kernel/services/) | workspace operations and use cases | Services use an open `WorkspaceService` to reach its ports. |
+| [`adapters/`](../../../../src/visionset/kernel/adapters/) | SQLite, the filesystem, Pillow, the standard-library scan reader | Adapters implement the storage and processing protocols. |
 
 ## The purity contract
 
 The kernel may not import `visionset.server`, `visionset.cli`, `visionset.mcp`,
-`visionset.formats`, `visionset.wire`, `visionset.jobs`, `visionset.inference` or
-`visionset.preprocessing`, nor `fastapi`, `typer`, `mcp` or `uvicorn`.
+`visionset.formats`, `visionset.wire`, `visionset.jobs`, `visionset.inference`,
+`visionset.preprocessing`, or `visionset.tracking`. The same contract forbids
+`fastapi`, `typer`, `mcp`, `uvicorn`, and `mlflow`.
 
 The obvious half is that a domain must not depend on a delivery mechanism. The
 less obvious half is why `formats`, `wire`, `jobs`, `inference` and `preprocessing`
@@ -67,12 +66,13 @@ pixels - and a kernel that could reach one could reach the thing behind it.
 `PreprocessingDriver` instances, for exactly this reason: resolving a name to a
 plugin is discovery at runtime, and the kernel is the part that must not do any.
 
-Enforced twice, and the second one is the one that catches a lazy import:
+The static contract and runtime test cover different import paths.
 
 - [`pyproject.toml`](../../../../pyproject.toml) - the `Kernel purity` import-linter
   contract, run by `uv run lint-imports`.
 - [`tests/architecture/test_kernel_purity.py`](../../../../tests/architecture/test_kernel_purity.py)
- - imports the kernel in a fresh interpreter and inspects `sys.modules`.
+  imports the kernel in a fresh interpreter and inspects `sys.modules` for
+  forbidden modules loaded during initialization.
 
 The kernel is also the one package `mypy` checks in strict mode. The strict flags are
 per-module configuration, so `uv run mypy src/visionset` - what CI runs - applies them here
@@ -90,7 +90,7 @@ This page is about arrangement. What the services actually do has its own pages:
 [events](../../events.md),
 [persistence](../../persistence.md) and [media](../../media.md).
 
-Delivery-layer discipline follows from the same shape: a route, command or tool body
-validates its input, calls one service, and shapes the output. Business logic in one is a
-bug, and the kernel raises domain errors that the boundary translates into HTTP statuses or
-exit codes - it never raises `HTTPException` itself.
+Routes, commands, and tools validate surface-specific input, compose service
+calls, and format the result. The kernel owns business rules and raises domain
+errors. Delivery packages translate those errors into HTTP statuses, CLI exit
+codes, or MCP error results.

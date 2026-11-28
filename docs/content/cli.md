@@ -1,12 +1,12 @@
 # The command line
 
-Like the REST API and MCP server, `visionset` is a thin SDK client. It calls the kernel in the
-same process, without an HTTP hop, and exposes no capability that the SDK does not already have.
+Run `visionset` in a terminal to manage a local workspace. The CLI calls the SDK in the same
+process, so it works without a running API server.
 
-**Two things the CLI does not do.** It cannot create annotations: `job mark` records progress only,
-so labels come from the browser app, from REST or MCP, or from a model with `pre-label`. And it
-cannot import video: `ingest` takes a directory of still images and refuses a clip, which is a
-browser feature. [surfaces.md](surfaces.md) lays out what each surface can do.
+`ingest` reads a directory of still images or, with `--point-clouds`, point-cloud scans. To
+extract frames from a clip, use the browser import. To create labels, use the browser, REST,
+MCP, or a model through `pre-label`. The `job mark` command records an asset’s progress.
+See [Surfaces](surfaces.md) for the full comparison.
 
 Every command below takes `[--json]` and `[--workspace]` unless the table says otherwise, and both
 are omitted from this listing to keep it readable.
@@ -720,8 +720,7 @@ corrupt the JSON-RPC stream before the first message.
 
 ## Surface differences
 
-Every command above is one SDK call; the CLI is not the whole SDK. What follows is what the REST
-API or the MCP server reaches and the CLI does not.
+Use the comparison below to find which surface offers an operation.
 
 ### Not on the CLI
 

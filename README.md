@@ -12,12 +12,10 @@
 [![Python 3.15](https://img.shields.io/badge/python-3.15-3776AB.svg?logo=python&logoColor=white)](https://pypi.org/project/visionset/)
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
 
-**VisionSet** is an open-source, local-first, SDK-first tool by [Robomous](https://robomous.ai)
-for creating, curating, and versioning computer-vision training datasets. Today it annotates 2D
-images, lanes included, and 3D point-cloud scans; the domain model is built for a Physical AI
-roadmap, and multimodal data lands on the same foundations. Your data stays on your machines,
-every surface (UI, CLI, MCP) is a thin client of the same SDK, and the release artifact is a
-plain `pip` package.
+**VisionSet** is an open-source tool by [Robomous](https://robomous.ai) for creating, curating,
+and versioning computer-vision training datasets. Annotate images, video frames, and point-cloud
+scans in a local workspace. The browser app, REST API, CLI, and MCP server all use the same Python
+SDK and ship in one installable package.
 
 ## See it
 
@@ -34,47 +32,38 @@ boxes, and three point-cloud maps ingested as scans.
 
 ## What it does
 
-Point it at a folder of images or point-cloud scans, or a clip of video, label them, and hand a trainer a dataset —
-without a server, an account, or your pixels leaving the machine.
-
-Not every surface can do every step: video import and drawing labels live in the browser app (labels
-are also written over REST and MCP), while the CLI ingests still images and point-cloud scans and records progress but
-cannot create annotations. [`surfaces.md`](docs/content/surfaces.md) has the full matrix.
+Bring in raw media or an existing labeled dataset, review the annotations, and export a version
+for training. Open the browser app for video import and interactive annotation. The REST API and
+MCP can also write annotations. Use the CLI to ingest media, manage work, and publish or export a
+release. See the [interface comparison](docs/content/surfaces.md) for the full list.
 
 | | |
 | --- | --- |
-| **Ingest** | folders of images, folders of PCD and PLY point-cloud scans in a declared frame, and video (video import is browser-only). Frames are cut, hashed and stored by content, so the same file twice is one asset and a re-run costs nothing. |
-| **Import** | a dataset that already has labels — COCO, Pascal VOC, the YOLO family, OpenLane, classification CSVs, and KITTI or nuScenes lidar scans with their 3D boxes — lands as one approved batch with `import` provenance, for a person to review before it is promoted. CLI and MCP only. See [import](docs/content/import.md). |
-| **Annotate** | boxes, polygons, polylines and classification tags on images, and cuboids and 3D polylines on point-cloud scans, in the browser, with undo/redo, keyboard-first tools, and a headless engine underneath that the UI is only one renderer of. |
-| **Version** | schema versions are immutable and every label records the one it was judged against. A release freezes the whole thing into a manifest; publish twice from unchanged data and the bytes are identical. |
-| **Split** | a stored recipe rather than a materialised assignment, keyed on **content hash** — so two copies of one image cannot straddle a train/test boundary. |
-| **Export** | addressed to [the model you will train](docs/content/releases.md#export-targets) — the Ultralytics YOLO line, YOLOv7, COCO, Pascal VOC, classification and [the lane family](docs/content/releases.md#the-lane-formats) — each format declaring what it can carry. VisionSet works out exactly what a target would drop *before* writing anything, and refuses to drop it silently. |
-| **Pre-process** | a named [recipe](docs/content/preprocessing.md) applied at export: resize every image, and write augmented variants of the training images beside their sources. The release stays untouched, and the export report records the recipe it ran with. |
-| **Auto-label** | a model you configure and fetch yourself, never one that arrives on its own. Click a point and SAM 2 proposes the shape under it; type words and Grounding DINO finds what they name. Every suggestion is a proposal until you accept it, and an accepted one records which model produced it. |
-| **Automate** | one SDK under everything, reachable as a Python API, a REST API, a CLI, and an MCP server an agent can drive. |
+| **Ingest** | Add folders of images or PCD and PLY scans. Import video frames in the browser. VisionSet stores identical media bytes once. |
+| **Import labels** | Bring in an existing dataset through the CLI or MCP. The import creates an approved batch with provenance so you can review it before promotion. See [supported formats](docs/content/import.md#formats). |
+| **Annotate** | Draw labels on images and point clouds. The browser editor provides keyboard shortcuts and undo and redo. See [supported geometries](docs/content/annotations.md). |
+| **Version** | Each label records the schema version it was validated against. Publishing a release freezes the dataset in an immutable manifest. |
+| **Split** | A seeded recipe keeps identical assets in the same split. Assets with the same imported group label can also be kept together. See [releases](docs/content/releases.md). |
+| **Export** | Pick a [training target](docs/content/releases.md#export-targets) or format. The compatibility report shows which annotations or assets it would drop before writing files. |
+| **Pre-process** | Use a [recipe](docs/content/preprocessing.md) to resize images and create augmented variants for the training split. The export report records the recipe. |
+| **Auto-label** | Configure a model for [interactive suggestions or batch pre-labeling](docs/content/inference.md). Accepted suggestions record model provenance. |
+| **Automate** | Use the Python SDK, REST API, CLI, or MCP server to manage the workflow. |
 
 ## Quickstart
 
 ```bash
-uv tool install "git+https://github.com/Robomous/VisionSet"   # PyPI lands with the beta
+uv tool install --prerelease allow visionset
 
 visionset init ~/datasets/road-signs     # a workspace, here and nowhere else
 cd ~/datasets/road-signs
 visionset server                         # API at http://127.0.0.1:8000, app at /app
 ```
 
-Then follow [the tutorial](docs/content/tutorial.md): a clip of video to a YOLO dataset in about half an
-hour. Full prerequisites — Python 3.11 or newer, and a browser, which is where a video is decoded — are in
-[docs/content/install.md](docs/content/install.md).
+Open `http://127.0.0.1:8000/app`. The [tutorial](docs/content/tutorial.md) takes you from source
+images to a YOLO export. The examples and feature descriptions follow `main`. See the
+[installation guide](docs/content/install.md) to build a wheel from the current checkout.
 
-`init` is the only command that creates a workspace, and it refuses a directory that already holds
-something. `visionset server` run outside one refuses with one sentence and exit 1; it never creates
-one, because a command that silently made a workspace out of whatever directory you were standing
-in is how data ends up somewhere nobody chose.
-
-Or hand the workspace to an agent — the same cycle, over
-[MCP](https://modelcontextprotocol.io), with the tools an agent needs to *look* at what it is
-labelling:
+To connect an MCP client to a workspace, add this configuration:
 
 ```json
 { "mcpServers": { "visionset": {
@@ -82,15 +71,11 @@ labelling:
     "env": { "VISIONSET_WORKSPACE": "/path/to/workspace" } } } }
 ```
 
-The whole cycle as tools, plus the four deletions that are offered only when the server is started
-with `--allow-destructive` — because a `confirm` parameter is documented in the same listing an
-agent reads before choosing, and four of four measured runs sent it on the first call. See
-[docs/content/mcp.md](docs/content/mcp.md) for how a client is configured and why each tool exists,
-[docs/content/mcp-tools.md](docs/content/mcp-tools.md) for the generated reference, or
-[docs/content/mcp-walkthrough.md](docs/content/mcp-walkthrough.md) for a session start to finish — including what
-twelve real agent runs actually did with it.
+See the [MCP setup guide](docs/content/mcp.md), [tool reference](docs/content/mcp-tools.md), and
+[end-to-end walkthrough](docs/content/mcp-walkthrough.md). On `main`, Codex and Claude Code can
+also use the [agent plugin](agent-plugins/README.md), which launches a compatible installed CLI.
 
-Or drive the whole cycle from the terminal, without a server:
+You can also manage the workflow from the terminal and label the images in the browser:
 
 ```bash
 visionset project create road-signs
@@ -98,12 +83,14 @@ visionset schema apply schema.json --project road-signs
 BATCH=$(visionset ingest ./incoming --project road-signs)
 visionset batch approve "$BATCH" --jobs-of 100 --start
 # …label in the app, then…
-visionset batch complete "$BATCH" --promote
+visionset batch finish "$BATCH" --promote
 visionset release publish --tag v1.0 --project road-signs --split 0.7,0.15,0.15
-visionset export --project road-signs --release v1.0 --target yolo11 --out ./out --allow-lossy
+visionset export --project road-signs --release v1.0 --target yolo11 --check
+# If the reported losses are acceptable:
+visionset export --project road-signs --release v1.0 --target yolo11 --out ../road-signs-yolo --allow-lossy
 ```
 
-Every command takes `--json` for scripting, and the shapes are the REST API's. See
+Commands with structured output accept `--json` and use the same field names as the API. See
 [docs/content/cli.md](docs/content/cli.md), or [`examples/cli_end_to_end.sh`](examples/cli_end_to_end.sh) for that
 walk with its assertions still in it.
 
@@ -148,8 +135,11 @@ src/visionset/          Single Python distribution (one wheel, one import namesp
   _static/              Compiled UI bundle lands here at build time (ships in the wheel)
 frontend/
   annotator/            @visionset/annotator — headless annotation engine (no React in core/)
+  media/                @visionset/media — browser video import and sampling
+  browser-inference/    @visionset/browser-inference — ONNX execution in a browser worker
   ui-core/              @visionset/ui-core — domain components, tokens, generated API contract
   app/                  @visionset/app — OSS product shell (Vite + React, never published)
+agent-plugins/          Client manifests, launcher, and end-user skills
 tests/                  Python tests, incl. machine-enforced architecture contracts
 examples/               Six runnable end-to-end scripts, all exercised in CI
 docs/                   Documentation: content/ is the Markdown (user and contributor docs, one page per

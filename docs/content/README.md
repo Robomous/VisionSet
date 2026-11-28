@@ -1,72 +1,56 @@
 # VisionSet documentation
 
-This directory contains the product and architecture documentation. Start with the repo-root
-[README](../../README.md) and [CONTRIBUTING](../../CONTRIBUTING.md); the architecture
-contracts (kernel purity, headless annotator) are described there and enforced in CI.
+VisionSet helps you create, curate, and version computer-vision datasets in a local workspace.
+Bring in images, video frames, point-cloud scans, or an existing labeled dataset. Organize
+annotation work into batches, promote reviewed labels to the dataset, and publish an immutable
+release that you can export for training.
 
-For the shape of the system, read [architecture/](architecture/README.md) from the
-top down. It covers the layer stack, each package, and the enforcement points for
-the architectural boundaries. The pages below are the behavioural reference; the
-architecture tree is the map.
-
-The **visual** contract is [DESIGN.md](../../DESIGN.md) at the repository root — the
-design foundations every screen builds on. The product-behaviour half lives here:
-[ui/product-principles.md](ui/product-principles.md) for what a screen must show and
-offer, [ui/navigation.md](ui/navigation.md) for how a person moves through the app,
-and [ui/annotator.md](ui/annotator.md) for the annotation workspace. Read them
-*before* building any screen, alongside [annotations.md](annotations.md), which
-covers the annotator's kernel-side behaviour.
+[Install VisionSet](install.md) and follow the [first dataset tutorial](tutorial.md) to try the
+workflow. The [examples](examples.md) show how to run it through the Python SDK, REST API, CLI,
+and MCP. These pages describe the repository's `main` branch. See the
+[installation guide](install.md#install) for the difference between the published beta and a build
+from source.
 
 ## VisionSet at a glance
 
-The four screens below are the app on a local workspace: frames cut from a traffic clip and labeled
-with boxes, and three point-cloud maps ingested as scans.
+These screenshots show a local workspace with labeled traffic frames and point-cloud scans.
 
 | | |
 | --- | --- |
 | ![The project list: image projects and a point-cloud project, each with its progress](../public/screenshots/projects.png) | ![A project's overview: a clip's frames as one batch, fully labeled, with the class mix and an image grid](../public/screenshots/project-overview.png) |
-| **Projects.** Every project in the workspace with its asset count, how much is annotated, its status and its latest release. | **Overview.** One project: its batches and their state, how much is labeled, what is in the dataset, and the class mix. |
+| **Projects.** Browse projects and see asset counts, annotation progress, and the latest release. | **Overview.** See a project's batches, assets, and class distribution. |
 | ![The annotator on a video frame: boxes for cars, a truck, a motorcycle and a pedestrian, with the objects panel beside them](../public/screenshots/annotator-image.png) | ![The annotator on a point-cloud scan: points colored by height, in the lidar_flu frame, with the 3D editing tools](../public/screenshots/annotator-point-cloud.png) |
-| **Annotating images.** A frame cut from a video, with its boxes drawn and listed in the objects panel. See [the annotator](ui/annotator.md). | **Annotating point clouds.** A scan in the declared `lidar_flu` frame, colored by height; 3D boxes and polylines are drawn here. See [media](media.md). |
+| **Image annotation.** Draw labels on images and video frames in the [annotator](ui/annotator.md). | **Point-cloud annotation.** Draw cuboids and 3D polylines in the scan's declared [coordinate frame](media.md). |
 
-If you are new to VisionSet, start with [install.md](install.md), then continue to
-[tutorial.md](tutorial.md).
+## Work with a dataset
 
-| Doc | Covers |
+| I want to… | Read |
 | --- | --- |
-| [architecture/](architecture/README.md) | The shape of the system, walkable top-down: the layer stack and the one-way dependency graph, a page per backend package and per frontend workspace package, and one page for what runs through all of them - the two machine-enforced boundaries, the capabilities contract, and the batch lifecycle at a glance. Every page links into the code and to the doc that owns the behaviour |
-| [install.md](install.md) | Getting it: requirements, the wheel, why no media binary is ever needed and where a video is actually decoded, the optional groups that check exports, and where your data goes |
-| [tutorial.md](tutorial.md) | A first dataset end to end - photographs to YOLO in about half an hour, with a video's one different step - with what each step actually freezes and why |
-| [workspaces.md](workspaces.md) | The workspace on disk: layout, `init`/`open`, which workspace a surface resolves to, project-name uniqueness, and how services are composed |
-| [projects.md](projects.md) | The project lifecycle: the 1:1 dataset, renaming, and what deletion does and does not destroy |
-| [sources.md](sources.md) | Where raw data comes from: image-directory registration versus a browser-declared video, point-cloud directories and the frame each declares, camera calibration per source and per asset, the `locator` field and what it does and does not promise, why decomposition parameters live on the source, and the idempotency rule and its named uniqueness gap |
-| [ingest.md](ingest.md) | Two separate use cases, not one with a branch: `IngestService` turning a directory of images or scans into rows - content identity versus recorded origin, why the decode happens outside a transaction, the run's lifecycle and pollable progress, the per-file report - and `VideoImportService`'s session lifecycle, the invariant that nothing staged is an asset before commit |
-| [import.md](import.md) | Bringing in a dataset that already has labels: an import as one approved batch with `import` provenance, the loss report and its per-kind consent, re-running, the CLI and MCP doors, and the formats it reads - KITTI and nuScenes scans with their cuboids among them |
-| [schemas.md](schemas.md) | The annotation schema: immutable monotonic versions, additive vs destructive change, and the two gates on narrowing |
-| [batches.md](batches.md) | The unit of annotation work: the state machine, membership frozen at approval, the schema pin, and the exact partition into jobs |
-| [jobs.md](jobs.md) | Annotation jobs: the job and per-asset progress machines, what counts as settled, ordered `next_pending`, and derived progress |
-| [background-jobs.md](background-jobs.md) | The embedded executor: a `JobQueue` port, a SQLite queue, a `spawn` dispatcher inside the server, and the handler contract. A different thing from `jobs.md`, which is human work |
-| [annotations.md](annotations.md) | The labels themselves: the one door, the batch's pinned version, the five hard rejects, attribute values, progress derived from the annotations, and the editor's shortcut table |
-| [media.md](media.md) | Decoding raw media: the kernel's still-image port and its point-cloud port, the accepted image formats, PCD and PLY scans and the thinned points a viewer reads, the orientation policy, pinned thumbnails, what their determinism does and does not promise, and where video decoding actually happens now that it has left this process |
-| [datasets.md](datasets.md) | The curated trunk: promotion from a completed batch, what `skipped` keeps out, curation without a `confirm=`, and the append-only change log |
-| [releases.md](releases.md) | The immutable artifact: what a manifest is and is not, why two publishes agree byte for byte, hash verification, and the seeded split recipe - then exporting: targets and the dialects they resolve to, what a format can carry and what a target narrows, the consent gate, and the report every export writes |
-| [preprocessing.md](preprocessing.md) | The optional stage at export: resize and augmentation recipes, the grammar, what moves geometry and what moves pixels, determinism and its scope, the train-only rule, and the report |
-| [events.md](events.md) | Domain events: subscribing by type, why emission follows the commit, at-most-once delivery, and what an isolated subscriber failure does |
-| [tracking.md](tracking.md) | Optional MLflow experiment tracking: off by default and never turned on by a tracking URI alone, the variables that configure it, what a misconfiguration and an unreachable server each do, what is and is not sent, and why only the settings cross into a worker |
-| [persistence.md](persistence.md) | The metadata store: repositories, unit of work, table layout, migrations and `format_version` |
-| [examples.md](examples.md) | The six runnable examples: the whole cycle in one pass, ingest on its own, the same cycle driven three ways — over HTTP, from a shell, and over MCP stdio — and the thirty-minute flow that ends at a trainer loading the result, with what each is built to demonstrate |
-| [glossary.md](glossary.md) | The words the documentation and tools use - workspace, project, source, batch, job, progress, schema pin, promotion, trunk, release, target versus format, recipe, connection - each defined once and linked to its page |
-| [surfaces.md](surfaces.md) | What the browser, REST, CLI and MCP can each do, step by step; the two stated limits (the CLI cannot create annotations, video import is browser-only); adding and viewing point-cloud scans; an agent quickstart for the CLI and MCP; how ids are addressed |
-| [error-codes.md](error-codes.md) | Every refusal code with its status, meaning, remedy and `retry_with`, **generated** from the kernel's and the surfaces' own tables |
-| [api.md](api.md) | The REST surface: the conventions every endpoint follows (paths, UUID ids, the list envelope, gates as query parameters), the one error body, why clients branch on `code` and not on the status, what decides 404 / 409 / 422, what a 5xx does and does not tell you, and which codes are worth retrying |
-| [auth.md](auth.md) | Who may call it: per-workspace API tokens, why only a digest is stored, why every refusal is one identical 401, immediate revocation, the `visionset token` commands, and how a protected route is built |
-| [mcp.md](mcp.md) | The agent surface: every tool and what each is for, why the one that destroys data is not advertised unless you ask, why fifty candidates became the set that ships (and what has been added since), how a client is configured, the coordinate-frame rule that makes `get_asset_image` safe to annotate from, the error envelope and its `retry_with` field, the three gate words, and the stated limits (synchronous ingest, of images or scans, and export; local paths; one workspace per server) |
-| [mcp-tools.md](mcp-tools.md) | The complete tool listing, **generated** from the server's own descriptions so it cannot drift from what an agent is told |
-| [mcp-walkthrough.md](mcp-walkthrough.md) | A session over MCP, start to finish: the cycle in the order an agent meets it, and then what twelve real agent runs did with it - where the coordinate frame held, how refusals were read, and the two pieces of friction that changed the tools |
-| [ui.md](ui.md) | The browser client: why no screen calls `fetch`, how a refusal is read (branch on `code`, and the two codes the client adds), where the token is kept and the three alternatives that were rejected, why a 401 is handled in one subscription, the loading/empty/error component, polling, and the dev proxy that keeps CORS out of production |
-| [ui/product-principles.md](ui/product-principles.md) | VisionSet's product UI rules: data first, density on data surfaces, action-forward screens, never disabling without explanation, the product-wide status mapping, number formatting, list and section rules, and the screen rules for Home and the project view |
-| [ui/navigation.md](ui/navigation.md) | How a person moves through the app: ways out of a sub-view, what the rail carries, what belongs in the URL, and why the browser's Back button stays correct |
-| [ui/annotator.md](ui/annotator.md) | The annotation workspace UX contract: the top bar's three zones, the side panel's three regions, the tool strip, the frame gallery, zoom and the device model, the read-only mode, the stage, and how shapes render |
-| [releasing.md](releasing.md) | Cutting a release: what ships, why the beta goes to PyPI as a pre-release, the npm scope, the order the steps have to happen in, and the one step that needs credentials this repository does not hold |
-| [inference.md](inference.md) | Where models run: the connections auto-labeling is configured against, why nothing is ever downloaded on your behalf, the two kinds and the parameters each carries, why the model revision is pinned, how weights are fetched and where they land, the `local-inference` extra, and why deleting a connection never touches the provenance on a label |
-| [cli.md](cli.md) | The command line: the whole cycle as a script, the three exit codes (and why one of them also means "no"), why stdout is data and stderr is prose, what `--json` promises and how it stays the API's shape, why `--workspace` follows the subcommand, and what `visionset init` and `visionset server` each do |
+| Bring in raw or labeled data | [Sources](sources.md), [ingest](ingest.md), [labeled dataset import](import.md), and [media](media.md) |
+| Set up a workspace and project | [Workspaces](workspaces.md), [projects](projects.md), and [schemas](schemas.md) |
+| Assign annotation work and review labels | [Batches](batches.md), [annotation jobs](jobs.md), [annotations](annotations.md), and [model-assisted labeling](inference.md) |
+| Publish and export training data | [Datasets](datasets.md), [releases and export targets](releases.md), [preprocessing](preprocessing.md), and [MLflow tracking](tracking.md) |
+| Look up a term | [Glossary](glossary.md) |
+
+## Choose an interface
+
+The [surface comparison](surfaces.md) shows which operations are available in each interface.
+
+| Interface | Guides and reference |
+| --- | --- |
+| Browser | [Browser client](ui.md), [navigation](ui/navigation.md), and [annotator](ui/annotator.md) |
+| Python SDK | [Examples](examples.md) and [kernel architecture](architecture/backend/kernel.md) |
+| REST API | [API conventions](api.md), [authentication](auth.md), and [error codes](error-codes.md) |
+| CLI | [CLI guide](cli.md) |
+| MCP | [Server setup](mcp.md), [walkthrough](mcp-walkthrough.md), and [generated tool reference](mcp-tools.md) |
+
+## Contribute to VisionSet
+
+Start with the repository [README](../../README.md) and [contributing guide](../../CONTRIBUTING.md).
+The [architecture overview](architecture/README.md) explains the package boundaries and links to
+the [architecture decisions](architecture/decisions/README.md). For runtime behavior, see
+[persistence](persistence.md), [events](events.md), and [background jobs](background-jobs.md).
+
+For interface changes, see the [visual design contract](../../DESIGN.md), the [UI product
+principles](ui/product-principles.md), and the [navigation rules](ui/navigation.md). The
+[release runbook](releasing.md) covers publishing the Python and npm packages.

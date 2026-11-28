@@ -1,16 +1,16 @@
 # Examples
 
-Every other document here explains one thing the kernel does. This one is about the runnable
-files that do several of them at once. There are six:
+Run these examples from the repository root. They cover workspace creation, ingest,
+annotation, release verification, and export across the SDK, REST API, CLI, and MCP.
 
-| Example | What it drives | Milestone |
-| --- | --- | --- |
-| [`sdk_end_to_end.py`](../../examples/sdk_end_to_end.py) | an empty directory to a release whose every byte can be re-hashed and checked | M1 |
-| [`ingest_end_to_end.py`](../../examples/ingest_end_to_end.py) | two folders of stills - one a rerun, one overlapping - to an approved, partitioned batch | M2 |
-| [`http_end_to_end.py`](../../examples/http_end_to_end.py) | the same cycle over HTTP, against a real server on a real port, with a bearer token | M3 |
-| [`cli_end_to_end.sh`](../../examples/cli_end_to_end.sh) | the same cycle from a shell, using nothing but the `visionset` command | M3 |
-| [`mcp_end_to_end.py`](../../examples/mcp_end_to_end.py) | the same cycle over MCP stdio, spawning `visionset mcp` and talking down its pipe | M3 |
-| [`thirty_minute_flow.py`](../../examples/thirty_minute_flow.py) | photographs to a YOLO dataset a trainer loads, every stage timed against a wall-clock ceiling | M6 |
+| Example | What it demonstrates |
+| --- | --- |
+| [`sdk_end_to_end.py`](../../examples/sdk_end_to_end.py) | Create a workspace, label images, and verify a release through the Python SDK. |
+| [`ingest_end_to_end.py`](../../examples/ingest_end_to_end.py) | Ingest overlapping image directories, inspect deduplication, and approve a partitioned batch. |
+| [`http_end_to_end.py`](../../examples/http_end_to_end.py) | Run the workflow against a local HTTP server with a bearer token. |
+| [`cli_end_to_end.sh`](../../examples/cli_end_to_end.sh) | Create a release from a shell and check CLI output and exit codes. |
+| [`mcp_end_to_end.py`](../../examples/mcp_end_to_end.py) | Start `visionset mcp` and run the workflow over stdio. |
+| [`thirty_minute_flow.py`](../../examples/thirty_minute_flow.py) | Time the workflow from photographs to a YOLO export and load the output with a trainer. |
 
 ```bash
 uv run python examples/sdk_end_to_end.py

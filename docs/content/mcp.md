@@ -14,8 +14,8 @@ visionset mcp --workspace ~/datasets/road-signs
 
 ## Configuring a client
 
-A client spawns the server itself and talks to it on stdin and stdout. The workspace travels in
-the environment, because there is no other channel:
+The client starts the server and communicates over stdin and stdout. Pass `--workspace` in
+the server arguments or set `VISIONSET_WORKSPACE` in the environment. For example:
 
 ```json
 {
@@ -41,22 +41,10 @@ with `--allow-destructive` (or, for the module form, `VISIONSET_MCP_ALLOW_DESTRU
 { "command": "visionset", "args": ["mcp", "--allow-destructive"] }
 ```
 
-This is measured rather than cautious. Four real agent runs were asked to tidy a schema and then
-delete a project; in **four of four** the model sent `confirm: true` on the *first* call, having
-read the parameter in the tool description. `ConfirmationRequired` never fired once, because
-nothing ever made the un-gated call.
-
-That is not the flag failing. Over HTTP or at a terminal `confirm` works exactly as designed,
-because a **person** is the one adding it. What the runs settle is narrower: *when the caller is a
-model, `confirm` is not a human in the loop.* It is a parameter documented in the same listing the
-caller reads before choosing, so the description that exists to explain the gate is also the
-instruction for clearing it. There is no version of a self-describing tool schema where that is
-not true.
-
-So the gate moved somewhere an agent cannot reach - the server's own startup. A tool that is not
-advertised cannot be called with a flag. `confirm` itself is unchanged, and stays: it is correct
-for every other surface, and when these tools *are* registered they behave exactly as before. The
-only decision is whether an agent is shown them at all.
+Startup configuration controls which delete tools an MCP client can call. Once registered,
+each tool still applies its own confirmation rules. An agent can supply a confirmation
+parameter itself, so enable these tools only for sessions where the client may perform the
+corresponding deletions.
 
 `visionset mcp` prints which posture it started with, on stderr beside the workspace.
 
@@ -79,11 +67,8 @@ it, and what twelve real agent runs did with it - see
 
 ## The tools
 
-Seventy-three tools are offered by default, in the order an agent meets them, plus the four
-below that are offered only on request — see
-[above](#destructive-tools-are-not-offered-unless-you-ask).
-[mcp-tools.md](mcp-tools.md) is the complete listing, generated from the server itself; this
-page groups them by what they are for.
+The tools below are grouped by workflow. The [generated tool reference](mcp-tools.md) lists
+the exact tool names, parameters, and descriptions served to clients.
 
 ### Projects and schema
 
@@ -486,10 +471,8 @@ re-run creates no asset it created before, and a run that finds nothing new crea
 The API's upload staging exists because HTTP has bytes where the kernel has paths; an agent runs
 beside the workspace and has the filesystem.
 
-**One workspace per server.** No tool takes a workspace parameter — threading one through
-seventy-three tools would put a path an agent has no way to know into every call. The workspace is
-opened and closed per tool call rather than held, so the file is never kept from `visionset server`
-or a second agent between calls.
+**One workspace per server.** Select the workspace at startup. The server opens and closes it
+for each tool call, so neither the workspace root nor API credentials belong in tool arguments.
 
 **A discriminated union's `type` is required.** It is read out of the object to pick the variant
 (`{"type": "bbox", …}`), and the published input schema marks it required on every variant, the
@@ -505,25 +488,9 @@ the browser groups and disables the reserved members rather than hiding them.
 
 ## What is not here, and why
 
-Fifty candidate tools were recorded across the four REST tasks; thirty of them shipped and
-twenty did not. Tools have been added since, every one of them because a surface grew a
-capability an agent had no way to reach. The larger groups say what that looks like: the four
-batch-composition tools above; the seven inference-connection tools, closing the Models page's
-SDK-first parity; the four schema-draft tools above, because composing a schema across several
-calls needs somewhere to hold a class before it is finished; the four deletions, which are
-advertised only on request; the pre-labeling trio, `pre_label_job` beside the two fan-outs,
-closing the last capability declared with no consumer; `check_export`, the plan-before-apply
-half of an export on the `preview_schema_change` precedent; `list_export_targets`, because
-`export_release` takes a target name and an agent has to be able to read the catalog it comes
-from; and the five recipe tools, because `export_release` takes a recipe by name and an agent
-has to be able to write one, read it back and edit it on the same terms as REST and the CLI; and
-`list_project_assets`, because `list_batch_assets` cannot show an asset no batch holds; and
-`inspect_import` and `import_dataset`, the plan and the commit of an [import](import.md), on the
-`check_export` precedent; and the ten track tools below, because a track is written through a
-job on every other surface and an agent annotating a clip has to be able to follow an object
-through it. That is seventy-three offered by default and seventy-seven in all. The parity rule means
-*evaluated*, not *implemented* — tool-selection accuracy degrades with count, so a tool ships
-only when an agent has a reason to reach for it that no neighbour covers.
+The tool listing covers the dataset workflow from creating a project through exporting a
+release. Several API operations are grouped into one tool. Others remain available through
+the surfaces listed below.
 
 **Folded into a parent**, because the parent already reads it and a second tool is a second round
 trip: `get_project_dataset`, `get_dataset`, `list_schema_versions`, `get_source`,

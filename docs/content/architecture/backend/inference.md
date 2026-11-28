@@ -121,24 +121,21 @@ one.
 
 ## Adding a family, and the candidates worth adding
 
-Most additions are cheap, and knowing which kind of cheap comes first. A family
-this build already resolves costs a curated catalog entry and nothing else. A new
-family in the same capability costs one entry in the serving driver's `families`
-mapping plus a check that its post-processing signature matches what that driver
-already does. Only a genuinely new capability costs a family *and* a driver - and
-because `families` maps a `model_type` straight onto what it may be asked for and
-what it answers in, a family acquires both declarations in the edit that adds it.
+A model whose family and output contract already match an installed driver can
+be curated without changing the resolver. For a new family, add its
+`model_type` to the driver's `families` mapping and verify how its prompts and
+post-processing match the declared capability and output geometries. Adding a
+capability also requires changing the kernel's capability vocabulary and the
+callers that consume it.
 
 The family a connection resolves on is read literally out of the snapshot's
 `config.json`, not resolved through `transformers`, which can only name a type it
 registers itself. That is what lets a driver installed from outside this
 distribution serve a family nothing here has heard of.
 
-What follows is the standing list of what could be added next, so that each
-addition starts here instead of from scratch. Every `model_type` quoted is what a
-checkpoint's own `config.json` declares rather than what its name suggests, and
-every license below was read on **2026-08-10**. A candidate that moves out of this
-list into the build takes its row with it, into the shipped table.
+The example checkpoints below illustrate different integration paths. Their
+listed model types and licenses reflect a review on August 10, 2026. Verify the
+checkpoint and revision before curating it.
 
 ### Four rules for curating one
 
@@ -222,11 +219,8 @@ the thing that driver's declaration is narrow about.
 | `openmmlab-community/mm_grounding_dino_tiny_o365v1_goldg_v3det` | OpenMMLab | `apache-2.0` | catalog entry only |
 | `iSEE-Laboratory/llmdet_base` | iSEE Laboratory | `apache-2.0` | catalog entry only |
 
-MM-Grounding-DINO is the strongest candidate for the teacher model in unattended
-batch pre-labeling: the same interface, better reported accuracy than the base
-family, and a tiny rung that stays plausible on a CPU. LLMDet reusing the same
-architecture is the trap worth remembering - it reads as a separate family by name
-and is not one by config.
+LLMDet illustrates why the resolver reads the configuration. Its name differs
+from MM-Grounding-DINO, but the checkpoint declares that family.
 
 ### `text_detect` - new family, real integration
 
@@ -287,32 +281,14 @@ question and not a family entry.
 
 ### The gate a gated model hits
 
-**Both blockers recorded here are now cleared, and `facebook/sam3` ships as a
-curated `point_suggest` entry.** What follows describes how, because the shape is
-what any future gated candidate inherits.
+The curated `facebook/sam3` checkpoint requires gated access. Its download uses
+the Hugging Face client, which can read `HF_TOKEN` from the environment of the
+server or CLI after the user has requested and been granted access. The form
+shows the access requirement before download. The download-size lookup uses
+Hub metadata, which is available before access is granted.
 
-The hub reports `gated: manual` and a `license: other`, and the repository's
-`config.json` cannot be read without being granted access. The license question is
-answered by the gated-model rule above: nothing is bundled, the user fetches from
-the publisher after accepting the publisher's terms, and the requirement is stated
-in the form before a download is offered.
-
-The fetch question turned out to need no mechanism at all. The download job reaches
-the hub through its standard client, which resolves a token from the environment
-on its own, so an authenticated fetch is `HF_TOKEN` being set where the server or
-the CLI runs and nothing in a workspace. What was missing was not the capability
-but the *sentence*: an unauthenticated fetch raised an error whose text opened with
-a status line and a request id, and re-raising it carried both to a reader. That is
-now translated into the remedy.
-
-Two measurements worth keeping, because both contradict the assumption a reader
-would otherwise make. **Reading a size needs no access** - the hub answers
-`model_info` for a gated repository unauthenticated - which is what lets the size
-line work before anybody has asked for anything. And **a gated repository answers
-401 rather than 403**, the same status a repository that does not exist answers, so
-the two are told apart by the client's exception class and never by the code. A
-branch on the number would send somebody with a typo to request access to a model
-nobody publishes.
+The downloader uses the Hub client's exception type to identify an access
+failure. The same HTTP status can also mean the model ID is unknown.
 
 Point prompts run through the tracker half of the architecture, which agrees with
 SAM 2 signature for signature; the concept segmentation the model is named for is

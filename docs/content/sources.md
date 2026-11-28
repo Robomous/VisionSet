@@ -1,21 +1,13 @@
 # Sources
 
-A **source** records raw data offered to a project: a directory of still images this process can
-open, a directory of point-cloud scans it can open, or a declared video. A source is not annotatable and stores no pixels. Ingest
-*materializes* assets from the source, which retains their origin.
-
-A `VIDEO` source no longer means "a video file exists at a path the server can read." This
-server does not decode video at all, so it means: *this set of image assets was materialized by a
-client from this declared clip, under this extraction policy.* What used to be a probe of a file
-on disk is now a client's own report of what its decoder read, taken as a declaration and stored
-as provenance - and the frames that report describes arrive afterwards, through their own session.
-See [ingest.md](ingest.md) for that session and [media.md](media.md) for why nothing here decodes
-a clip.
+A source records where a project's assets came from. Register an image or point-cloud
+directory before [ingesting](ingest.md) its files. A browser video import records the clip
+metadata and extraction settings reported by the client, then uploads the decoded frames.
+[Labeled dataset imports](import.md) can also record ordered sequences for tracks.
 
 ## Two doors, one per kind
 
-`SourceService` is the one door to an `IMAGE_DIRECTORY` source, and the only door that reads
-either kind back:
+Use `SourceService.register_images` to register an `IMAGE_DIRECTORY` source.
 
 ```python
 sources = SourceService(workspace)
@@ -23,12 +15,9 @@ sources = SourceService(workspace)
 stills = sources.register_images(project.id, Path("~/captures/2026-07").expanduser())
 ```
 
-There is no `register_video` any more, and no `register(kind=...)` either. A `VIDEO` source is
-made by `VideoImportService.start`, the same call that opens the session its frames stage into -
-see [ingest.md](ingest.md) - because there is nothing left for a second, dedicated registration
-step to do: the server never receives the clip, so there is no file to check and nothing to
-probe. `SourceService.get`, `.list` and `require_source` still answer for both kinds; they read a
-row and do not care which service wrote it.
+`VideoImportService.start` creates a `VIDEO` source and opens the session for uploading its
+frames. Use `SourceService.get`, `.list`, and `require_source` to read any source kind. See
+[video import sessions](ingest.md#a-video-import-is-a-session-not-a-run).
 
 `register_point_clouds(project.id, directory, frame=ScanFrame.LIDAR_FLU)` is the door to a
 `POINT_CLOUD_DIRECTORY` source - see
