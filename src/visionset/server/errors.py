@@ -55,6 +55,7 @@ from visionset.kernel import (
     AssetNotInJob,
     AssetNotJudged,
     AssetNotWritable,
+    AugmentationIncompatible,
     AugmentationRequiresSplit,
     BackgroundJobNotFound,
     BatchImmutable,
@@ -440,6 +441,10 @@ _HTTP: Final[dict[type[VisionSetError], _Http]] = {
     # by the release's content — without the consent flag, because a label that
     # cannot follow its image is never something to consent to.
     PreprocessingStepUnsupportedGeometry: _Http(409),
+    # The compatibility resolver's refusal beside it, for a task, an unregistered
+    # version or an undeclared label kind. The same reading: a well-formed request
+    # refused by what the release carries, and no consent makes it run.
+    AugmentationIncompatible: _Http(409),
     # Change-the-state-and-resubmit: delete the 3D labels, or give their assets
     # a calibration of their own, and the identical clear succeeds.
     CalibrationInUse: _Http(409),

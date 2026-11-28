@@ -1582,6 +1582,32 @@ class PreprocessingStepUnsupportedGeometry(VisionSetError):
             self.asset_id = asset_id
 
 
+class AugmentationIncompatible(VisionSetError):
+    """A recipe step cannot serve a label the export carries, for a reason beyond its geometry.
+
+    The compatibility resolver's refusal for everything the older refusals do
+    not already name: a step the export target's task cannot use, an
+    unregistered operation version, a label kind nothing declares support for.
+    A refusal, never a consent, for ``PreprocessingStepUnsupportedGeometry``'s
+    reason: the export would otherwise ship labels that disagree with their
+    images, or drop them silently. The remedy is a recipe without the step, or
+    an export target that does not train the task.
+    """
+
+    offenders: object | None = None
+    """Every refused entry of the resolution, as ``StepCompatibility`` values.
+
+    A class attribute with a ``None`` default and **not** a constructor
+    parameter, as ``LossyExportNotConsented.compatibility`` is, so this error
+    stays constructible from one message. The service sets it as a keyword.
+    """
+
+    def __init__(self, message: str, *, offenders: object | None = None) -> None:
+        super().__init__(message)
+        if offenders is not None:
+            self.offenders = offenders
+
+
 class PreprocessingDriverNotFound(VisionSetError):
     """No installed driver applies steps of that kind.
 

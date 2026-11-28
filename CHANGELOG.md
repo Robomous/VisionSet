@@ -40,6 +40,22 @@ nothing was being distributed. This is the first version that is.
   words, and later operations draw from an independent `StepStream` per step. The `PreprocessingDriver` port's `apply`
   takes an optional `draw`, and a driver without it is still called. Goldens captured before the change hold the hashes,
   draws, geometry and pixels of 32 legacy recipes byte-identical (#1238).
+- **One augmentation compatibility resolver, shared by pre-flight and export.** `resolve_augmentation` judges every
+  recipe step against every class, geometry and modality the export would carry after the format and target narrow
+  it - train-fold labels for an augmentation, every label for a resize - and answers `supported`, `conditional` or
+  `refused` with closed reason codes (`modality_unsupported`, `geometry_unsupported`, `task_unsupported`,
+  `semantics_unrepresentable`, `driver_unavailable`, `loss_requires_consent`, `requires_split`,
+  `unknown_combination`), collecting every offender. It reads the registry and fails closed: anything not declared
+  supported is refused, text and panoptic labels are gated rows refused for every op, and the target judged is the
+  export's, never the recipe's hint; without a target, or for one with no trainer, the format alone is judged as
+  before. A label is judged by the tasks its geometry feeds, so `hflip` and `rot90` are refused over keypoints a
+  target trains for pose, and every op under a depth-only target. `check_export`, `require_export_consent` and
+  `export` refuse by the same resolution: a missing split, an unmovable geometry, a scan and a missing driver keep
+  their refusals, messages and first offender, and every other reason is the new 409 `AUGMENTATION_INCOMPATIBLE`
+  carrying every refused entry in `detail.offenders`. A cropping resize is `conditional` and still flows through the
+  compatibility report and `allow_lossy`. Pre-flight now takes the installed drivers on every surface, so a missing
+  driver is refused before anything is written. `ReleaseService.recipe_compatibility` returns the resolution, and
+  the matrix in the pre-processing docs is generated from it (#1239).
 - **TensorFlow Object Detection TFRecord import and export as `tfrecord`.** The Object Detection API's `tf.train.Example`
   dataset schema, not an arbitrary TFRecord, read and written without TensorFlow or protobuf: the record framing with
   its masked CRC32C and the protobuf wire format are implemented in the format package. The exporter writes a

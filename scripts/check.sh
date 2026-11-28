@@ -165,6 +165,7 @@ run_generated() {
   step "error code reference drift" uv run python scripts/export_error_codes.py --check
   step "export target catalog drift" uv run python scripts/export_target_catalog.py --check
   step "format matrix drift" uv run python scripts/export_format_matrix.py --check
+  step "augmentation matrix drift" uv run python scripts/export_augmentation_matrix.py --check
   step "version sync" pnpm version:check
   # `tests/fixtures/wire_annotations.json` is deliberately absent: its gate is
   # `tests/server/test_wire_fixtures.py`, so the `python` group already runs it.

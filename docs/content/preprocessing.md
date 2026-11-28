@@ -120,11 +120,93 @@ All three run on images, are applied by the built-in Pillow driver and can be pr
 absent from the two spatial ops because no keypoint geometry yet says which point becomes which
 under a mirror or a turn, and `depth` from all three because no label the system carries is a
 depth map. A registered version is never changed: a different default, draw or behaviour is a
-new version beside it, so a stored recipe keeps meaning what it meant. Nothing reads `tasks`,
-`semantics` or `loss` to refuse an export yet - that is the compatibility resolver's job - but
-they are declared now so that it has one place to read. See
+new version beside it, so a stored recipe keeps meaning what it meant. `modalities`, `geometries`,
+`tasks`, `loss` and `drivers` are what the [compatibility resolver](#which-step-serves-which-label)
+refuses an export by. See
 [An augmentation is a registered version](architecture/decisions/an-augmentation-is-a-registered-version.md)
 for the rule and why it holds.
+
+## Which step serves which label
+
+Before an export transforms anything, `resolve_augmentation(recipe, carried, target_tasks=,
+installed_step_kinds=)` judges every step of the recipe against every `(class, geometry,
+modality)` the export would hand its plugin, and answers one `StepCompatibility` per pair:
+`supported`, `conditional` (it runs and loses labels the export report counts and consent must
+cover) or `refused`, with every reason that applies and a one-sentence message. Pre-flight
+(`check_export`, `require_export_consent`) and the export itself compute it the same way, from
+the same inputs, and `ReleaseService.recipe_compatibility` returns it to an SDK caller without
+refusing anything. Nothing stops at the first problem: a mixed release gets an entry for every
+class and geometry that fails, so a refusal names all of them.
+
+What the export carries is `carried_by(manifest, folds)` over the manifest the export hands its
+plugin - after the format and the target have narrowed it, so a label the export drops is never
+judged. A resize meets every label; an augmentation meets the labels of the train fold only,
+because no other fold is augmented, and a release without a split is judged against every label
+and refused `requires_split` besides.
+
+**Fail closed.** A step is supported for a label only where the registry declares it: the op's
+`modalities`, `geometries` and `tasks` for an augmentation, `RESIZE_GEOMETRIES` for a resize.
+Anything else is refused, `unknown_combination` when nothing more specific names why - an
+unregistered version, a label kind nothing declares support for.
+
+**The target is the export's, never the recipe's.** A recipe's `target` only records where its
+hints came from. The task set judged is that of the target the export is addressed to; an export
+addressed to a format, or to a target whose family has no trainer (its task set is empty), is
+judged on the format alone, with no task constraint. A label serves the tasks of its geometry
+that the target accepts - `bbox` feeds `detect`, `polygon` `segment` and `detect`, `mask`
+`segment` and `semantic`, `obb` `obb`, `keypoints` `pose`, `classification_tag` `classify` - and
+a label serving none of them is judged against every task of the target, since which one it
+feeds is not something the export can say. So `hflip` over a box is supported for a target that
+also trains pose, and refused over its keypoints.
+
+| Reason code | Verdict | When |
+| --- | --- | --- |
+| `modality_unsupported` | refused | The step reads images and the label, or an asset, is on a scan. |
+| `geometry_unsupported` | refused | The step cannot transform the geometry - the table in [Where the geometry moves](#where-the-geometry-moves-and-where-the-pixels-do). |
+| `task_unsupported` | refused | The target trains the label for a task the op does not declare. |
+| `semantics_unrepresentable` | refused | The op's semantic effect would change what the label means, and nothing in the data model can say how. |
+| `driver_unavailable` | refused | No installed driver applies the step's kind, or none is declared for the op. Judged only when the caller hands the installed drivers; the export always does. |
+| `loss_requires_consent` | conditional for a `fill` or `center_crop` resize; refused for a `lossy` op | The step can cut a label down or away. A cropping resize's loss is counted in the compatibility report and consented to with `allow_lossy`; an augmentation's loss has no accounting yet, so a `lossy` op is refused. |
+| `requires_split` | refused | The recipe augments and the release has no split. |
+| `unknown_combination` | refused | Nothing declares the combination supported. |
+
+The matrix for every registered op, judged over one label of each kind - generated from the
+resolver by `scripts/export_augmentation_matrix.py`, and held to it by a test. A cell is the
+verdict without a target; "`task_unsupported` for pose" means it is refused when the export's
+target trains that label for pose. `depth` is refused by every op, because no op declares it and
+no label feeds it: under a target that trains only depth, every label is judged against depth.
+`text` and `panoptic` are gated: no geometry carries them yet, and every op refuses them until one
+does.
+
+<!-- augmentation-matrix:begin — generated by scripts/export_augmentation_matrix.py; do not edit -->
+| Label | `hflip` v1 | `brightness_contrast` v1 | `rot90` v1 |
+| --- | --- | --- | --- |
+| classification (`classification_tag` on image) | supported | supported | supported |
+| bbox (`bbox` on image) | supported | supported | supported |
+| obb (`obb` on image) | supported | supported | supported |
+| polygon (`polygon` on image) | supported | supported | supported |
+| mask (`mask` on image) | supported | supported | supported |
+| lane (`polyline` on image) | supported | supported | refused: `geometry_unsupported` |
+| keypoints (`keypoints` on image) | supported; `task_unsupported` for pose | supported | supported; `task_unsupported` for pose |
+| image_3d (`cuboid_3d` on image) | refused: `geometry_unsupported` | supported | refused: `geometry_unsupported` |
+| scan (`cuboid_3d` on point_cloud) | refused: `modality_unsupported`, `geometry_unsupported` | refused: `modality_unsupported` | refused: `modality_unsupported`, `geometry_unsupported` |
+| text (gated) | refused: `unknown_combination`, `semantics_unrepresentable` | refused: `unknown_combination` | refused: `unknown_combination`, `semantics_unrepresentable` |
+| panoptic (gated) | refused: `unknown_combination` | refused: `unknown_combination` | refused: `unknown_combination` |
+<!-- augmentation-matrix:end -->
+
+What the data model cannot say is not refused. Nothing marks a class as orientation-bound - a lane
+whose meaning is its driving side, a sign whose meaning is its reading direction, a label defined
+by a colour - so `hflip`, `rot90` and `brightness_contrast` treat such a class like any other of
+its geometry. `hflip` over keypoints is supported when no target trains pose, as described below:
+no metadata says which points mirror each other.
+
+A refusal keeps the class it has always had. A missing split is `AugmentationRequiresSplit`, a
+geometry a step cannot move is `PreprocessingStepUnsupportedGeometry`, a scan is
+`ExportSourceUnreadable` and a missing driver is `PreprocessingDriverNotFound` - each with its
+message and its first offender, and each answered first when it applies. Every other refusal is
+`AugmentationIncompatible`, which carries every refused entry as `offenders` (`detail.offenders`
+on REST, the CLI's `--json` refusal and the MCP envelope). A `conditional` entry refuses nothing:
+its loss is in the compatibility report and the existing consent decides.
 
 ## Where the geometry moves, and where the pixels do
 
@@ -255,7 +337,8 @@ set does not accept is dropped first, consented through `allow_lossy` like every
 a polyline a boxes-only target would never write cannot make `rot90` refuse. The transform
 runs before consent is asked, so the refusal's report includes what a cropping resize cuts away;
 a recipe the transform refuses outright (`AugmentationRequiresSplit`,
-`PreprocessingStepUnsupportedGeometry`, `ExportSourceUnreadable`) still loses to an unconsented
+`PreprocessingStepUnsupportedGeometry`, `AugmentationIncompatible`, `PreprocessingDriverNotFound`,
+`ExportSourceUnreadable`) still loses to an unconsented
 format loss, so a caller who has not accepted that loss is answered about it first. Either
 refusal comes before any output exists.
 
@@ -328,10 +411,11 @@ transform still agree through the same code.
 | `InvalidName` | The name is not a slug: lowercase letters, digits, dots, hyphens and underscores, starting with a letter or digit, at most 64 characters. 422. |
 | `VALIDATION_ERROR` | The spec breaks the grammar: two resize steps, a resize after an augmentation, an augmentation repeated, augmentation steps with `variants_per_asset` 0, variants with no augmentation step, an unknown `op`, a `version` the registry does not hold for it, or a `params` key the version does not declare or a value of the wrong type or out of its range. The rule that was broken is the message, in the words above. Refused by the spec model itself, so every surface says the same thing. 422. |
 | `AugmentationRequiresSplit` | The recipe augments and the release was published without a split recipe. Raised at pre-flight and at export. 409. |
+| `AugmentationIncompatible` | The [compatibility resolver](#which-step-serves-which-label) refuses a step for a label the export carries, for a reason none of the refusals around it names - the target trains the label for a task the op does not serve, the step names an unregistered version, the label kind is one nothing declares. Carries every refused entry as `offenders`. Raised at pre-flight and at export. 409. |
 | `PreprocessingStepUnsupportedGeometry` | A step met a geometry outside the set it declares it can transform - every step declares `supported_geometries` the way an exporter does, and today the exclusions are those the table above marks refused: a `stretch` resize over a rotated box, every resize over a mask, a `fill` or `center_crop` resize over a rotated box, a polyline or keypoints, `rot90` over a polyline, and every step but `brightness_contrast` over a 3D label. Carries `step`, `geometry` and the first `asset_id`. 409. |
 | `LossyExportNotConsented` | A `fill` or `center_crop` resize cuts a label down or away and `allow_lossy` is false - the same refusal, and the same report, as a format that cannot carry a label. Raised by `POST /releases/{id}/export` (before the job is queued), the CLI's `export` and MCP's `export_release`, before anything is written; `GET /releases/{id}/export-compatibility` and `--check` answer 200 with the report instead. 409. |
 | `ExportSourceUnreadable` | A step needs the source's pixel size and the manifest never recorded one, or the asset's bytes are gone. 409. |
-| `PreprocessingDriverNotFound` | No installed driver applies a step kind the recipe holds. A fact about the installation, not the request. 500. |
+| `PreprocessingDriverNotFound` | No installed driver applies a step kind the recipe holds. Raised at pre-flight when the surface hands its drivers - REST, the CLI and MCP all do - and at export before anything is written. A fact about the installation, not the request. 500. |
 
 ## On every surface
 
