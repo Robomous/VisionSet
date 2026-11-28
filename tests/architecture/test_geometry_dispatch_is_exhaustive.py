@@ -213,7 +213,8 @@ def test_a_pixel_moving_step_never_moves_a_3d_label(
 
 
 KEYPOINTS = KeypointsGeometry(points=[(1.0, 1.0), (5.0, 3.0), (1.0, 1.0)])
-#: What each site answers for keypoints: a pixel extent, never a box, ring or 3D frame.
+#: What each site answers for keypoints: a pixel extent, never a box, ring or 3D frame;
+#: the pose task and a COCO keypoints row whose box is the points' extent.
 EXPECTED_KEYPOINTS: dict[str, object] = {
     "geometry_intersects_asset": True,
     "coordinates_are_finite": True,
@@ -221,11 +222,27 @@ EXPECTED_KEYPOINTS: dict[str, object] = {
     "geometry_reference on a scan": None,
     "geometry_fits_modality": False,
     "nms extent": BboxGeometry(x=1.0, y=1.0, width=4.0, height=2.0),
-    "yolo derive_task": Task.DETECT,
+    "yolo derive_task": Task.POSE,
     "yolo box": None,
     "yolo ring": None,
     "voc box": None,
-    "coco annotation": None,
+    "coco annotation": {
+        "category_id": 1,
+        "bbox": [1.0, 1.0, 4.0, 2.0],
+        "area": 8.0,
+        "segmentation": [],
+        "iscrowd": 0,
+        "keypoints": [1.0, 1.0, 2, 5.0, 3.0, 2, 1.0, 1.0, 2],
+        "num_keypoints": 3,
+        "visionset": {
+            "annotation_id": str(ANNOTATION.id),
+            "schema_version": 1,
+            "provenance": "human",
+            "model_ref": None,
+            "confidence": None,
+            "attributes": {},
+        },
+    },
     "server geometry_of": KEYPOINTS,
     "wire geometry": {"type": "keypoints", "points": [[1.0, 1.0], [5.0, 3.0], [1.0, 1.0]]},
 }

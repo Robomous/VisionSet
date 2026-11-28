@@ -37,10 +37,13 @@ from visionset.kernel.domain import (
     Annotation,
     BboxGeometry,
     GeometryType,
+    KeypointsGeometry,
+    KeypointSpec,
     LabelClass,
     MaskGeometry,
     PolygonGeometry,
     SplitRecipe,
+    VertexVisibility,
     mask_rows,
     rasterize_rings,
 )
@@ -386,3 +389,117 @@ def test_pycocotools_encodes_the_same_counts_and_both_spellings_import_alike(
     (tmp_path / "instances_train.json").write_text(json.dumps(document), encoding="utf-8")
     (image,) = CocoImporter().read(tmp_path).images
     assert [label.geometry for label in image.labels] == [holed, holed]
+
+
+# --- keypoints ------------------------------------------------------------------
+
+FACE = LabelClass(
+    name="face",
+    geometries=(GeometryType.KEYPOINTS,),
+    keypoints=KeypointSpec(names=("left_eye", "right_eye", "nose"), skeleton=((0, 1), (1, 2))),
+)
+
+FACES = (
+    KeypointsGeometry(
+        points=[(10.0, 8.0), (0.0, 0.0), (30.5, 20.25)],
+        visibility=(
+            VertexVisibility.VISIBLE,
+            VertexVisibility.UNLABELED,
+            VertexVisibility.OCCLUDED,
+        ),
+    ),
+    KeypointsGeometry(points=[(40.0, 10.0), (50.0, 12.0), (45.0, 30.0)]),
+)
+
+
+def _export_keypoints(tmp_path: Path) -> Path:
+    """A one-image release of a box beside two keypoints labels, written as COCO."""
+    root = tmp_path / "ws"
+    workspace = WorkspaceService.init(root)
+    try:
+        projects = ProjectService(workspace)
+        project = projects.create("faces")
+        SchemaService(workspace).create_version(project.id, [CLASSES[0], FACE])
+        incoming = tmp_path / "incoming"
+        incoming.mkdir()
+        Image.new("RGB", IMAGE_SIZE, (40, 80, 160)).save(incoming / "s-0.png")
+        source = SourceService(workspace).register_images(project.id, incoming)
+        run = IngestService(workspace).ingest(source.id, batch_name="first")
+        assert run.batch_id is not None
+        batches, jobs = BatchService(workspace), JobService(workspace)
+        batches.approve(run.batch_id)
+        (job,) = batches.jobs(run.batch_id)
+        batches.start(run.batch_id)
+        jobs.start(job.id)
+        (asset,) = batches.assets(run.batch_id)
+        faces = [
+            Annotation(
+                asset_id=asset.id,
+                label_class="face",
+                schema_version=1,
+                geometry=geometry,
+                provenance="human",
+            )
+            for geometry in FACES
+        ]
+        AnnotationService(workspace).add(job.id, [_box(asset.id), *faces])
+        jobs.complete(job.id)
+        batches.complete(run.batch_id)
+        DatasetService(workspace).promote(run.batch_id)
+        releases = ReleaseService(workspace)
+        release = releases.publish(projects.get_dataset(project.id).id, "v1")
+        out = tmp_path / "out"
+        releases.export(release.id, CocoExporter(), out)
+        return out
+    finally:
+        workspace.close()
+
+
+def test_pycocotools_reads_the_keypoint_category_and_rows(tmp_path: Path) -> None:
+    """Its index carries the names, the 1-based skeleton and one triplet per point."""
+    coco = _loaded(_export_keypoints(tmp_path))
+    (face,) = [one for one in coco.loadCats(coco.getCatIds()) if one["name"] == "face"]
+
+    assert face["keypoints"] == ["left_eye", "right_eye", "nose"]
+    assert face["skeleton"] == [[1, 2], [2, 3]]
+    rows = coco.loadAnns(coco.getAnnIds(catIds=[face["id"]]))
+    assert sorted(row["num_keypoints"] for row in rows) == [2, 3]
+    for row in rows:
+        assert len(row["keypoints"]) == 3 * len(face["keypoints"])
+        assert row["keypoints"][2::3] in ([2, 0, 1], [2, 2, 2])
+    (box,) = coco.loadAnns(coco.getAnnIds(catIds=[coco.getCatIds(catNms=["sign"])[0]]))
+    assert "keypoints" not in box
+
+
+def test_cocoeval_scores_the_keypoints_against_themselves_perfectly(tmp_path: Path) -> None:
+    """`COCOeval` over ``keypoints`` reads the triplets, the visibility and the area.
+
+    The ground truth evaluated as its own detections must score an AP of one: a
+    point out of order, a visibility the evaluator misreads or an area of zero for
+    a labeled object would each pull it below.
+    """
+    import numpy as np
+    from pycocotools.cocoeval import COCOeval
+
+    truth = _loaded(_export_keypoints(tmp_path))
+    face_id = truth.getCatIds(catNms=["face"])[0]
+    rows = truth.loadAnns(truth.getAnnIds(catIds=[face_id]))
+    detections = truth.loadRes(
+        [
+            {
+                "image_id": row["image_id"],
+                "category_id": face_id,
+                "keypoints": row["keypoints"],
+                "score": 1.0,
+            }
+            for row in rows
+        ]
+    )
+    evaluation = COCOeval(truth, detections, iouType="keypoints")
+    evaluation.params.catIds = [face_id]
+    evaluation.params.kpt_oks_sigmas = np.array([0.025, 0.025, 0.026])
+    evaluation.evaluate()
+    evaluation.accumulate()
+    evaluation.summarize()
+
+    assert evaluation.stats[0] == pytest.approx(1.0)

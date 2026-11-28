@@ -18,6 +18,7 @@ from collections.abc import Callable, Iterable, Mapping
 from pathlib import Path
 from typing import Final, assert_never
 
+from visionset.formats._keypoints import labeled_extent, states
 from visionset.formats._layout import IMAGES_DIRNAME, dimensions_of, folds_of, write_image
 from visionset.kernel.domain import (
     BboxGeometry,
@@ -35,6 +36,7 @@ from visionset.kernel.domain import (
     PolylineGeometry,
     SplitAssignment,
     Task,
+    VertexVisibility,
     obb_enclosing_box,
 )
 from visionset.kernel.errors import ExportSourceUnreadable
@@ -67,11 +69,12 @@ Rows = Callable[[ManifestAsset, Mapping[str, int]], Iterable[str]]
 def derive_task(manifest: Manifest, accepted: frozenset[Task]) -> Task:
     """The one task an export of this manifest is written for.
 
-    Derived, never chosen: ``segment`` when the accepting side takes it and any
-    polygon is present, ``classify`` when it takes that and the manifest holds
+    Derived, never chosen: ``pose`` when the accepting side takes it and any
+    keypoints label is present, ``segment`` when it takes that and any polygon
+    is present, ``classify`` when it takes that and the manifest holds
     classification tags and no box or polygon, otherwise ``detect``.
     """
-    has_polygon = has_box = has_tag = False
+    has_polygon = has_box = has_tag = has_keypoints = False
     for asset in manifest.assets:
         for annotation in asset.annotations:
             geometry: Geometry = annotation.geometry
@@ -82,10 +85,11 @@ def derive_task(manifest: Manifest, accepted: frozenset[Task]) -> Task:
                     has_box = True
                 case ClassificationGeometry():
                     has_tag = True
+                case KeypointsGeometry():
+                    has_keypoints = True
                 case (
                     ObbGeometry()
                     | PolylineGeometry()
-                    | KeypointsGeometry()
                     | Polyline3DGeometry()
                     | Cuboid3DGeometry()
                     | MaskGeometry()
@@ -93,6 +97,8 @@ def derive_task(manifest: Manifest, accepted: frozenset[Task]) -> Task:
                     pass
                 case _:
                     assert_never(geometry)
+    if Task.POSE in accepted and has_keypoints:
+        return Task.POSE
     if Task.SEGMENT in accepted and has_polygon:
         return Task.SEGMENT
     if Task.CLASSIFY in accepted and has_tag and not (has_box or has_polygon):
@@ -171,6 +177,72 @@ def segment_rows(asset: ManifestAsset, index_of: Mapping[str, int]) -> Iterable[
         if points is None:
             continue
         yield f"{index} {' '.join(_normalized_points(points, width, height))}"
+
+
+def pose_keypoint_count(manifest: Manifest) -> int:
+    """The one keypoint count a pose export writes, or refuse a manifest that has none.
+
+    A pose label file has one row shape and ``kpt_shape`` one count, so every
+    row-writing label must be a keypoints label and all of them must agree on
+    their point count. A box or a polygon beside them has no pose row, and two
+    counts have no single ``kpt_shape``; either is refused, naming the classes,
+    rather than guessed. A tag, which no label file holds, is not a row.
+
+    Raises:
+        ExportSourceUnreadable: a box or polygon beside the keypoints, or two
+            keypoint counts.
+    """
+    counts: dict[int, set[str]] = {}
+    others: dict[str, set[str]] = {}
+    for asset in manifest.assets:
+        for annotation in asset.annotations:
+            geometry: Geometry = annotation.geometry
+            if isinstance(geometry, KeypointsGeometry):
+                counts.setdefault(len(geometry.points), set()).add(annotation.label_class)
+            elif isinstance(geometry, BboxGeometry | PolygonGeometry):
+                others.setdefault(annotation.label_class, set()).add(geometry.type.value)
+    if others:
+        shown = ", ".join(
+            f"{name!r} ({', '.join(sorted(kinds))})" for name, kinds in sorted(others.items())
+        )
+        raise ExportSourceUnreadable(
+            f"a pose export writes keypoints labels only, and the release also holds "
+            f"labels of {shown}; export to a target without pose, or to a format that "
+            f"writes both"
+        )
+    if len(counts) != 1:
+        shown = "; ".join(
+            f"{count} for {', '.join(repr(name) for name in sorted(names))}"
+            for count, names in sorted(counts.items())
+        )
+        raise ExportSourceUnreadable(
+            f"a pose export writes one keypoint count, and the release's keypoints labels "
+            f"have several: {shown}"
+        )
+    return next(iter(counts))
+
+
+def pose_rows(asset: ManifestAsset, index_of: Mapping[str, int]) -> Iterable[str]:
+    """``class cx cy w h x1 y1 v1 … xn yn vn`` per keypoints label.
+
+    The box is the labeled points' tight extent; an unlabeled point is written
+    ``0 0 0``, and a label recording no visibility has every point ``2``.
+    """
+    width, height = dimensions_of(asset)
+    for annotation in asset.annotations:
+        index = class_index(asset, annotation, index_of)
+        geometry: Geometry = annotation.geometry
+        if not isinstance(geometry, KeypointsGeometry):
+            continue
+        box = _normalized_extent(*labeled_extent(geometry, width, height), width, height)
+        values: list[str] = []
+        for point, state in zip(geometry.points, states(geometry), strict=True):
+            if state is VertexVisibility.UNLABELED:
+                values.extend((f"{0.0:.{PRECISION}f}", f"{0.0:.{PRECISION}f}", "0"))
+                continue
+            values.extend(_normalized_points([point], width, height))
+            values.append(str(int(state)))
+        yield f"{index} {' '.join(box)} {' '.join(values)}"
 
 
 def class_index(
@@ -262,10 +334,16 @@ def _normalized_box(box: BboxGeometry, width: int, height: int) -> list[str]:
     that breaks it. The centre is clamped after the extent, so a box that hangs
     off an edge keeps as much of itself as fits rather than being moved.
     """
-    left = max(0.0, min(box.x, float(width)))
-    top = max(0.0, min(box.y, float(height)))
-    right = max(left, min(box.x + box.width, float(width)))
-    bottom = max(top, min(box.y + box.height, float(height)))
+    return _normalized_extent(box.x, box.y, box.width, box.height, width, height)
+
+
+def _normalized_extent(
+    x: float, y: float, box_width: float, box_height: float, width: int, height: int
+) -> list[str]:
+    left = max(0.0, min(x, float(width)))
+    top = max(0.0, min(y, float(height)))
+    right = max(left, min(x + box_width, float(width)))
+    bottom = max(top, min(y + box_height, float(height)))
     values = (
         ((left + right) / 2) / width,
         ((top + bottom) / 2) / height,
@@ -308,7 +386,9 @@ def fold_path(folds: set[str], wanted: str, fallback: str, *, prefix: str = "") 
     return f"{prefix}{IMAGES_DIRNAME}/{wanted}" if wanted in folds else fallback
 
 
-def write_data_yaml(target: Path, names: list[str], folds: set[str]) -> None:
+def write_data_yaml(
+    target: Path, names: list[str], folds: set[str], *, keypoints: int | None = None
+) -> None:
     """The descriptor: ``path: .``, one key per fold present, ``names`` as a mapping.
 
     ``names`` is a mapping from index rather than a list, because the index is
@@ -322,6 +402,9 @@ def write_data_yaml(target: Path, names: list[str], folds: set[str]) -> None:
     training images. That says "there is no held-out set", where omitting the
     key says "this file is malformed". ``test`` is written only when it has
     something in it.
+
+    ``keypoints`` is a pose export's point count, written as ``kpt_shape: [N, 3]``.
+    No ``flip_idx``: the domain records no left-right pairing of points.
     """
     present = sorted(folds)
     train = fold_path(folds, "train", present[0])
@@ -333,6 +416,8 @@ def write_data_yaml(target: Path, names: list[str], folds: set[str]) -> None:
     ]
     if "test" in folds:
         lines.append(f"test: {IMAGES_DIRNAME}/test")
+    if keypoints is not None:
+        lines.append(f"kpt_shape: [{keypoints}, 3]")
     lines.append("names:")
     lines.extend(f"  {index}: {yaml_scalar(name)}" for index, name in enumerate(names))
     target.write_text("\n".join(lines) + "\n", encoding="utf-8")

@@ -14,6 +14,18 @@ centres on its own and the parts are unioned into one mask, a ``geometry``
 loss. ``iscrowd`` has no field to land in, so a crowd row keeps its shape and
 loses the flag, an ``attribute`` loss.
 
+A category naming its ``keypoints`` is a keypoints class: the names, and the
+1-based ``skeleton`` pairs as 0-based edges, become its keypoint spec, and a row
+of it carrying a ``keypoints`` array is one keypoints label of ``(x, y, v)``
+triplets, ``v`` the visibility. Its box and any segmentation are not kept, a
+``geometry`` loss per row; a row of it with no ``keypoints`` keeps its shape.
+A malformed spec, or one category named twice with two specs, refuses the
+source; a malformed array, or one of the wrong length, loses its row.
+Keypoints on a row of a category naming none lose the keypoints and keep the
+shape. A ``person_keypoints_*`` file is read when the source has no
+``instances_*`` file; beside one it repeats the same objects and is reported
+unread.
+
 What the kernel cannot represent is counted into ``losses`` by kind, never
 dropped silently: a malformed or wrongly sized mask and a degenerate shape lose
 the whole label; keypoints lose part of one (its shape is kept). Attribute
@@ -48,8 +60,11 @@ from visionset.kernel.domain import (
     ImportedLabel,
     ImportLoss,
     ImportLossKind,
+    KeypointsGeometry,
+    KeypointSpec,
     MaskGeometry,
     PolygonGeometry,
+    VertexVisibility,
     mask_area,
     mask_union,
     rasterize_rings,
@@ -62,6 +77,7 @@ from visionset.kernel.errors import ImportSourceUnreadable
 
 ANNOTATIONS_DIRNAME: Final = "annotations"
 _INSTANCES_PREFIX: Final = "instances_"
+_KEYPOINTS_PREFIX: Final = "person_keypoints_"
 #: Below this many square pixels a ring is a line or a point, not a shape.
 _DEGENERATE_AREA: Final = 1e-9
 
@@ -70,6 +86,7 @@ _PARTS: Final = "a polygon of several rings is rasterized into one mask at pixel
 _MALFORMED_RING: Final = "its polygon has fewer than three points or is malformed"
 _MALFORMED_RLE: Final = "its RLE mask is malformed"
 _MASK_SIZE: Final = "its mask's size is not its image's height and width"
+_POSE_SHAPE: Final = "its keypoints are kept; its box and any segmentation are not"
 
 
 @dataclass
@@ -91,16 +108,19 @@ class CocoImporter:
         images: dict[PurePosixPath, _Image] = {}
         losses: Counter[tuple[ImportLossKind, str, str]] = Counter()
         definitions: dict[str, dict[str, Attribute]] = {}
+        specs: dict[str, KeypointSpec] = {}
 
         for document_path in documents:
             document = _load(document_path)
-            categories = _categories(document, document_path.name)
+            categories = _categories(document, document_path.name, specs)
             for name in categories.values():
                 geometries.setdefault(name, set())
+                if name in specs:
+                    geometries[name].add(GeometryType.KEYPOINTS)
             image_dir = _image_dir(src, document_path)
             by_id = self._images(document, document_path.name, image_dir, images)
             for row in _rows(document, "annotations", document_path.name):
-                self._annotation(row, categories, by_id, geometries, definitions, losses)
+                self._annotation(row, categories, specs, by_id, geometries, definitions, losses)
 
         for kind, subject, reason, count in map(_unread, unread):
             losses[(kind, subject, reason)] += max(count, 1)
@@ -110,6 +130,7 @@ class CocoImporter:
                 name=name,
                 geometries=tuple(seen) or (GeometryType.BBOX,),
                 attributes=tuple(definitions.get(name, {}).values()),
+                keypoints=specs.get(name),
             )
             for name, seen in geometries.items()
         )
@@ -166,6 +187,7 @@ class CocoImporter:
         self,
         row: Mapping[str, Any],
         categories: Mapping[Any, str],
+        specs: Mapping[str, KeypointSpec],
         by_id: Mapping[Any, _Image],
         geometries: dict[str, set[GeometryType]],
         definitions: dict[str, dict[str, Attribute]],
@@ -180,7 +202,14 @@ class CocoImporter:
             losses[(ImportLossKind.LABEL, name, "it names an image the file does not list")] += 1
             return
 
-        geometry, refusal, converted = _geometry(row, width=image.width, height=image.height)
+        spec = specs.get(name)
+        posed = spec is not None and row.get("keypoints") is not None
+        geometry: Geometry | None
+        if spec is not None and posed:
+            geometry, refusal = _keypoints(row.get("keypoints"), len(spec.names))
+            converted = False
+        else:
+            geometry, refusal, converted = _geometry(row, width=image.width, height=image.height)
         if geometry is None:
             losses[(ImportLossKind.LABEL, name, refusal)] += 1
             return
@@ -189,9 +218,11 @@ class CocoImporter:
             return
         if converted:
             losses[(ImportLossKind.GEOMETRY, name, _PARTS)] += 1
+        if posed:
+            losses[(ImportLossKind.GEOMETRY, name, _POSE_SHAPE)] += 1
         if row.get("iscrowd") == 1:
             losses[(ImportLossKind.ATTRIBUTE, name, _CROWD)] += 1
-        if _has_keypoints(row):
+        if not posed and _has_keypoints(row):
             losses[
                 (ImportLossKind.GEOMETRY, name, "keypoints are not imported; the shape is kept")
             ] += 1
@@ -216,10 +247,11 @@ class CocoImporter:
 def _instance_files(src: Path) -> tuple[list[Path], list[Path]]:
     """The instances files to read, and the other COCO files beside them that are not read.
 
-    Only ``instances_*.json`` holds detection and segmentation labels; a COCO
-    folder also carries ``person_keypoints_*`` and ``captions_*`` over the same
-    images, and reading those too would label every person twice. A single
-    JSON file at the top of the source is read whatever it is called.
+    ``instances_*.json`` holds detection and segmentation labels; a COCO folder
+    also carries ``person_keypoints_*`` and ``captions_*`` over the same images,
+    and reading those too would label every person twice. Without an instances
+    file, the ``person_keypoints_*`` files are read instead. A single JSON file
+    at the top of the source is read whatever it is called.
     """
     if not src.is_dir():
         raise ImportSourceUnreadable(f"the COCO source {src.name!r} is not a directory")
@@ -228,9 +260,10 @@ def _instance_files(src: Path) -> tuple[list[Path], list[Path]]:
         if not directory.is_dir():
             continue
         found = sorted(path for path in directory.glob("*.json") if path.is_file())
-        instances = [path for path in found if path.name.startswith(_INSTANCES_PREFIX)]
-        if instances:
-            return instances, [path for path in found if path not in instances]
+        for prefix in (_INSTANCES_PREFIX, _KEYPOINTS_PREFIX):
+            instances = [path for path in found if path.name.startswith(prefix)]
+            if instances:
+                return instances, [path for path in found if path not in instances]
     top = sorted(path for path in src.glob("*.json") if path.is_file())
     if len(top) == 1:
         return top, []
@@ -247,8 +280,9 @@ def _unread(path: Path) -> tuple[ImportLossKind, str, str, int]:
         count = len(rows) if isinstance(rows, list) else 0
     except (OSError, ValueError, AttributeError, RecursionError):
         count = 0
-    if path.name.startswith("person_keypoints_"):
-        return ImportLossKind.GEOMETRY, path.name, "keypoint files are not imported", count
+    if path.name.startswith(_KEYPOINTS_PREFIX):
+        reason = "a keypoint file beside instances files repeats their objects and is not read"
+        return ImportLossKind.GEOMETRY, path.name, reason, count
     if path.name.startswith("captions_"):
         return ImportLossKind.LABEL, path.name, "captions are not imported", count
     return ImportLossKind.LABEL, path.name, "only instances files are imported", count
@@ -275,7 +309,10 @@ def _rows(document: Mapping[str, Any], key: str, source_name: str) -> Iterable[M
     return rows
 
 
-def _categories(document: Mapping[str, Any], source_name: str) -> dict[Any, str]:
+def _categories(
+    document: Mapping[str, Any], source_name: str, specs: dict[str, KeypointSpec]
+) -> dict[Any, str]:
+    """The categories by id; each keypoint spec is recorded into ``specs`` by name."""
     categories: dict[Any, str] = {}
     for row in _rows(document, "categories", source_name):
         name = row.get("name")
@@ -283,14 +320,58 @@ def _categories(document: Mapping[str, Any], source_name: str) -> dict[Any, str]
             raise ImportSourceUnreadable(f"{source_name}: a category has no name")
         if row.get("id") in categories:
             raise ImportSourceUnreadable(f"{source_name}: category id {row.get('id')!r} repeats")
-        categories[row.get("id")] = name.strip()
+        name = name.strip()
+        categories[row.get("id")] = name
+        spec = _spec(row, name, source_name)
+        if spec is None:
+            continue
+        if specs.setdefault(name, spec) != spec:
+            raise ImportSourceUnreadable(
+                f"{source_name}: category {name!r} names other keypoints or another "
+                f"skeleton than an earlier file does"
+            )
     return categories
+
+
+def _spec(row: Mapping[str, Any], name: str, source_name: str) -> KeypointSpec | None:
+    """A category's ``keypoints`` and 1-based ``skeleton`` as a spec, or ``None``."""
+    names = row.get("keypoints")
+    if names is None or names == []:
+        return None
+    if not isinstance(names, list) or not all(isinstance(one, str) for one in names):
+        raise ImportSourceUnreadable(
+            f"{source_name}: category {name!r} has keypoints that are not a list of names"
+        )
+    skeleton = row.get("skeleton", [])
+    if not isinstance(skeleton, list) or not all(
+        isinstance(edge, list)
+        and len(edge) == 2
+        and all(isinstance(end, int) and not isinstance(end, bool) and end >= 1 for end in edge)
+        for edge in skeleton
+    ):
+        raise ImportSourceUnreadable(
+            f"{source_name}: category {name!r} has a skeleton that is not a list of "
+            f"1-based keypoint index pairs"
+        )
+    try:
+        return KeypointSpec(
+            names=tuple(names),
+            skeleton=tuple((first - 1, second - 1) for first, second in skeleton),
+        )
+    except ValidationError as exc:
+        reasons = "; ".join(error["msg"] for error in exc.errors())
+        raise ImportSourceUnreadable(
+            f"{source_name}: category {name!r} has an unusable keypoint spec: {reasons}"
+        ) from None
 
 
 def _image_dir(src: Path, document_path: Path) -> PurePosixPath:
     """Where the images of one instances file live, relative to ``src``."""
     stem = document_path.stem
-    fold = stem[len(_INSTANCES_PREFIX) :] if stem.startswith(_INSTANCES_PREFIX) else stem
+    fold = stem
+    for prefix in (_INSTANCES_PREFIX, _KEYPOINTS_PREFIX):
+        if stem.startswith(prefix):
+            fold = stem[len(prefix) :]
     for candidate in (PurePosixPath(IMAGES_DIRNAME, fold), PurePosixPath(IMAGES_DIRNAME)):
         if (src / candidate).is_dir():
             return candidate
@@ -332,6 +413,25 @@ def _geometry(
     if box_width <= 0 or box_height <= 0:
         return None, "its box has no area", False
     return BboxGeometry(x=x, y=y, width=box_width, height=box_height), "", False
+
+
+def _keypoints(value: object, count: int) -> tuple[KeypointsGeometry | None, str]:
+    """A ``keypoints`` array of ``count`` ``(x, y, v)`` triplets as keypoints, or why not."""
+    malformed = f"its keypoints are not {count} (x, y, v) triplets of numbers"
+    if (
+        not isinstance(value, list)
+        or len(value) != 3 * count
+        or not all(_is_number(one) for one in value)
+    ):
+        return None, malformed
+    points: list[tuple[float, float]] = []
+    visibility: list[VertexVisibility] = []
+    for x, y, state in zip(value[::3], value[1::3], value[2::3], strict=True):
+        if state not in (0, 1, 2):
+            return None, "a keypoint visibility is not 0, 1 or 2"
+        points.append((float(x), float(y)))
+        visibility.append(VertexVisibility(int(state)))
+    return KeypointsGeometry(points=points, visibility=tuple(visibility)), ""
 
 
 def _points(ring: list[Any]) -> list[tuple[float, float]]:

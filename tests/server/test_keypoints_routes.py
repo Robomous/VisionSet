@@ -488,13 +488,13 @@ def test_a_release_without_keypoints_keeps_its_earlier_version(
     assert all("keypoints" not in one for one in document["classes"])
 
 
-def test_every_export_reports_the_keypoints_class_dropped(
+def test_a_format_without_keypoints_reports_the_keypoints_class_dropped(
     client: TestClient, released: tuple[str, str]
 ) -> None:
     release_id, _ = released
 
     report = client.get(
-        f"/releases/{release_id}/export-compatibility", params={"format": "coco"}
+        f"/releases/{release_id}/export-compatibility", params={"format": "voc"}
     ).json()
 
     (face,) = [one for one in report["classes"] if one["label_class"] == "face"]
@@ -504,12 +504,27 @@ def test_every_export_reports_the_keypoints_class_dropped(
     assert report["compatible"] is False
 
 
+def test_coco_reports_the_keypoints_class_written_whole(
+    client: TestClient, released: tuple[str, str]
+) -> None:
+    release_id, _ = released
+
+    report = client.get(
+        f"/releases/{release_id}/export-compatibility", params={"format": "coco"}
+    ).json()
+
+    (face,) = [one for one in report["classes"] if one["label_class"] == "face"]
+    assert face["status"] == "supported"
+    assert face["annotations"] == 1
+    assert report["compatible"] is True
+
+
 def test_an_export_dropping_keypoints_is_refused_without_consent(
     client: TestClient, released: tuple[str, str], tmp_path: Path
 ) -> None:
     release_id, _ = released
 
-    refused = client.post(f"/releases/{release_id}/export", params={"format": "coco"})
+    refused = client.post(f"/releases/{release_id}/export", params={"format": "voc"})
 
     assert refused.status_code == 409, refused.text
     assert refused.json()["code"] == "LOSSY_EXPORT_NOT_CONSENTED"

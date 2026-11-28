@@ -1059,7 +1059,10 @@ def _consistent_tracks(
 def _derived_classes(dataset: ImportedDataset) -> list[LabelClass]:
     return [
         LabelClass(
-            name=imported.name, geometries=imported.geometries, attributes=imported.attributes
+            name=imported.name,
+            geometries=imported.geometries,
+            attributes=imported.attributes,
+            keypoints=imported.keypoints,
         )
         for imported in dataset.classes
     ]
