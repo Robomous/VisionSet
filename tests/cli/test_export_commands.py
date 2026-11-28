@@ -359,7 +359,7 @@ def test_format_list_json_is_the_envelope() -> None:
             # intact in the layout the release selects.
             "name": "ultralytics",
             "lossy": True,
-            "geometries": ["bbox", "classification_tag", "polygon"],
+            "geometries": ["bbox", "classification_tag", "keypoints", "polygon"],
             "degraded_geometries": [],
             "modalities": ["image"],
             "targets": [
@@ -1055,7 +1055,7 @@ def test_target_list_json_is_the_catalog_the_other_surfaces_publish() -> None:
         "family": "ultralytics-yolo",
         "format": "ultralytics",
         "tasks": ["classify", "detect", "obb", "pose", "segment"],
-        "geometries": ["bbox", "classification_tag", "polygon"],
+        "geometries": ["bbox", "classification_tag", "keypoints", "polygon"],
         "hints": {
             "recommended_size": [640, 640],
             "recommended_strategy": "letterbox",

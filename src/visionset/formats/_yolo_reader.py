@@ -8,6 +8,13 @@ for ``.txt``, so the layout the exporters write and the common
 ``<fold>/images`` variant both read. A row is ``class cx cy w h`` (a box) or
 ``class x1 y1 ... xn yn`` (a polygon), normalized to the oriented picture.
 
+A pose dataset, one whose descriptor gives ``kpt_shape: [N, D]``, is read by
+:func:`read_pose_layout` when a dialect asks for it: each row is ``class cx cy
+w h`` and ``N`` points of ``D`` values, ``x y`` or ``x y v``, and becomes one
+keypoints label named ``kp1`` to ``kpN``; its box is not kept. A row of the
+wrong length is a lost label, but when most rows have the wrong length the
+descriptor and the rows disagree, and the source is refused.
+
 Private to :mod:`visionset.formats`, like ``_yolo_writer``: importable, but not
 part of the ``Importer`` contract.
 """
@@ -46,7 +53,10 @@ from visionset.kernel.domain import (
     ImportedImage,
     ImportedLabel,
     ImportLossKind,
+    KeypointsGeometry,
+    KeypointSpec,
     PolygonGeometry,
+    VertexVisibility,
 )
 from visionset.kernel.domain.geometry import geometry_intersects_asset
 from visionset.kernel.errors import ImportSourceUnreadable
@@ -54,6 +64,8 @@ from visionset.kernel.errors import ImportSourceUnreadable
 _DEGENERATE_AREA: Final = 1e-9
 _LABEL_SUFFIX: Final = ".txt"
 _YAML_SUFFIXES: Final = (".yaml", ".yml")
+_POSE_BOX: Final = "its keypoints are kept; its box is not"
+_FLIP_IDX: Final = "flip_idx is not imported; a keypoint spec records no left-right pairs"
 _DESCRIPTOR_LIMIT: Final = 1 << 20
 #: A key YAML reads as this integer; ``010`` is octal to a YAML 1.1 reader.
 _CANONICAL_INDEX: Final = re.compile(r"0|[1-9]\d{0,8}", re.ASCII)
@@ -65,10 +77,11 @@ _YAML_11_SPECIAL: Final = frozenset(
 
 @dataclass(frozen=True)
 class Descriptor:
-    """The classes by index, and a pose dataset's ``kpt_shape``."""
+    """The classes by index, a pose dataset's ``kpt_shape``, and whether it gives ``flip_idx``."""
 
     names: Mapping[int, str]
     keypoints: tuple[int, int] | None = None
+    flip_idx: bool = False
 
 
 Row = tuple[str, list[str]]
@@ -88,11 +101,15 @@ def read_label_layout(
     *,
     parse: LabelParser | None = None,
     default_geometry: GeometryType = GeometryType.BBOX,
+    keypoints: KeypointSpec | None = None,
+    losses: Losses | None = None,
 ) -> ImportedDataset:
     """Every picture under ``images/`` with the label rows YOLO's rule pairs it with.
 
     ``parse`` reads one row, the box-or-polygon reader unless a dialect brings
-    its own; a class no row uses is declared with ``default_geometry``.
+    its own; a class no row uses is declared with ``default_geometry``. Every
+    class declaring keypoints carries ``keypoints`` as its spec. ``losses`` are
+    the descriptor's own, counted before any row.
     """
     parse = parse or _label
     found = {
@@ -116,8 +133,9 @@ def read_label_layout(
         )
 
     geometries: dict[str, set[GeometryType]] = {name: set() for name in descriptor.names.values()}
-    losses: Losses = Losses()
+    losses = Losses() if losses is None else losses
     images: list[ImportedImage] = []
+    shapes: list[int] = []
     claimed: set[PurePosixPath] = set()
     for picture in pictures:
         label_path = label_path_of(picture)
@@ -131,6 +149,7 @@ def read_label_layout(
             continue
         claimed.add(label_path)
         rows = _rows(source, str(label_path))
+        shapes.extend(len(tokens) for _, tokens in rows)
         size = measure(src / picture) if rows else None
         labels = [
             label
@@ -144,11 +163,62 @@ def read_label_layout(
         count = len(_rows(label_files[label_path], str(label_path)))
         losses[(ImportLossKind.LABEL, str(label_path), "a label file with no picture")] += count
 
+    if keypoints is not None and descriptor.keypoints is not None:
+        _require_pose_rows(shapes, descriptor.keypoints)
     classes = [
-        ImportedClass(name=name, geometries=tuple(seen) or (default_geometry,))
+        ImportedClass(
+            name=name,
+            geometries=(declared := tuple(seen) or (default_geometry,)),
+            keypoints=keypoints if GeometryType.KEYPOINTS in declared else None,
+        )
         for name, seen in geometries.items()
     ]
     return to_dataset(classes, images, losses, format_label)
+
+
+def read_pose_layout(src: Path, descriptor: Descriptor, format_label: str) -> ImportedDataset:
+    """:func:`read_label_layout` for a pose dataset: every row a keypoints label.
+
+    The format names no keypoint, so every class's spec is ``kp1`` to ``kpN``
+    with no skeleton. ``flip_idx`` is an ``attribute`` loss, counted once.
+
+    Raises:
+        ImportSourceUnreadable: ``kpt_shape`` names no keypoint, or most rows
+            are not ``kpt_shape``'s length.
+    """
+    if descriptor.keypoints is None or descriptor.keypoints[0] < 1:
+        raise ImportSourceUnreadable(f"the {format_label} kpt_shape names no keypoint")
+    count = descriptor.keypoints[0]
+    losses: Losses = Losses()
+    if descriptor.flip_idx:
+        losses[(ImportLossKind.ATTRIBUTE, "flip_idx", _FLIP_IDX)] += 1
+    return read_label_layout(
+        src,
+        descriptor,
+        format_label,
+        parse=_pose_label,
+        default_geometry=GeometryType.KEYPOINTS,
+        keypoints=KeypointSpec(names=tuple(f"kp{index}" for index in range(1, count + 1))),
+        losses=losses,
+    )
+
+
+def _require_pose_rows(shapes: list[int], shape: tuple[int, int]) -> None:
+    """Refuse a pose source where most rows are not the descriptor's length.
+
+    A few such rows are corrupt and each is a lost label; most of them means the
+    ``kpt_shape`` describes some other dataset, and reading on would drop nearly
+    everything as malformed.
+    """
+    count, dims = shape
+    expected = 5 + count * dims
+    wrong = sum(1 for length in shapes if length != expected)
+    if wrong * 2 > len(shapes):
+        raise ImportSourceUnreadable(
+            f"kpt_shape [{count}, {dims}] makes a pose row {expected} values long, and "
+            f"{wrong} of the {len(shapes)} label rows are not; the descriptor and the "
+            f"labels disagree"
+        )
 
 
 def label_path_of(picture: PurePosixPath) -> PurePosixPath:
@@ -221,6 +291,62 @@ def _label(
     return ImportedLabel(class_name=name, geometry=geometry)
 
 
+def _pose_label(
+    row: tuple[str, list[str]],
+    descriptor: Descriptor,
+    size: tuple[int, int] | None,
+    geometries: dict[str, set[GeometryType]],
+    losses: Losses,
+) -> ImportedLabel | None:
+    """One pose row as a keypoints label; its box is a ``geometry`` loss."""
+    assert descriptor.keypoints is not None
+    count, dims = descriptor.keypoints
+    where, tokens = row
+    position = index(tokens[0])
+    if position is None:
+        losses[(ImportLossKind.LABEL, "label row", "its class is not a whole number")] += 1
+        return None
+    name = descriptor.names.get(position)
+    if name is None:
+        losses[
+            (ImportLossKind.LABEL, f"class {position}", "the descriptor names no such class")
+        ] += 1
+        return None
+    if len(tokens) != 5 + count * dims:
+        losses[(ImportLossKind.LABEL, name, f"its row is not a box and {count} keypoints")] += 1
+        return None
+    values = [number(token, where) for token in tokens[1:]]
+    if any(value is None for value in values):
+        losses[(ImportLossKind.LABEL, name, "its coordinates are not finite numbers")] += 1
+        return None
+    if size is None:
+        losses[
+            (
+                ImportLossKind.LABEL,
+                name,
+                "its picture cannot be measured, so normalized coordinates cannot be scaled",
+            )
+        ] += 1
+        return None
+    width, height = size
+    flat = [float(value) for value in values[4:] if value is not None]
+    triplets = [flat[start : start + dims] for start in range(0, len(flat), dims)]
+    points = [(pixels(one[0] * width), pixels(one[1] * height)) for one in triplets]
+    geometry = KeypointsGeometry(points=points)
+    if dims == 3:
+        if any(one[2] not in (0.0, 1.0, 2.0) for one in triplets):
+            losses[(ImportLossKind.LABEL, name, "a keypoint visibility is not 0, 1 or 2")] += 1
+            return None
+        visibility = tuple(VertexVisibility(int(one[2])) for one in triplets)
+        geometry = KeypointsGeometry(points=points, visibility=visibility)
+    if not geometry_intersects_asset(geometry, width=width, height=height):
+        losses[(ImportLossKind.LABEL, name, "it lies wholly outside its picture")] += 1
+        return None
+    losses[(ImportLossKind.GEOMETRY, name, _POSE_BOX)] += 1
+    geometries[name].add(geometry.type)
+    return ImportedLabel(class_name=name, geometry=geometry)
+
+
 def _geometry(coordinates: list[float], width: int, height: int) -> tuple[Geometry | None, str]:
     if len(coordinates) == 4:
         cx, cy, w, h = coordinates
@@ -288,7 +414,7 @@ def yaml_descriptor(path: Path) -> Descriptor:
         if len(dims) != 2 or dims[0] is None or dims[1] not in (2, 3):
             raise ImportSourceUnreadable(f"{where}: kpt_shape is not [count, 2 or 3]")
         keypoints = (dims[0], dims[1])
-    return Descriptor(names=names, keypoints=keypoints)
+    return Descriptor(names=names, keypoints=keypoints, flip_idx="flip_idx" in entries)
 
 
 _Entry = tuple[str, list[str]]

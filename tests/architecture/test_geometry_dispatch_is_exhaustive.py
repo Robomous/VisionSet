@@ -214,7 +214,7 @@ def test_a_pixel_moving_step_never_moves_a_3d_label(
 
 KEYPOINTS = KeypointsGeometry(points=[(1.0, 1.0), (5.0, 3.0), (1.0, 1.0)])
 #: What each site answers for keypoints: a pixel extent, never a box, ring or 3D frame;
-#: a COCO keypoints row whose box is the points' extent.
+#: the pose task and a COCO keypoints row whose box is the points' extent.
 EXPECTED_KEYPOINTS: dict[str, object] = {
     "geometry_intersects_asset": True,
     "coordinates_are_finite": True,
@@ -222,7 +222,7 @@ EXPECTED_KEYPOINTS: dict[str, object] = {
     "geometry_reference on a scan": None,
     "geometry_fits_modality": False,
     "nms extent": BboxGeometry(x=1.0, y=1.0, width=4.0, height=2.0),
-    "yolo derive_task": Task.DETECT,
+    "yolo derive_task": Task.POSE,
     "yolo box": None,
     "yolo ring": None,
     "voc box": None,

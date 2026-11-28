@@ -9,7 +9,7 @@ directory tree — contracts nothing in this codebase can restate without
 eventually being wrong about one of them.
 
 So this exports one fixture release per derived task — detect, segment,
-classify — loads each with the real library, and asserts the class map and the
+classify, pose — loads each with the real library, and asserts the class map and the
 label counts it found are the manifest's. No weights, no training.
 
 **Skips locally, fails in CI**, the rule every optional-binary check here follows:
@@ -51,10 +51,13 @@ from visionset.kernel.domain import (
     BboxGeometry,
     ClassificationGeometry,
     GeometryType,
+    KeypointsGeometry,
+    KeypointSpec,
     LabelClass,
     Manifest,
     PolygonGeometry,
     SplitRecipe,
+    VertexVisibility,
 )
 from visionset.kernel.services import (
     AnnotationService,
@@ -88,6 +91,17 @@ CLASSES = (
     LabelClass(name="weather", geometries=(GeometryType.CLASSIFICATION_TAG,)),
 )
 
+#: The pose fixture's classes: the three above and one keypoints class after them,
+#: so the class index a pose row starts with is not zero.
+POSE_CLASSES = (
+    *CLASSES,
+    LabelClass(
+        name="face",
+        geometries=(GeometryType.KEYPOINTS,),
+        keypoints=KeypointSpec(names=("left_eye", "right_eye", "nose")),
+    ),
+)
+
 IMAGE_SIZE = (64, 48)
 
 Drawing = Callable[[int, UUID], list[Annotation]]
@@ -116,7 +130,9 @@ from ultralytics.data.utils import (  # noqa: E402
 )
 
 
-def _export(tmp_path: Path, drawing: Drawing) -> tuple[Path, Manifest]:
+def _export(
+    tmp_path: Path, drawing: Drawing, classes: tuple[LabelClass, ...] = CLASSES
+) -> tuple[Path, Manifest]:
     """A four-image release with a split, labelled by ``drawing``, written out.
 
     Built through the real services rather than from a hand-made ``Manifest``,
@@ -128,7 +144,7 @@ def _export(tmp_path: Path, drawing: Drawing) -> tuple[Path, Manifest]:
     try:
         projects = ProjectService(workspace)
         project = projects.create("road-signs")
-        SchemaService(workspace).create_version(project.id, list(CLASSES))
+        SchemaService(workspace).create_version(project.id, list(classes))
 
         incoming = tmp_path / "incoming"
         incoming.mkdir()
@@ -184,6 +200,18 @@ def _boxes(position: int, asset_id: UUID) -> list[Annotation]:
 def _boxes_and_polygons(position: int, asset_id: UUID) -> list[Annotation]:
     lane = PolygonGeometry(points=[(8.0, 12.0), (24.0, 12.0), (16.0, 36.0)])
     return [*_boxes(position, asset_id), _annotation(asset_id, "lane", lane)]
+
+
+def _faces(position: int, asset_id: UUID) -> list[Annotation]:
+    face = KeypointsGeometry(
+        points=[(16.0, 12.0), (40.0, 40.0), (32.0, 36.0)],
+        visibility=(
+            VertexVisibility.VISIBLE,
+            VertexVisibility.UNLABELED,
+            VertexVisibility.OCCLUDED,
+        ),
+    )
+    return [_annotation(asset_id, "face", face)]
 
 
 def _tags(position: int, asset_id: UUID) -> list[Annotation]:
@@ -288,3 +316,43 @@ def test_ultralytics_reads_the_class_tree_a_tags_only_release_becomes(
         for class_dir in Path(str(loaded[fold])).iterdir():
             written[class_dir.name] += sum(1 for _ in class_dir.iterdir())
     assert written == _manifest_counts(manifest, ClassificationGeometry)
+
+
+# --- pose ----------------------------------------------------------------------
+
+
+def test_ultralytics_reads_the_pose_rows_a_keypoints_release_becomes(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """``YOLODataset`` with ``task="pose"`` verifies every row against ``kpt_shape``.
+
+    It refuses a row of the wrong length or a coordinate outside ``[0, 1]`` and
+    reads the visibility column, so what it hands a trainer is the class index,
+    the points in order and their visibility, all read by the library itself.
+    """
+    import numpy as np
+    from ultralytics.data.dataset import YOLODataset
+
+    exported, manifest = _export(tmp_path, _faces, POSE_CLASSES)
+    monkeypatch.chdir(exported)
+
+    loaded = check_det_dataset(DATA_FILENAME, autodownload=False)
+
+    assert list(loaded["kpt_shape"]) == [3, 3]
+    assert [loaded["names"][index] for index in range(len(POSE_CLASSES))] == [
+        declared.name for declared in POSE_CLASSES
+    ]
+    rows = 0
+    for fold in ("train", "val", "test"):
+        dataset = YOLODataset(
+            img_path=str(loaded[fold]), data=loaded, task="pose", augment=False, imgsz=64
+        )
+        for label in dataset.labels:
+            assert label["cls"].ravel().tolist() == [3.0]
+            (keypoints,) = label["keypoints"]
+            assert keypoints[:, 2].tolist() == [2.0, 0.0, 1.0]
+            np.testing.assert_allclose(
+                keypoints[:, :2], [[0.25, 0.25], [0.0, 0.0], [0.5, 0.75]], atol=1e-6
+            )
+            rows += 1
+    assert rows == sum(_manifest_counts(manifest, KeypointsGeometry).values()) == 4

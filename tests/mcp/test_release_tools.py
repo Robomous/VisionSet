@@ -404,7 +404,7 @@ def test_the_installed_exporters_declare_what_they_can_carry() -> None:
                 # so attributes, confidence and provenance never survive.
                 "name": "ultralytics",
                 "lossy": True,
-                "geometries": ["bbox", "classification_tag", "polygon"],
+                "geometries": ["bbox", "classification_tag", "keypoints", "polygon"],
                 "degraded_geometries": [],
                 "modalities": ["image"],
                 "targets": [
@@ -595,7 +595,7 @@ def test_the_catalog_is_the_one_the_other_surfaces_publish() -> None:
         "family": "ultralytics-yolo",
         "format": "ultralytics",
         "tasks": ["classify", "detect", "obb", "pose", "segment"],
-        "geometries": ["bbox", "classification_tag", "polygon"],
+        "geometries": ["bbox", "classification_tag", "keypoints", "polygon"],
         "hints": {
             "recommended_size": [640, 640],
             "recommended_strategy": "letterbox",

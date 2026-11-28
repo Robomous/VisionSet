@@ -1,8 +1,8 @@
-"""Keypoints through every exporter: COCO writes them, every other report drops them.
+"""Keypoints through every exporter: COCO and Ultralytics write them, every other report drops them.
 
 The keypoints are written through the annotation service, promoted and frozen into a
 release before any export, so this is also the store and release round trip. What the
-COCO writer puts on disk is ``test_coco_keypoints.py``'s.
+two pose writers put on disk is ``test_coco_keypoints.py``'s and ``test_yolo_pose.py``'s.
 """
 
 from __future__ import annotations
@@ -45,8 +45,8 @@ SHIPPED = sorted(
     if type(plugin).__module__.startswith("visionset.formats.")
 )
 
-#: The exporters that write keypoints whole: COCO keypoints.
-WRITING_KEYPOINTS = frozenset({"coco"})
+#: The exporters that write keypoints whole: COCO keypoints and Ultralytics pose.
+WRITING_KEYPOINTS = frozenset({"coco", "ultralytics"})
 
 
 def _face() -> Annotation:

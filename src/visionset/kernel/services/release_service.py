@@ -633,8 +633,9 @@ class ReleaseService:
                 step the recipe holds.
             ExportSourceUnreadable: a recipe step needs a source size the
                 manifest never recorded, a recipe was given for an export that
-                writes scans, or a blob the release names is missing or does
-                not match its hash.
+                writes scans, a blob the release names is missing or does
+                not match its hash, or the format cannot lay out what the
+                release holds (a pose export beside boxes, say).
             ExportDestinationRefused: ``dest`` is relative, inside or
                 containing the workspace (outside its ``exports/`` when
                 ``owned_by_workspace``), a file, or cannot be created or read.

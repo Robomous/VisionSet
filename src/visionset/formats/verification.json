@@ -552,38 +552,44 @@
       "import": null
     },
     "ultralytics": {
-      "task": "object detection, instance segmentation, image classification",
+      "task": "object detection, instance segmentation, image classification, pose estimation",
       "dialects": [
         "detect: data.yaml with path and indexed names, class cx cy w h rows",
         "segment: the same layout with normalized polygon rows",
-        "classify: a class-directory tree per fold"
+        "classify: a class-directory tree per fold",
+        "pose: the same layout with kpt_shape [N, 3] and class cx cy w h then x y v per keypoint rows"
       ],
       "export": {
         "lossy": true,
-        "geometries": ["bbox", "classification_tag", "polygon"],
+        "geometries": ["bbox", "classification_tag", "keypoints", "polygon"],
         "degraded_geometries": [],
         "modalities": ["image"],
         "evidence": [
           {"kind": "fixture", "test": "tests/formats/test_ultralytics.py::test_a_known_release_produces_exactly_these_files", "gate": "python"},
+          {"kind": "fixture", "test": "tests/formats/test_yolo_pose.py::test_a_keypoints_release_is_written_as_pose_rows_with_kpt_shape", "gate": "python"},
           {"kind": "round_trip", "test": "tests/formats/test_yolo_import.py::test_a_detect_export_imports_back_without_loss", "gate": "python"},
           {"kind": "round_trip", "test": "tests/formats/test_yolo_import.py::test_a_segment_export_imports_its_polygons_back_and_its_boxes_as_four_corners", "gate": "python"},
           {"kind": "round_trip", "test": "tests/formats/test_yolo_import.py::test_a_tags_only_export_imports_back_from_the_class_tree", "gate": "python"},
+          {"kind": "round_trip", "test": "tests/formats/test_yolo_pose.py::test_a_pose_export_imports_back_within_tolerance", "gate": "python"},
           {"kind": "independent_reader", "test": "tests/formats/test_ultralytics_roundtrip.py::test_ultralytics_loads_the_export_and_reads_back_the_manifest", "gate": "format-smoke", "reader": "ultralytics", "external": true, "requires": "yolo"},
-          {"kind": "independent_reader", "test": "tests/formats/test_ultralytics_roundtrip.py::test_ultralytics_reads_the_class_tree_a_tags_only_release_becomes", "gate": "format-smoke", "reader": "ultralytics", "external": true, "requires": "yolo"}
+          {"kind": "independent_reader", "test": "tests/formats/test_ultralytics_roundtrip.py::test_ultralytics_reads_the_class_tree_a_tags_only_release_becomes", "gate": "format-smoke", "reader": "ultralytics", "external": true, "requires": "yolo"},
+          {"kind": "independent_reader", "test": "tests/formats/test_ultralytics_roundtrip.py::test_ultralytics_reads_the_pose_rows_a_keypoints_release_becomes", "gate": "format-smoke", "reader": "ultralytics", "external": true, "requires": "yolo"}
         ],
-        "notes": "One task per export: a tag beside boxes is dropped, and a box in a segment export is written as its four corners. The yolo alias resolves here."
+        "notes": "One task per export: a tag beside boxes is dropped, and a box in a segment export is written as its four corners. A pose export writes keypoints only and is refused when a box or polygon is beside them or two keypoint counts are present. The yolo alias resolves here."
       },
       "import": {
-        "geometries": ["bbox", "classification_tag", "polygon"],
+        "geometries": ["bbox", "classification_tag", "keypoints", "polygon"],
         "modalities": ["image"],
         "evidence": [
           {"kind": "fixture", "test": "tests/formats/test_yolo_import.py::test_a_box_row_is_scaled_out_of_the_picture_s_size", "gate": "python"},
           {"kind": "fixture", "test": "tests/formats/test_yolo_import.py::test_a_polygon_row_is_read_as_a_polygon", "gate": "python"},
           {"kind": "fixture", "test": "tests/formats/test_yolo_import.py::test_a_class_tree_reads_each_directory_as_a_tag_and_merges_copies", "gate": "python"},
+          {"kind": "fixture", "test": "tests/formats/test_yolo_pose.py::test_a_pose_row_is_one_keypoints_label_and_its_box_is_lost", "gate": "python"},
           {"kind": "round_trip", "test": "tests/formats/test_yolo_import.py::test_a_detect_export_imports_back_without_loss", "gate": "python"},
-          {"kind": "round_trip", "test": "tests/formats/test_yolo_import.py::test_a_tags_only_export_imports_back_from_the_class_tree", "gate": "python"}
+          {"kind": "round_trip", "test": "tests/formats/test_yolo_import.py::test_a_tags_only_export_imports_back_from_the_class_tree", "gate": "python"},
+          {"kind": "round_trip", "test": "tests/formats/test_yolo_pose.py::test_a_pose_export_imports_back_within_tolerance", "gate": "python"}
         ],
-        "notes": "A pose row keeps its box and reports the keypoints lost."
+        "notes": "A pose dataset (kpt_shape) is read as keypoints labels named kp1 to kpN; each row's box and any flip_idx are reported lost. Most rows disagreeing with kpt_shape refuses the source."
       }
     },
     "voc": {
