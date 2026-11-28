@@ -30,24 +30,30 @@ import typer
 from pydantic import ValidationError
 
 from visionset import wire
-from visionset.cli._errors import validation_summary
+from visionset.cli._errors import EXIT_ANSWER_IS_NO, validation_summary
 from visionset.cli._output import JsonOption, document, moment, note, table
 from visionset.cli._resolve import ProjectOption
 from visionset.cli._workspace import WorkspaceOption, opened_workspace
+from visionset.formats import registry
 from visionset.kernel.domain import (
     AugmentOp,
     AugmentStep,
+    ExportTarget,
     PreprocessingRecipe,
+    RecipeAssessment,
     RecipeSpec,
     RecipeUsage,
     ResizeStep,
     ResizeStrategy,
     Step,
 )
+from visionset.kernel.ports import Exporter, resolve_target
 from visionset.kernel.services import (
     PreprocessingRecipeService,
     ProjectService,
+    ReleaseService,
 )
+from visionset.preprocessing import registry as preprocessing_registry
 
 recipe_app = typer.Typer(help="Manage a project's pre-processing recipes.", no_args_is_help=True)
 
@@ -358,3 +364,113 @@ def recipe_delete(
         document({"deleted": wire.preprocessing_recipe(removed, used_by=used_by)})
         return
     note(f"Deleted recipe {removed.name!r}.")
+
+
+@recipe_app.command("assess")
+def recipe_assess(
+    project: ProjectOption,
+    release: Annotated[str, typer.Option("--release", help="The release tag.")],
+    format_name: Annotated[
+        str | None,
+        typer.Option(
+            "--format", "-f", help="An installed format's name. `visionset format list` says which."
+        ),
+    ] = None,
+    target: Annotated[
+        str | None,
+        typer.Option(
+            "--target",
+            "-t",
+            help="The model to train, resolved to its format. `visionset target list` says which.",
+        ),
+    ] = None,
+    spec: SpecOption = None,
+    resize: ResizeOption = None,
+    pad: PadOption = 114,
+    augment: AugmentOption = None,
+    amount: AmountOption = 0.2,
+    variants: VariantsOption = None,
+    json_out: JsonOption = False,
+    workspace: WorkspaceOption = None,
+) -> None:
+    """Say what a recipe would do to a release, without saving the recipe or writing anything.
+
+    Exactly one of `--target` and `--format`, as for `visionset export`; here
+    `--target` addresses the export, so a spec naming its own target is given
+    with `--spec FILE`. Prints every step's verdict per class and geometry,
+    then the files the export would write, or the refusal it would answer
+    with — and exits 1 then, as `export --check` does.
+    """
+    if (target is None) == (format_name is None):
+        raise typer.BadParameter(
+            "Give exactly one of --target and --format.", param_hint="--target / --format"
+        )
+    built = spec_of(
+        spec,
+        resize=resize,
+        pad=pad,
+        augment=augment,
+        amount=amount,
+        variants=variants,
+        target=None,
+    )
+    with opened_workspace(workspace) as service:
+        plugin, addressed = _addressed(target, format_name)
+        found = ReleaseService(service).resolve(project, release)
+        assessment = ReleaseService(service).assess_recipe(
+            found.id,
+            plugin,
+            built,
+            target=addressed,
+            drivers=preprocessing_registry.drivers(),
+        )
+    _print_assessment(assessment, json_out=json_out)
+    if assessment.refused:
+        raise typer.Exit(code=EXIT_ANSWER_IS_NO)
+
+
+def _addressed(target: str | None, format_name: str | None) -> tuple[Exporter, ExportTarget | None]:
+    installed = registry.exporters()
+    if target is not None:
+        return resolve_target(installed, target)
+    assert format_name is not None
+    return registry.pick(installed, format_name)[0], None
+
+
+def _print_assessment(assessment: RecipeAssessment, *, json_out: bool) -> None:
+    if json_out:
+        document(wire.recipe_assessment(assessment))
+        return
+    table(
+        ("STEP", "CLASS", "GEOMETRY", "VERDICT", "ANNOTATIONS", "REASONS"),
+        [
+            (
+                one.step,
+                one.label_class or "-",
+                "-" if one.geometry is None else one.geometry.value,
+                one.verdict.value,
+                str(one.annotations),
+                ",".join(reason.value for reason in one.reasons),
+            )
+            for one in assessment.resolution.entries
+        ],
+    )
+    if assessment.refusal is not None:
+        note(f"Refused ({assessment.refusal.code}): {assessment.refusal.message}")
+        return
+    counts = assessment.counts
+    assert counts is not None
+    note(
+        f"Would write {counts.source_files} source image(s) and "
+        f"{counts.augmented_files} augmented variant(s)."
+    )
+    if counts.train_images is not None:
+        note(
+            f"Folds: {counts.train_images} train, {counts.val_images} val, "
+            f"{counts.test_images} test image(s)."
+        )
+    if counts.dropped_labels or counts.clipped_labels:
+        note(
+            f"A cropping resize cuts {counts.dropped_labels} label(s) away and "
+            f"{counts.clipped_labels} down; the export needs --allow-lossy."
+        )

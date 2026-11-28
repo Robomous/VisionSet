@@ -34,6 +34,7 @@ directories of still images or point-cloud scans. See [Ingest](ingest.md).
 | Publish and verify a release | yes | yes | `release publish`, `release verify` | `publish_release`, `verify_release` |
 | Export | yes | yes | `export` | `export_release`, `check_export` |
 | Preprocessing recipes | yes | yes | `recipe ...` | `*_preprocessing_recipe` |
+| Assess a draft recipe against a release | no | `POST /releases/{id}/recipe-assessment` | `recipe assess` | `assess_recipe` |
 | Create or revoke API tokens | - | - | `token ...` | - |
 | Start the server | - | - | `server` | - |
 
