@@ -20,8 +20,11 @@ import _support  # noqa: F401  (puts the runtime on sys.path)
 from bootstrap import (
     DATA_ENV,
     INSTALL_TIMEOUT,
+    LOCK_TIMEOUT,
     NO_BOOTSTRAP_ENV,
+    PIP_ENV_KEEP,
     RETRY_DELAY,
+    VALIDATION_TIMEOUT,
     BootstrapError,
     Bootstrapped,
     Code,
@@ -34,7 +37,7 @@ from bootstrap import (
     runtime_key,
 )
 from bootstrap import bootstrap as run_bootstrap
-from discover import Bundle, Host, ProbeResult, discover
+from discover import REASON_TAIL, Bundle, Host, ProbeResult, discover
 
 COMPAT = "==0.0.1b4"
 BUNDLE = Bundle("visionset", "visionset", COMPAT)
@@ -42,7 +45,10 @@ HOME = "/home/u"
 DATA = "/data/plugin"
 PYTHON = "/usr/bin/python3.12"
 SECRET = "s3cr3t-pass-9"
-INDEX = f"https://alice:{SECRET}@pypi.example/simple"
+PATH_TOKEN = "Zq8xTOKENp4yLm2Kd7"
+QUERY_TOKEN = "Qw3rtyTOKEN99"
+INDEX = f"https://alice:{SECRET}@pypi.example/{PATH_TOKEN}/simple?api_key={QUERY_TOKEN}"
+LEASE_FD = 99
 OK = ProbeResult(0)
 UNREACHABLE = ProbeResult(
     1,
@@ -52,6 +58,8 @@ UNREACHABLE = ProbeResult(
     ).encode(),
 )
 FORBIDDEN = ("--user", "--upgrade", "-U", "--pre", "--break-system-packages", "--target")
+SECRETS = (SECRET, PATH_TOKEN, QUERY_TOKEN, "alice")
+GENERATION = r"^0\.0\.1b4-py312-[0-9a-f]{8}-r{n}$"
 
 
 class FakeDisk:
@@ -63,15 +71,23 @@ class FakeDisk:
         self.modes: dict[str, int] = {}
         self.writes: list[str] = []
         self.replaced: list[tuple[str, str]] = []
+        self.unsafe: dict[str, str] = {}
+        self.refuse_replace: set[str] = set()
+        self.refuse_remove = False
+        self.refuse_makedirs = False
+        self.corrupt: set[str] = set()
 
     def k(self, path: str) -> str:
         return str(self.pm.normcase(self.pm.normpath(path)))
 
     def put(self, path: str, text: str = "", executable: bool = False) -> None:
-        self.makedirs(self.pm.dirname(path))
+        self._mkdirs(self.pm.dirname(path))
         self.files[self.k(path)] = text
         if executable:
             self.exes.add(self.k(path))
+
+    def _under(self, key: str, prefix: str) -> bool:
+        return key == prefix or key.startswith((prefix + "\\", prefix + "/"))
 
     def lexists(self, path: str) -> bool:
         return self.k(path) in self.files or self.k(path) in self.dirs
@@ -100,7 +116,7 @@ class FakeDisk:
     def read_head(self, path: str) -> str:
         return self.files.get(self.k(path), "")[:4096]
 
-    def makedirs(self, path: str) -> None:
+    def _mkdirs(self, path: str) -> None:
         while path and self.k(path) not in self.dirs:
             self.dirs.add(self.k(path))
             parent = self.pm.dirname(path)
@@ -108,35 +124,53 @@ class FakeDisk:
                 break
             path = parent
 
+    def makedirs(self, path: str) -> None:
+        if self.refuse_makedirs:
+            raise PermissionError(13, "Permission denied")
+        self._mkdirs(path)
+
     def read_text(self, path: str) -> str | None:
         return self.files.get(self.k(path))
 
     def write_new(self, path: str, text: str) -> None:
         self.writes.append(self.k(path))
+        if any(self.k(path).endswith(suffix) for suffix in self.corrupt):
+            text = text[: len(text) // 2]
         self.put(path, text)
 
     def replace(self, source: str, target: str) -> None:
-        self.replaced.append((self.k(source), self.k(target)))
-        self.files[self.k(target)] = self.files.pop(self.k(source))
+        if any(self.k(source).endswith(name) for name in self.refuse_replace):
+            raise PermissionError(13, "The process cannot access the file")
+        src, dst = self.k(source), self.k(target)
+        self.replaced.append((src, dst))
+        moved = {k: v for k, v in self.files.items() if self._under(k, src)}
+        for key, value in moved.items():
+            del self.files[key]
+            self.files[dst + key[len(src) :]] = value
+        for store in ("dirs", "exes"):
+            current: set[str] = getattr(self, store)
+            keep = {key for key in current if not self._under(key, src)}
+            keep |= {dst + key[len(src) :] for key in current if self._under(key, src)}
+            setattr(self, store, keep)
 
     def remove_tree(self, path: str) -> None:
+        if self.refuse_remove:
+            raise PermissionError(13, "Access is denied")
         prefix = self.k(path)
-        inside = (prefix + "\\", prefix + "/")
-
-        def doomed(key: str) -> bool:
-            return key == prefix or key.startswith(inside)
-
-        self.files = {k: v for k, v in self.files.items() if not doomed(k)}
-        self.dirs = {k for k in self.dirs if not doomed(k)}
-        self.exes = {k for k in self.exes if not doomed(k)}
+        self.files = {k: v for k, v in self.files.items() if not self._under(k, prefix)}
+        self.dirs = {k for k in self.dirs if not self._under(k, prefix)}
+        self.exes = {k for k in self.exes if not self._under(k, prefix)}
 
     def append_private(self, path: str, text: str) -> None:
         self.put(path, self.files.get(self.k(path), "") + text)
         self.modes[self.k(path)] = 0o600
 
+    def unsafe_reason(self, path: str) -> str | None:
+        return self.unsafe.get(self.k(path))
+
     def tree(self, root: str) -> list[str]:
         prefix = self.k(root)
-        return sorted(key for key in (*self.files, *self.dirs) if key.startswith(prefix))
+        return sorted(key for key in (*self.files, *self.dirs) if self._under(key, prefix))
 
 
 class FakeClock:
@@ -159,19 +193,26 @@ class FakeLease:
     def __init__(self, locker: FakeLocker) -> None:
         self.locker = locker
 
+    @property
+    def fd(self) -> int | None:
+        return LEASE_FD
+
     def release(self) -> None:
         self.locker.released += 1
 
 
 class FakeLocker:
-    def __init__(self, busy: bool = False) -> None:
-        self.busy = busy
+    def __init__(self) -> None:
+        self.busy = False
+        self.broken = False
         self.acquired: list[tuple[str, float]] = []
         self.released = 0
         self.on_acquire: Callable[[], None] | None = None
 
     def acquire(self, path: str, timeout: float) -> Lease | None:
         self.acquired.append((path, timeout))
+        if self.broken:
+            raise OSError(40, "Too many levels of symbolic links")
         if self.busy:
             return None
         if self.on_acquire is not None:
@@ -195,19 +236,24 @@ def probe_output(version: tuple[int, int, int], venv: bool = True, ensurepip: bo
 class FakeRunner:
     """Plays every process bootstrap starts: interpreters, venv, pip and the console script."""
 
-    def __init__(self, disk: FakeDisk, windows: bool = False) -> None:
+    def __init__(self, disk: FakeDisk, clock: FakeClock, windows: bool = False) -> None:
         self.disk = disk
+        self.clock = clock
         self.windows = windows
         self.pythons: dict[str, ProbeResult] = {}
         self.venv_result = OK
+        self.venv_seconds = 0.0
         self.pip_version = ProbeResult(0, b"pip 24.0\n")
+        self.pip_config = ProbeResult(0, b"")
         self.installs: list[ProbeResult] = []
-        self.alive = OK
+        self.versions: list[ProbeResult] = []
+        self.bad: dict[str, ProbeResult] = {}
         self.version = ProbeResult(0, b"0.0.1b4\n")
         self.mcp = ProbeResult(0, b"usage")
         self.calls: list[list[str]] = []
         self.envs: list[dict[str, str]] = []
         self.timeouts: list[float] = []
+        self.fds: list[tuple[int, ...]] = []
         self.published_early: list[list[str]] = []
 
     def python(self, path: str, output: str | ProbeResult) -> None:
@@ -222,20 +268,29 @@ class FakeRunner:
         return [call for call in self.calls if "install" in call]
 
     def __call__(
-        self, argv: Sequence[str], cwd: str, env: Mapping[str, str], timeout: float, cap: int
+        self,
+        argv: Sequence[str],
+        cwd: str,
+        env: Mapping[str, str],
+        timeout: float,
+        cap: int,
+        *,
+        pass_fds: Sequence[int] = (),
     ) -> ProbeResult:
         argv = list(argv)
         self.calls.append(argv)
-        published = any(key.endswith("ready.json") for key in self.disk.files)
-        if published and "-c" not in argv:
-            self.published_early.append(argv)
         self.envs.append(dict(env))
         self.timeouts.append(timeout)
-        if "-c" in argv and argv[-1] != "import sys":
+        self.fds.append(tuple(pass_fds))
+        building = [k for k in self.disk.files if k.endswith(".owner")]
+        published = [k for k in self.disk.files if k.endswith("ready.json")]
+        writing = "install" in argv or "venv" in argv
+        if building and len(published) >= len(building) and writing and "-c" not in argv:
+            self.published_early.append(argv)
+        if "-c" in argv:
             return self.pythons[self.disk.k(argv[0])]
-        if argv[-1] == "import sys":
-            return self.alive
         if argv[-2:-1] == ["venv"]:
+            self.clock.t += self.venv_seconds
             if self.venv_result.returncode == 0:
                 scripts = self.disk.pm.join(argv[-1], "Scripts" if self.windows else "bin")
                 suffix = ".exe" if self.windows else ""
@@ -243,15 +298,19 @@ class FakeRunner:
             return self.venv_result
         if argv[-2:] == ["pip", "--version"]:
             return self.pip_version
+        if argv[-2:] == ["config", "list"]:
+            return self.pip_config
         if "install" in argv:
             result = self.installs.pop(0) if self.installs else OK
-            if result.returncode == 0:
+            if result.returncode == 0 and not result.overflow:
                 scripts = self.disk.pm.dirname(argv[0])
                 name = "visionset.exe" if self.windows else "visionset"
                 self.disk.put(self.disk.pm.join(scripts, name), executable=True)
             return result
         if argv[1:] == ["--version"]:
-            return self.version
+            if self.disk.k(argv[0]) in self.bad:
+                return self.bad[self.disk.k(argv[0])]
+            return self.versions.pop(0) if self.versions else self.version
         if argv[1:] == ["mcp", "--help"]:
             return self.mcp
         raise AssertionError(f"unexpected argv {argv}")
@@ -261,8 +320,8 @@ class Machine:
     def __init__(self, windows: bool = False, macos: bool = False) -> None:
         self.windows = windows
         self.disk = FakeDisk(windows)
-        self.run = FakeRunner(self.disk, windows)
         self.clock = FakeClock()
+        self.run = FakeRunner(self.disk, self.clock, windows)
         self.locker = FakeLocker()
         self.progress: list[str] = []
         self.home = "C:\\Users\\u" if windows else HOME
@@ -312,6 +371,9 @@ class Machine:
         root = self.env[DATA_ENV]
         return self.disk.listdir(self.disk.pm.join(root, "runtimes"))
 
+    def generation(self, name: str) -> Any:
+        return layout(self.env[DATA_ENV], name, "visionset", self.windows)
+
 
 def assert_safe_argv(case: unittest.TestCase, calls: list[list[str]]) -> None:
     for argv in calls:
@@ -320,8 +382,9 @@ def assert_safe_argv(case: unittest.TestCase, calls: list[list[str]]) -> None:
             case.assertNotIn(flag, argv)
         if "install" in argv:
             case.assertEqual(argv[-1], "visionset==0.0.1b4")
-            case.assertNotIn("[", argv[-1])
-        case.assertFalse(any(SECRET in part for part in argv))
+            case.assertIn("--no-user", argv)
+        for secret in SECRETS:
+            case.assertFalse(any(secret in part for part in argv))
 
 
 class BuildTest(unittest.TestCase):
@@ -332,35 +395,42 @@ class BuildTest(unittest.TestCase):
     def tearDown(self) -> None:
         assert_safe_argv(self, self.m.run.calls)
 
-    def test_a_clean_build_publishes_after_validation(self) -> None:
+    def built(self) -> Any:
+        [name] = self.m.runtimes()
+        return self.m.generation(name)
+
+    def test_a_clean_build_publishes_generation_one_after_validation(self) -> None:
         result = self.m.bootstrap()
         self.assertFalse(result.reused)
         self.assertEqual(result.version, "0.0.1b4")
-        [name] = self.m.runtimes()
-        self.assertRegex(name, r"^0\.0\.1b4-py312-[0-9a-f]{8}$")
-        lay = layout(DATA, name, "visionset", False)
+        lay = self.built()
+        self.assertRegex(lay.key, GENERATION.replace("{n}", "1"))
         self.assertEqual((result.prefix, result.console_script), (lay.venv, lay.console_script))
         sentinel = json.loads(self.m.disk.files[lay.ready])
-        self.assertEqual(sentinel["key"], name)
-        self.assertEqual(sentinel["compatibility"], COMPAT)
-        self.assertEqual(json.loads(self.m.disk.files[lay.owner])["key"], name)
-        self.assertNotIn(lay.ready + ".tmp", self.m.disk.files)
+        self.assertEqual(sentinel["key"], lay.key)
+        self.assertEqual(sentinel["console_script"], lay.console_script)
+        marker = json.loads(self.m.disk.files[lay.owner])
+        self.assertEqual((marker["base"], marker["key"]), (lay.base, lay.key))
         self.assertNotIn(lay.ready, self.m.disk.writes)
-        self.assertEqual(self.m.disk.replaced, [(lay.ready + ".tmp", lay.ready)])
-        self.assertEqual(self.m.locker.acquired, [(lay.lock, 300.0)])
+        self.assertNotIn(lay.owner, self.m.disk.writes)
+        self.assertEqual(
+            self.m.disk.replaced,
+            [(lay.owner + ".tmp", lay.owner), (lay.ready + ".tmp", lay.ready)],
+        )
+        self.assertEqual(self.m.locker.acquired, [(DATA + f"/locks/{lay.base}.lock", LOCK_TIMEOUT)])
         self.assertEqual(self.m.locker.released, 1)
         self.assertEqual(self.m.run.published_early, [])
 
     def test_steps_run_in_order_with_the_exact_pip_command(self) -> None:
         self.m.bootstrap()
-        [name] = self.m.runtimes()
-        lay = layout(DATA, name, "visionset", False)
+        lay = self.built()
         steps = [call for call in self.m.run.calls if "-c" not in call]
         self.assertEqual(
             steps,
             [
                 [PYTHON, "-I", "-m", "venv", lay.venv],
                 [lay.python, "-I", "-m", "pip", "--version"],
+                [lay.python, "-I", "-m", "pip", "config", "list"],
                 [
                     lay.python,
                     "-I",
@@ -371,6 +441,7 @@ class BuildTest(unittest.TestCase):
                     "--disable-pip-version-check",
                     "--progress-bar",
                     "off",
+                    "--no-user",
                     "visionset==0.0.1b4",
                 ],
                 [lay.console_script, "--version"],
@@ -378,25 +449,55 @@ class BuildTest(unittest.TestCase):
             ],
         )
 
-    def test_every_process_gets_a_scrubbed_environment_that_keeps_the_index(self) -> None:
+    def test_only_allow_listed_pip_variables_reach_any_process(self) -> None:
+        dropped = [
+            "PIP_REQUIREMENT",
+            "PIP_CONSTRAINT",
+            "PIP_NO_BINARY",
+            "PIP_ONLY_BINARY",
+            "PIP_NO_BUILD_ISOLATION",
+            "PIP_CONFIG_SETTINGS",
+            "PIP_DRY_RUN",
+            "PIP_PREFIX",
+            "PIP_ROOT",
+            "PIP_TARGET",
+            "PIP_USER",
+            "PIP_BREAK_SYSTEM_PACKAGES",
+            "PIP_REQUIRE_VIRTUALENV",
+            "PIP_EDITABLE",
+            "PIP_SOME_FUTURE_OPTION",
+            "PYTHONUSERBASE",
+            "PYTHONSTARTUP",
+        ]
+        for name in [*dropped, *PIP_ENV_KEEP]:
+            self.m.env.setdefault(name, "value-of-" + name)
         self.m.bootstrap()
-        scripts = [c for c in self.m.run.calls if c[1:2] != ["--version"] and "mcp" not in c]
-        self.assertEqual(len(scripts), 4)
-        for call, env in zip(self.m.run.calls, self.m.run.envs, strict=True):
-            if call not in scripts:
-                continue
-            for name in ("PIP_TARGET", "PIP_USER", "PIP_REQUIRE_VIRTUALENV", "PIP_PYTHON"):
+        for env in self.m.run.envs:
+            self.assertEqual({k for k in env if k.startswith("PIP_")}, set(PIP_ENV_KEEP))
+            for name in dropped:
                 self.assertNotIn(name, env)
             self.assertNotIn("PYTHONPATH", env)
             self.assertNotIn("PYTHONHOME", env)
-        install_env = self.m.run.envs[self.m.run.calls.index(self.m.run.install_calls()[0])]
-        self.assertEqual(install_env["PIP_INDEX_URL"], INDEX)
+        self.assertEqual(self.m.run.envs[-1]["PIP_INDEX_URL"], INDEX)
 
-    def test_the_install_is_bounded_by_the_overall_timeout(self) -> None:
+    def test_every_writing_step_inherits_the_lock_and_no_probe_does(self) -> None:
+        self.m.bootstrap()
+        for call, fds in zip(self.m.run.calls, self.m.run.fds, strict=True):
+            writes = "-m" in call and ("venv" in call or "pip" in call)
+            self.assertEqual(fds, (LEASE_FD,) if writes else (), call)
+
+    def test_venv_and_install_share_one_deadline(self) -> None:
+        self.m.run.venv_seconds = 100.0
         self.m.bootstrap(install_timeout=120.0)
         index = self.m.run.calls.index(self.m.run.install_calls()[0])
-        self.assertLessEqual(self.m.run.timeouts[index], 120.0)
+        self.assertLessEqual(self.m.run.timeouts[index], 20.0)
         self.assertGreater(self.m.run.timeouts[index], 0)
+
+    def test_a_deadline_spent_before_the_install_is_a_timeout(self) -> None:
+        self.m.run.venv_seconds = 130.0
+        error = self.m.failure(install_timeout=120.0)
+        self.assertIs(error.code, Code.INSTALL_TIMEOUT)
+        self.assertEqual(self.m.run.install_calls(), [])
 
     def test_a_ready_runtime_is_reused_without_the_lock_or_pip(self) -> None:
         first = self.m.bootstrap()
@@ -406,11 +507,12 @@ class BuildTest(unittest.TestCase):
         self.assertEqual(second.prefix, first.prefix)
         self.assertEqual(self.m.run.install_calls(), [])
         self.assertEqual(len(self.m.locker.acquired), 1)
+        self.assertIn([first.console_script, "mcp", "--help"], self.m.run.calls)
 
-    def test_a_runtime_published_while_waiting_for_the_lock_is_not_rebuilt(self) -> None:
+    def test_a_runtime_published_while_waiting_for_the_lock_is_reused(self) -> None:
         other = Machine()
         other.disk = self.m.disk
-        other.run = FakeRunner(self.m.disk)
+        other.run = FakeRunner(self.m.disk, other.clock)
         other.run.pythons = self.m.run.pythons
 
         def publish_meanwhile() -> None:
@@ -422,61 +524,131 @@ class BuildTest(unittest.TestCase):
         self.assertEqual(len(other.run.install_calls()), 1)
         self.assertEqual(self.m.run.install_calls(), [])
 
-    def test_a_runtime_whose_interpreter_died_is_rebuilt(self) -> None:
-        self.m.bootstrap()
-        self.m.run.alive = ProbeResult(None, error="No such file or directory")
-        result = self.m.bootstrap()
-        self.assertFalse(result.reused)
-        self.assertEqual(len(self.m.run.install_calls()), 2)
-        self.assertTrue(any("no longer starts" in line for line in self.m.progress))
+    def test_a_broken_runtime_is_superseded_by_a_new_generation_beside_it(self) -> None:
+        first = self.m.bootstrap()
+        old = self.built()
+        before = self.m.disk.tree(old.runtime)
+        newest = first
+        for broken in (
+            ProbeResult(1, stderr=b"ModuleNotFoundError: No module named 'visionset'"),
+            ProbeResult(0, b"0.0.1b2\n"),
+        ):
+            with self.subTest(broken=broken):
+                self.m.run.bad[self.m.disk.k(newest.console_script)] = broken
+                result = self.m.bootstrap()
+                newest = result
+                self.assertFalse(result.reused)
+                self.assertNotEqual(result.prefix, first.prefix)
+                self.assertEqual(self.m.disk.tree(old.runtime), before)
+                listed = cached_prefixes(host=self.m.host(), fs=self.m.disk)
+                self.assertEqual(listed[0], result.prefix)
+        names = self.m.runtimes()
+        self.assertEqual([n[-3:] for n in names], ["-r1", "-r2", "-r3"])
 
-    def test_an_incomplete_owned_directory_is_removed_and_rebuilt(self) -> None:
+    def test_a_runtime_whose_interpreter_vanished_is_superseded(self) -> None:
         self.m.bootstrap()
-        [name] = self.m.runtimes()
-        lay = layout(DATA, name, "visionset", False)
-        del self.m.disk.files[lay.ready]
-        self.m.disk.put(lay.venv + "/half-written")
-        self.m.bootstrap()
-        self.assertNotIn(lay.venv + "/half-written", self.m.disk.files)
-        self.assertIn(lay.ready, self.m.disk.files)
-        self.assertEqual(len(self.m.run.install_calls()), 2)
-
-    def test_an_empty_directory_left_before_the_marker_is_recovered(self) -> None:
-        self.m.bootstrap()
-        [name] = self.m.runtimes()
-        lay = layout(DATA, name, "visionset", False)
-        self.m.disk.remove_tree(lay.runtime)
-        self.m.disk.makedirs(lay.runtime)
+        old = self.built()
+        del self.m.disk.files[self.m.disk.k(old.python)]
         self.assertFalse(self.m.bootstrap().reused)
-        self.assertIn(lay.ready, self.m.disk.files)
+        self.assertIn(old.key, self.m.runtimes())
 
-    def test_a_slow_interpreter_is_not_mistaken_for_a_dead_one(self) -> None:
+    def test_a_transient_failure_never_supersedes_a_published_runtime(self) -> None:
+        first = self.m.bootstrap()
+        for flaky in (
+            ProbeResult(None, error="Resource temporarily unavailable"),
+            ProbeResult(None, error="Too many open files"),
+            ProbeResult(None, timed_out=True),
+        ):
+            with self.subTest(flaky=flaky):
+                self.m.run.bad[self.m.disk.k(first.console_script)] = flaky
+                result = self.m.bootstrap()
+                self.assertTrue(result.reused)
+                self.assertEqual(result.prefix, first.prefix)
+        self.assertEqual(len(self.m.run.install_calls()), 1)
+        self.assertEqual(len(self.m.runtimes()), 1)
+
+    def test_one_failed_check_that_passes_on_retry_is_not_a_broken_runtime(self) -> None:
         self.m.bootstrap()
-        self.m.run.alive = ProbeResult(None, timed_out=True)
+        self.m.run.versions = [ProbeResult(1)]
         self.assertTrue(self.m.bootstrap().reused)
         self.assertEqual(len(self.m.run.install_calls()), 1)
+        self.assertEqual(len(self.m.locker.acquired), 1)
+        self.assertFalse(any("no longer works" in line for line in self.m.progress))
 
-    def test_a_directory_without_the_owner_marker_is_never_touched(self) -> None:
+    def test_an_incomplete_owned_generation_is_moved_aside_and_removed(self) -> None:
         self.m.bootstrap()
-        [name] = self.m.runtimes()
-        lay = layout(DATA, name, "visionset", False)
-        for path in (lay.ready, lay.owner):
-            del self.m.disk.files[path]
-        before = self.m.disk.tree(lay.runtime)
+        old = self.built()
+        del self.m.disk.files[self.m.disk.k(old.ready)]
+        self.m.disk.put(old.venv + "/half-written")
+        result = self.m.bootstrap()
+        self.assertRegex(result.prefix, r"-r2/venv$")
+        self.assertEqual(self.m.disk.tree(old.runtime), [])
+        self.assertEqual([n for n in self.m.runtimes() if n.startswith(".trash")], [])
+        moved = [dst for src, dst in self.m.disk.replaced if src == self.m.disk.k(old.runtime)]
+        self.assertEqual(len(moved), 1)
+        self.assertIn("/.trash-", moved[0])
+
+    def test_a_generation_killed_before_its_marker_is_recovered(self) -> None:
+        self.m.bootstrap()
+        old = self.built()
+        for leftover in ({}, {".owner": ""}, {".owner": "{"}, {".owner.tmp": '{"own'}):
+            with self.subTest(leftover=leftover):
+                for name in self.m.runtimes():
+                    self.m.disk.remove_tree(self.m.generation(name).runtime)
+                self.m.disk.makedirs(old.runtime)
+                for name, text in leftover.items():
+                    self.m.disk.put(old.runtime + "/" + name, text)
+                self.m.bootstrap()
+                self.assertEqual(self.m.disk.tree(old.runtime), [])
+
+    def test_a_directory_this_plugin_does_not_own_is_never_touched(self) -> None:
+        self.m.bootstrap()
+        old = self.built()
+        foreign = [
+            {".owner": "", "venv/x": "data"},
+            {"notes.txt": "mine"},
+            {".owner": json.dumps({"owner": "visionset-agent-plugin", "base": "x", "key": "y"})},
+        ]
+        for contents in foreign:
+            with self.subTest(contents=contents):
+                self.m.disk.remove_tree(old.runtime)
+                for name, text in contents.items():
+                    self.m.disk.put(old.runtime + "/" + name, text)
+                before = self.m.disk.tree(old.runtime)
+                result = self.m.bootstrap()
+                self.assertEqual(self.m.disk.tree(old.runtime), before)
+                self.assertNotIn(old.key, result.prefix)
+                for name in self.m.runtimes():
+                    if name != old.key and not name.startswith("."):
+                        self.m.disk.remove_tree(self.m.generation(name).runtime)
+
+    def test_a_directory_that_cannot_be_moved_aside_fails_and_stays_recoverable(self) -> None:
+        self.m.bootstrap()
+        old = self.built()
+        del self.m.disk.files[self.m.disk.k(old.ready)]
+        self.m.disk.refuse_replace = {old.key}
         error = self.m.failure()
-        self.assertIs(error.code, Code.NOT_OWNED)
-        self.assertEqual(self.m.disk.tree(lay.runtime), before)
-        self.assertEqual(len(self.m.run.install_calls()), 1)
+        self.assertIs(error.code, Code.CLEANUP_FAILED)
+        self.assertIn(self.m.disk.k(old.owner), self.m.disk.files)
+        self.m.disk.refuse_replace = set()
+        self.assertRegex(self.m.bootstrap().prefix, r"-r2/venv$")
+        self.assertEqual(self.m.disk.tree(old.runtime), [])
 
-    def test_an_owner_marker_for_another_key_does_not_count(self) -> None:
+    def test_trash_that_cannot_be_removed_is_retried_by_a_later_setup(self) -> None:
         self.m.bootstrap()
-        [name] = self.m.runtimes()
-        lay = layout(DATA, name, "visionset", False)
-        del self.m.disk.files[lay.ready]
-        self.m.disk.files[lay.owner] = json.dumps({"owner": "visionset-agent-plugin", "key": "x"})
-        self.assertIs(self.m.failure().code, Code.NOT_OWNED)
+        old = self.built()
+        del self.m.disk.files[self.m.disk.k(old.ready)]
+        self.m.disk.refuse_remove = True
+        self.m.bootstrap()
+        [trash] = [n for n in self.m.runtimes() if n.startswith(".trash-")]
+        self.assertTrue(any("retries" in line for line in self.m.progress))
+        self.m.disk.refuse_remove = False
+        newest = self.m.generation([n for n in self.m.runtimes() if n.endswith("-r2")][0])
+        del self.m.disk.files[self.m.disk.k(newest.ready)]
+        self.m.bootstrap()
+        self.assertNotIn(trash, self.m.runtimes())
 
-    def test_cached_prefixes_lists_published_runtimes_newest_first(self) -> None:
+    def test_cached_prefixes_lists_published_generations_newest_first(self) -> None:
         self.m.bootstrap()
         self.m.run.python("/usr/bin/python3.13", probe_output((3, 13, 1)))
         self.m.clock.t += 60
@@ -485,8 +657,19 @@ class BuildTest(unittest.TestCase):
         self.assertEqual(len(listed), 2)
         self.assertEqual(listed[0], newer.prefix)
         [name] = [n for n in self.m.runtimes() if "py312" in n]
-        del self.m.disk.files[layout(DATA, name, "visionset", False).ready]
+        del self.m.disk.files[self.m.disk.k(self.m.generation(name).ready)]
         self.assertEqual(cached_prefixes(host=self.m.host(), fs=self.m.disk), [newer.prefix])
+
+    def test_a_sentinel_naming_a_console_script_elsewhere_is_not_trusted(self) -> None:
+        self.m.bootstrap()
+        old = self.built()
+        sentinel = json.loads(self.m.disk.files[self.m.disk.k(old.ready)])
+        sentinel["console_script"] = "/usr/bin/evil"
+        self.m.disk.files[self.m.disk.k(old.ready)] = json.dumps(sentinel)
+        self.assertEqual(cached_prefixes(host=self.m.host(), fs=self.m.disk), [])
+        result = self.m.bootstrap()
+        self.assertFalse(result.reused)
+        self.assertNotIn([("/usr/bin/evil"), "--version"], self.m.run.calls)
 
     def test_discovery_accepts_what_cached_prefixes_returns(self) -> None:
         result = self.m.bootstrap()
@@ -499,6 +682,13 @@ class BuildTest(unittest.TestCase):
         )
         assert found.selected is not None, found
         self.assertEqual(found.selected.candidate.path, result.console_script)
+
+    def test_a_sentinel_that_does_not_read_back_is_not_published(self) -> None:
+        self.m.disk.corrupt = {"ready.json.tmp"}
+        error = self.m.failure()
+        self.assertIs(error.code, Code.VALIDATION_FAILED)
+        self.assertEqual(cached_prefixes(host=self.m.host(), fs=self.m.disk), [])
+        self.assertEqual([n for n in self.m.runtimes() if not n.startswith(".")], [])
 
     def test_progress_goes_to_stderr_by_default(self) -> None:
         stdout, stderr = io.StringIO(), io.StringIO()
@@ -516,6 +706,9 @@ class BuildTest(unittest.TestCase):
         self.assertEqual(stdout.getvalue(), "")
         self.assertIn("visionset plugin: runtime ready", stderr.getvalue())
 
+    def test_the_lock_wait_outlasts_a_whole_build(self) -> None:
+        self.assertGreaterEqual(LOCK_TIMEOUT, INSTALL_TIMEOUT + 4 * VALIDATION_TIMEOUT)
+
 
 class FailureTest(unittest.TestCase):
     def setUp(self) -> None:
@@ -527,6 +720,15 @@ class FailureTest(unittest.TestCase):
     def assert_nothing_published(self) -> None:
         for name in self.m.runtimes():
             self.fail(f"{name} was left behind")
+
+    def assert_no_secret(self, *texts: str) -> None:
+        for text in texts:
+            for secret in SECRETS:
+                self.assertNotIn(secret, text)
+
+    def log(self) -> str:
+        [log] = [p for p in self.m.disk.files if p.endswith(".log")]
+        return self.m.disk.files[log]
 
     def test_no_python_at_all(self) -> None:
         error = self.m.failure(python=None)
@@ -559,7 +761,7 @@ class FailureTest(unittest.TestCase):
         self.m.run.python("/usr/bin/python3", probe_output((3, 13, 0)))
         self.m.run.python("/opt/old/python", probe_output((3, 10, 0)))
         self.m.bootstrap(python="/opt/old/python")
-        probes = [call[0] for call in self.m.run.calls if "-c" in call and call[-1] != "import sys"]
+        probes = [call[0] for call in self.m.run.calls if "-c" in call]
         self.assertEqual(probes, ["/opt/old/python", "/usr/bin/python3.13"])
         self.assertTrue(self.m.runtimes()[0].startswith("0.0.1b4-py313-"))
 
@@ -579,6 +781,41 @@ class FailureTest(unittest.TestCase):
         self.assertEqual(self.m.run.install_calls(), [])
         self.assert_nothing_published()
 
+    def test_pip_configuration_that_moves_the_install_is_refused_before_installing(self) -> None:
+        self.m.run.python(PYTHON, probe_output((3, 12, 1)))
+        for line in (
+            "install.target='/tmp/elsewhere'",
+            "global.prefix='/opt/x'",
+            "install.root='/'",
+            "install.user='true'",
+            "install.requirement='/tmp/extra.txt'",
+            "global.dry-run='yes'",
+        ):
+            with self.subTest(line=line):
+                self.m.run.pip_config = ProbeResult(0, (line + "\n").encode())
+                error = self.m.failure()
+                self.assertIs(error.code, Code.BAD_PIP_CONFIG)
+                self.assertIn(line.split("=")[0], error.message)
+                self.assertEqual(self.m.run.install_calls(), [])
+                self.assert_nothing_published()
+
+    def test_harmless_pip_configuration_is_honoured(self) -> None:
+        self.m.run.python(PYTHON, probe_output((3, 12, 1)))
+        config = "install.user='false'\nglobal.only-binary=':all:'\nglobal.timeout='30'\n"
+        self.m.run.pip_config = ProbeResult(0, config.encode())
+        self.assertFalse(self.m.bootstrap().reused)
+
+    def test_index_values_from_pip_configuration_are_redacted(self) -> None:
+        self.m.run.python(PYTHON, probe_output((3, 12, 1)))
+        del self.m.env["PIP_INDEX_URL"]
+        token = "Cf9TOKENpathSegment"
+        url = f"https://mirror.example/{token}/simple"
+        self.m.run.pip_config = ProbeResult(0, f"global.index-url='{url}'\n".encode())
+        self.m.run.installs = [ProbeResult(1, stderr=f"ERROR: 403 for url: {url}".encode())]
+        error = self.m.failure()
+        for text in (str(error), self.log()):
+            self.assertNotIn(token, text)
+
     def test_lock_timeout(self) -> None:
         self.m.run.python(PYTHON, probe_output((3, 12, 1)))
         self.m.locker.busy = True
@@ -587,7 +824,12 @@ class FailureTest(unittest.TestCase):
         self.assertEqual(self.m.locker.acquired[0][1], 7.0)
         self.assertEqual(self.m.run.install_calls(), [])
 
-    def test_an_unreachable_index_is_retried_once_then_reported(self) -> None:
+    def test_a_lock_that_cannot_be_opened_is_a_data_directory_problem(self) -> None:
+        self.m.run.python(PYTHON, probe_output((3, 12, 1)))
+        self.m.locker.broken = True
+        self.assertIs(self.m.failure().code, Code.BAD_DATA_DIR)
+
+    def test_an_unreachable_index_is_retried_exactly_once_then_reported(self) -> None:
         self.m.run.python(PYTHON, probe_output((3, 12, 1)))
         self.m.run.installs = [UNREACHABLE, UNREACHABLE, OK]
         error = self.m.failure()
@@ -613,6 +855,14 @@ class FailureTest(unittest.TestCase):
         self.assertEqual(len(self.m.run.install_calls()), 1)
         self.assertEqual(self.m.clock.sleeps, [])
 
+    def test_output_overflow_is_not_success(self) -> None:
+        self.m.run.python(PYTHON, probe_output((3, 12, 1)))
+        self.m.run.installs = [ProbeResult(0, b"x" * 64, overflow=True)]
+        error = self.m.failure()
+        self.assertIs(error.code, Code.INSTALL_FAILED)
+        self.assertEqual(len(self.m.run.install_calls()), 1)
+        self.assert_nothing_published()
+
     def test_a_hung_install_is_a_timeout(self) -> None:
         self.m.run.python(PYTHON, probe_output((3, 12, 1)))
         self.m.run.installs = [ProbeResult(None, timed_out=True)]
@@ -621,28 +871,43 @@ class FailureTest(unittest.TestCase):
         self.assertIn(f"{INSTALL_TIMEOUT:g} s", error.message)
         self.assert_nothing_published()
 
-    def test_credentials_never_reach_the_error_or_the_log(self) -> None:
+    def test_credentials_and_index_tokens_never_reach_the_error_or_the_log(self) -> None:
         self.m.run.python(PYTHON, probe_output((3, 12, 1)))
         failing = ProbeResult(
             1,
             stdout=f"Looking in indexes: {INDEX}\n".encode(),
-            stderr=f"ERROR: 401 Client Error for url: {INDEX}/visionset/\n".encode(),
+            stderr=(
+                f"ERROR: 401 Client Error for url: {INDEX}/visionset/\n"
+                f"WARNING: connection broken: /{PATH_TOKEN}/simple/visionset/\n"
+                f"ERROR: query ?api_key={QUERY_TOKEN}\n"
+            ).encode(),
         )
         self.m.run.installs = [failing]
         error = self.m.failure()
-        [log] = [p for p in self.m.disk.files if p.endswith(".log")]
-        self.assertIn("<redacted>@pypi.example", self.m.disk.files[log])
-        self.assertEqual(self.m.disk.modes[log], 0o600)
-        for text in (str(error), self.m.disk.files[log], *self.m.progress):
-            self.assertNotIn(SECRET, text)
-            self.assertNotIn("alice", text)
+        self.assertEqual(self.m.disk.modes[[p for p in self.m.disk.modes][0]], 0o600)
+        self.assert_no_secret(str(error), self.log(), *self.m.progress)
+
+    def test_redaction_happens_before_truncation(self) -> None:
+        self.m.run.python(PYTHON, probe_output((3, 12, 1)))
+        tail = PATH_TOKEN + "y" * (REASON_TAIL - 6)
+        self.m.run.installs = [ProbeResult(1, stderr=tail.encode())]
+        error = self.m.failure()
+        self.assertNotIn(PATH_TOKEN[-6:], error.message)
+
+    def test_the_failure_message_is_redacted_even_without_a_log(self) -> None:
+        self.m.run.python(PYTHON, probe_output((3, 12, 1)))
+        self.m.run.installs = [ProbeResult(1, stderr=f"ERROR: bad index {INDEX}".encode())]
+        with mock.patch.object(FakeDisk, "append_private", side_effect=OSError("disk full")):
+            error = self.m.failure()
+        self.assert_no_secret(str(error))
+        self.assertIn("<redacted>", error.message)
 
     def test_credentials_never_reach_the_sentinel(self) -> None:
         self.m.run.python(PYTHON, probe_output((3, 12, 1)))
         self.m.bootstrap()
         for path, text in self.m.disk.files.items():
             if path.endswith(("ready.json", ".owner")):
-                self.assertNotIn(SECRET, text)
+                self.assert_no_secret(text)
 
     def test_an_installed_version_outside_the_range(self) -> None:
         self.m.run.python(PYTHON, probe_output((3, 12, 1)))
@@ -734,15 +999,49 @@ class DataRootTest(unittest.TestCase):
         self.assertIs(raised.exception.code, Code.BAD_DATA_DIR)
         self.assertIn(DATA_ENV, raised.exception.hint)
 
-    def test_a_data_root_inside_the_plugin_is_refused(self) -> None:
+    def machine(self) -> Machine:
         m = Machine()
         m.run.python(PYTHON, probe_output((3, 12, 1)))
+        return m
+
+    def test_a_data_root_inside_the_plugin_is_refused(self) -> None:
+        m = self.machine()
         m.env[DATA_ENV] = "/plugins/visionset/runtime/data"
         error = m.failure(plugin_root="/plugins/visionset")
         self.assertIs(error.code, Code.BAD_DATA_DIR)
         self.assertEqual(m.disk.tree("/plugins"), [])
         m.env[DATA_ENV] = "/plugins/visionset-data"
         m.bootstrap(plugin_root="/plugins/visionset")
+
+    def test_a_data_root_inside_the_project_or_its_checkout_is_refused(self) -> None:
+        m = self.machine()
+        m.disk.makedirs("/srv/repo/.git")
+        for root in ("/srv/repo/sub/.vs", "/srv/repo/.vs"):
+            with self.subTest(root=root):
+                m.env[DATA_ENV] = root
+                error = m.failure(project="/srv/repo/sub")
+                self.assertIs(error.code, Code.BAD_DATA_DIR)
+                self.assertIn("project", error.message)
+                self.assertEqual(m.disk.tree(root), [])
+        m.env[DATA_ENV] = "/srv/data"
+        m.bootstrap(project="/srv/repo/sub")
+
+    def test_a_data_directory_others_can_write_is_refused(self) -> None:
+        for directory in (DATA, DATA + "/runtimes", DATA + "/locks"):
+            with self.subTest(directory=directory):
+                m = self.machine()
+                m.disk.unsafe[directory] = "is writable by every user"
+                error = m.failure()
+                self.assertIs(error.code, Code.BAD_DATA_DIR)
+                self.assertIn("writable by every user", error.message)
+                self.assertEqual(m.run.calls, [])
+
+    def test_a_data_directory_that_cannot_be_created(self) -> None:
+        m = self.machine()
+        m.disk.refuse_makedirs = True
+        error = m.failure()
+        self.assertIs(error.code, Code.BAD_DATA_DIR)
+        self.assertIn("Permission denied", error.message)
 
 
 class KeyTest(unittest.TestCase):
@@ -758,41 +1057,33 @@ class KeyTest(unittest.TestCase):
         self.assertNotIn("/", runtime_key("../../x", self.interpreter()))
 
     def test_windows_layout(self) -> None:
-        lay = layout("C:\\data", "k", "visionset", True)
-        self.assertEqual(lay.python, "C:\\data\\runtimes\\k\\venv\\Scripts\\python.exe")
-        self.assertEqual(lay.console_script, "C:\\data\\runtimes\\k\\venv\\Scripts\\visionset.exe")
+        lay = layout("C:\\data", "k-r3", "visionset", True)
+        self.assertEqual(lay.python, "C:\\data\\runtimes\\k-r3\\venv\\Scripts\\python.exe")
+        self.assertEqual(
+            lay.console_script, "C:\\data\\runtimes\\k-r3\\venv\\Scripts\\visionset.exe"
+        )
         self.assertEqual(lay.lock, "C:\\data\\locks\\k.lock")
         self.assertEqual(lay.log, "C:\\data\\logs\\k.log")
 
-    def test_posix_layout_keeps_lock_and_log_outside_the_runtime(self) -> None:
-        lay = layout("/d", "k", "visionset", False)
-        self.assertEqual(lay.python, "/d/runtimes/k/venv/bin/python")
-        self.assertFalse(lay.lock.startswith(lay.runtime))
-        self.assertFalse(lay.log.startswith(lay.runtime))
+    def test_every_generation_shares_one_lock_and_log_outside_it(self) -> None:
+        one = layout("/d", "k-r1", "visionset", False)
+        two = layout("/d", "k-r2", "visionset", False)
+        self.assertEqual(one.python, "/d/runtimes/k-r1/venv/bin/python")
+        self.assertEqual((one.lock, one.log), (two.lock, two.log))
+        self.assertEqual(one.lock, "/d/locks/k.lock")
+        self.assertFalse(one.lock.startswith(one.runtime))
 
 
 class WindowsTest(unittest.TestCase):
+    STORE = "C:\\Users\\u\\AppData\\Local\\Microsoft\\WindowsApps\\python.exe"
+
     def setUp(self) -> None:
         self.m = Machine(windows=True)
         self.m.env["PATH"] = "C:\\Windows;C:\\Users\\u\\AppData\\Local\\Microsoft\\WindowsApps"
         self.launcher = "C:\\Windows\\py.exe"
 
-    def test_the_py_launcher_is_tried_newest_first_and_the_store_alias_is_refused(self) -> None:
-        self.m.disk.put(self.launcher, executable=True)
-        store = "C:\\Users\\u\\AppData\\Local\\Microsoft\\WindowsApps\\python.exe"
-        self.m.run.python(store, probe_output((3, 12, 0)))
-        launched: list[list[str]] = []
-        original = self.m.run.__call__
-
-        def run(argv: Sequence[str], *rest: Any) -> ProbeResult:
-            if argv[0] == self.launcher and "-c" in argv:
-                launched.append(list(argv[:2]))
-                if argv[1] != "-3.12":
-                    return ProbeResult(103, stderr=b"No suitable Python runtime found")
-                return ProbeResult(0, probe_output((3, 12, 7)).encode())
-            return original(argv, *rest)
-
-        result = run_bootstrap(
+    def boot(self, run: Any) -> Bootstrapped:
+        return run_bootstrap(
             BUNDLE,
             host=self.m.host(),
             fs=self.m.disk,
@@ -803,24 +1094,46 @@ class WindowsTest(unittest.TestCase):
             plugin_root=None,
             progress=self.m.progress.append,
         )
+
+    def test_the_py_launcher_is_tried_newest_first(self) -> None:
+        self.m.disk.put(self.launcher, executable=True)
+        launched: list[list[str]] = []
+        original = self.m.run.__call__
+
+        def run(argv: Sequence[str], *rest: Any, **kwargs: Any) -> ProbeResult:
+            if argv[0] == self.launcher and "-c" in argv:
+                launched.append(list(argv[:2]))
+                if argv[1] != "-3.12":
+                    return ProbeResult(103, stderr=b"No suitable Python runtime found")
+                return ProbeResult(0, probe_output((3, 12, 7)).encode())
+            return original(argv, *rest, **kwargs)
+
+        result = self.boot(run)
         self.assertEqual(
             launched, [[self.launcher, "-3.14"], [self.launcher, "-3.13"], [self.launcher, "-3.12"]]
         )
-        self.assertNotIn(store, [call[0] for call in self.m.run.calls])
         self.assertTrue(result.console_script.endswith("\\venv\\Scripts\\visionset.exe"))
         venv_call = next(call for call in self.m.run.calls if "venv" in call)
         self.assertEqual(venv_call[:2], [self.launcher, "-3.12"])
         install = self.m.run.install_calls()[0]
         self.assertTrue(install[0].endswith("\\venv\\Scripts\\python.exe"))
         self.assertTrue(self.m.locker.acquired[0][0].startswith("C:\\data\\plugin\\locks\\"))
+        self.assertTrue(all(fds == () for fds in self.m.run.fds))
 
-    def test_only_the_store_alias_means_no_python(self) -> None:
-        store = "C:\\Users\\u\\AppData\\Local\\Microsoft\\WindowsApps\\python.exe"
-        self.m.run.python(store, probe_output((3, 12, 0)))
+    def test_the_store_alias_stub_is_probed_and_refused(self) -> None:
+        stub = ProbeResult(9009, stderr=b"Python was not found; run without arguments to install")
+        self.m.run.python(self.STORE, stub)
         self.assertIs(self.m.failure(python=None).code, Code.NO_PYTHON)
-        self.assertEqual(self.m.run.calls, [])
+        self.assertEqual([call[0] for call in self.m.run.calls], [self.STORE])
 
-    def test_the_windows_lock_uses_msvcrt_byte_locking(self) -> None:
+    def test_a_working_store_python_is_used(self) -> None:
+        self.m.run.python(self.STORE, probe_output((3, 12, 0)))
+        result = self.boot(self.m.run)
+        self.assertFalse(result.reused)
+        venv_call = next(call for call in self.m.run.calls if "venv" in call)
+        self.assertEqual(venv_call[0], self.STORE)
+
+    def test_the_windows_lock_uses_non_blocking_msvcrt_byte_locking(self) -> None:
         calls: list[tuple[int, int]] = []
         refusals = {"left": 1}
 
@@ -830,7 +1143,7 @@ class WindowsTest(unittest.TestCase):
                 refusals["left"] -= 1
                 raise OSError(36, "Resource deadlock avoided")
 
-        fake = types.SimpleNamespace(LK_NBLCK=2, LK_UNLCK=0, locking=locking)
+        fake = types.SimpleNamespace(LK_NBLCK=2, LK_LOCK=1, LK_UNLCK=0, locking=locking)
         clock = FakeClock()
         with (
             tempfile.TemporaryDirectory() as scratch,
@@ -848,6 +1161,7 @@ class WindowsTest(unittest.TestCase):
                 )
             )
         self.assertEqual(calls[:3], [(2, 1), (2, 1), (0, 1)])
+        self.assertEqual({mode for mode, _ in calls}, {2, 0})
         self.assertEqual(clock.sleeps, [0.1])
 
 
@@ -880,6 +1194,55 @@ class PosixLockTest(unittest.TestCase):
             assert again is not None
             again.release()
             self.assertEqual(os.stat(path).st_mode & 0o777, 0o600)
+
+    def test_a_symlinked_lock_file_is_not_followed(self) -> None:
+        with tempfile.TemporaryDirectory() as scratch:
+            target = os.path.join(scratch, "elsewhere")
+            path = os.path.join(scratch, "k.lock")
+            os.symlink(target, path)
+            with self.assertRaises(OSError):
+                FileLocker(windows=False).acquire(path, 0.1)
+            self.assertFalse(os.path.exists(target))
+
+    def test_a_child_that_inherits_the_lease_keeps_the_lock(self) -> None:
+        import subprocess
+
+        with tempfile.TemporaryDirectory() as scratch:
+            path = os.path.join(scratch, "k.lock")
+            lease = FileLocker(windows=False).acquire(path, 1.0)
+            assert lease is not None and lease.fd is not None
+            child = subprocess.Popen(
+                [sys.executable, "-c", "import time; time.sleep(30)"], pass_fds=(lease.fd,)
+            )
+            try:
+                lease.release()
+                self.assertIsNone(FileLocker(windows=False).acquire(path, 0.3))
+            finally:
+                child.kill()
+                child.wait()
+            after = FileLocker(windows=False).acquire(path, 1.0)
+            assert after is not None
+            after.release()
+
+
+class OsWritableFileSystemTest(unittest.TestCase):
+    def test_the_owner_marker_is_removed_last(self) -> None:
+        from bootstrap import OsWritableFileSystem
+
+        with tempfile.TemporaryDirectory() as scratch:
+            runtime = os.path.join(scratch, "k-r1")
+            os.makedirs(os.path.join(runtime, "venv", "lib"))
+            for name in (".owner", "ready.json.tmp", "zz"):
+                with open(os.path.join(runtime, name), "w") as handle:
+                    handle.write("x")
+            with (
+                mock.patch("bootstrap._rmtree", side_effect=PermissionError(13, "in use")),
+                self.assertRaises(OSError),
+            ):
+                OsWritableFileSystem().remove_tree(runtime)
+            self.assertTrue(os.path.exists(os.path.join(runtime, ".owner")))
+            OsWritableFileSystem().remove_tree(runtime)
+            self.assertFalse(os.path.exists(runtime))
 
 
 if __name__ == "__main__":

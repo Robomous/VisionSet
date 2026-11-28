@@ -308,9 +308,18 @@ def _kill(process: subprocess.Popen[bytes]) -> None:
 
 
 def run_bounded(
-    argv: Sequence[str], cwd: str, env: Mapping[str, str], timeout: float, cap: int
+    argv: Sequence[str],
+    cwd: str,
+    env: Mapping[str, str],
+    timeout: float,
+    cap: int,
+    *,
+    pass_fds: Sequence[int] = (),
 ) -> ProbeResult:
-    """Run argv without a shell, stdin closed, output captured and capped, within timeout."""
+    """Run argv without a shell, stdin closed, output captured and capped, within timeout.
+
+    `pass_fds` are inherited by the child on POSIX and ignored on Windows.
+    """
     windows = os.name == "nt"
     flags = 0
     if windows:
@@ -328,6 +337,7 @@ def run_bounded(
             shell=False,
             start_new_session=not windows,
             creationflags=flags,
+            pass_fds=() if windows else tuple(pass_fds),
         )
     except OSError as error:
         return ProbeResult(None, error=error.strerror or type(error).__name__)
@@ -687,6 +697,13 @@ class _Checker:
             detail = redact(stderr, self.host)[-REASON_TAIL:] or "no output"
             return stdout, f"{label} exited with {result.returncode}: {detail}"
         return stdout, None
+
+
+def checkout_of(project: str, host: Host | None = None, fs: FileSystem | None = None) -> str:
+    """The checkout discovery derives for an absolute project directory."""
+    search = _Search(host or Host.current(), fs or OsFileSystem(), "", "", project, ())
+    assert search.checkout is not None
+    return search.checkout
 
 
 def check_executable(

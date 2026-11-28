@@ -5,20 +5,26 @@ Python 3.11 or newer and populated by its own `python -m pip` with a distributio
 compatibility range. No existing environment is changed, no GPU extra is installed, nothing
 runs with elevated privileges, and a created environment is never moved.
 
-Layout under the data root:
+Layout under the data root, where `<base>` is `<version>-py<MAJ><MIN>-<tag>`:
 
-    runtimes/<version>-py<MAJ><MIN>-<tag>/   .owner, venv/, then ready.json once validated
-    locks/<key>.lock                         the cross-process lock, outside the runtime
-    logs/<key>.log                           redacted output of every step, mode 0600
+    runtimes/<base>-r<n>/       one generation: .owner, venv/, then ready.json once validated
+    runtimes/.trash-<base>-*    an owned generation moved aside before removal
+    locks/<base>.lock           the cross-process lock, outside every generation
+    logs/<base>.log             redacted output of every step, mode 0600
 
-A runtime directory without `ready.json` is incomplete. Under the lock an incomplete
-directory carrying this plugin's `.owner` marker is removed and rebuilt; one without the
-marker is never touched. This module writes nothing to stdout.
+A generation without `ready.json` is incomplete. Under the lock an incomplete generation this
+plugin owns is moved aside and removed; anything it does not own is left alone. A published
+generation is never removed or rebuilt in place: a broken one is superseded by a new
+generation beside it. The lock file descriptor is inherited by every process that writes into
+a generation, so on POSIX an orphaned pip keeps the lock until it exits. This module writes
+nothing to stdout.
 """
 
 from __future__ import annotations
 
 import contextlib
+import dataclasses
+import functools
 import hashlib
 import importlib
 import json
@@ -27,14 +33,16 @@ import os
 import posixpath
 import re
 import shutil
+import stat
 import sys
 import time
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from enum import Enum
 from pathlib import Path
 from typing import Any, Protocol
+from urllib.parse import urlsplit
 
 from discover import (
     OUTPUT_CAP,
@@ -47,8 +55,10 @@ from discover import (
     Host,
     OsFileSystem,
     ProbeResult,
-    Runner,
+    _version_key,
+    _wanted_version,
     check_executable,
+    checkout_of,
     redact,
     run_bounded,
 )
@@ -59,36 +69,47 @@ CLAUDE_DATA_ENV = "CLAUDE_PLUGIN_DATA"
 APP_DIR = "visionset-agent-plugin"
 MIN_PYTHON = (3, 11)
 NEWEST_MINOR = 14
-LOCK_TIMEOUT = 300.0
-LOCK_POLL = 0.1
 INSTALL_TIMEOUT = 900.0
 VALIDATION_TIMEOUT = 60.0
+# A waiter outlasts a whole build: the install deadline plus every probe around it.
+LOCK_TIMEOUT = 1500.0
+LOCK_POLL = 0.1
 RETRY_DELAY = 5.0
 PIP_OUTPUT_CAP = 8 * 1024 * 1024
 OWNER = "visionset-agent-plugin"
-SENTINEL_SCHEMA = 1
-# Variables that change which interpreter pip serves or where it installs. Index, mirror,
-# certificate and find-links settings pass through, as do pip.conf and netrc.
-PIP_ENV_SCRUB = PROBE_ENV_SCRUB | {
-    "PIP_TARGET",
-    "PIP_USER",
-    "PIP_PREFIX",
-    "PIP_ROOT",
-    "PIP_PYTHON",
-    "PIP_REQUIRE_VIRTUALENV",
-    "PIP_BREAK_SYSTEM_PACKAGES",
-    "PIP_UPGRADE",
-    "PIP_UPGRADE_STRATEGY",
-    "PIP_PRE",
-    "PIP_EDITABLE",
-    "PIP_SRC",
-    "PIP_FORCE_REINSTALL",
-    "PIP_IGNORE_INSTALLED",
-    "PIP_NO_DEPS",
-    "PYTHONUSERBASE",
-}
+SENTINEL_SCHEMA = 2
+OWNER_ENTRIES = frozenset({".owner", ".owner.tmp"})
+# The only pip variables passed through: where packages come from and how to reach it. Every
+# other PIP_* variable, which could add packages or move the install, is dropped.
+PIP_ENV_KEEP = frozenset(
+    {
+        "PIP_INDEX_URL",
+        "PIP_EXTRA_INDEX_URL",
+        "PIP_FIND_LINKS",
+        "PIP_NO_INDEX",
+        "PIP_TRUSTED_HOST",
+        "PIP_CERT",
+        "PIP_CLIENT_CERT",
+        "PIP_PROXY",
+        "PIP_RETRIES",
+        "PIP_TIMEOUT",
+        "PIP_CONFIG_FILE",
+        "PIP_KEYRING_PROVIDER",
+        "PIP_CACHE_DIR",
+        "PIP_NO_CACHE_DIR",
+    }
+)
+INDEX_ENV = ("PIP_INDEX_URL", "PIP_EXTRA_INDEX_URL", "PIP_FIND_LINKS")
+_INDEX_KEYS = frozenset({"index-url", "extra-index-url", "find-links"})
+# pip configuration that would install somewhere else or install something else.
+_CONFIG_LOCATION_KEYS = frozenset({"target", "prefix", "root", "requirement", "editable", "src"})
+_CONFIG_LOCATION_KEYS |= {"python"}
+_CONFIG_SWITCH_KEYS = frozenset({"user", "dry-run"})
+_FALSE = frozenset({"0", "false", "no", "off", ""})
+_COMMON_SEGMENTS = frozenset({"simple", "pypi", "index", "packages", "api", "repository", "wheels"})
 _DISTRIBUTION = re.compile(r"[A-Za-z0-9](?:[A-Za-z0-9._-]*[A-Za-z0-9])?")
 _PINNED = re.compile(r"==[0-9][0-9A-Za-z.]*")
+_CONFIG_LINE = re.compile(r"^([\w:.-]+)\.([\w-]+)='(.*)'$")
 _NETWORK = re.compile(
     r"NewConnectionError|ConnectTimeoutError|ReadTimeoutError|Max retries exceeded"
     r"|Temporary failure in name resolution|Name or service not known|nodename nor servname"
@@ -108,12 +129,13 @@ _PROBE = (
 class Code(Enum):
     OPTED_OUT = "OPTED_OUT"
     BAD_DATA_DIR = "BAD_DATA_DIR"
+    BAD_PIP_CONFIG = "BAD_PIP_CONFIG"
     NO_PYTHON = "NO_PYTHON"
     PYTHON_TOO_OLD = "PYTHON_TOO_OLD"
     NO_VENV = "NO_VENV"
     NO_PIP = "NO_PIP"
     LOCK_TIMEOUT = "LOCK_TIMEOUT"
-    NOT_OWNED = "NOT_OWNED"
+    CLEANUP_FAILED = "CLEANUP_FAILED"
     INDEX_UNAVAILABLE = "INDEX_UNAVAILABLE"
     INSTALL_FAILED = "INSTALL_FAILED"
     INSTALL_TIMEOUT = "INSTALL_TIMEOUT"
@@ -160,6 +182,7 @@ class Interpreter:
 @dataclass(frozen=True)
 class Layout:
     root: str
+    base: str
     key: str
     runtime: str
     venv: str
@@ -169,6 +192,19 @@ class Layout:
     log: str
     python: str
     console_script: str
+
+
+class InstallRunner(Protocol):
+    def __call__(
+        self,
+        argv: Sequence[str],
+        cwd: str,
+        env: Mapping[str, str],
+        timeout: float,
+        cap: int,
+        *,
+        pass_fds: Sequence[int] = (),
+    ) -> ProbeResult: ...
 
 
 class Clock(Protocol):
@@ -189,6 +225,8 @@ class SystemClock:
 
 
 class Lease(Protocol):
+    @property
+    def fd(self) -> int | None: ...
     def release(self) -> None: ...
 
 
@@ -198,26 +236,28 @@ class Locker(Protocol):
 
 class _FileLease:
     def __init__(self, fd: int, windows: bool) -> None:
-        self.fd = fd
+        self._fd = fd
         self.windows = windows
+
+    @property
+    def fd(self) -> int | None:
+        return self._fd
 
     def release(self) -> None:
         try:
             if self.windows:
                 msvcrt: Any = importlib.import_module("msvcrt")
-                os.lseek(self.fd, 0, os.SEEK_SET)
+                os.lseek(self._fd, 0, os.SEEK_SET)
                 with contextlib.suppress(OSError):
-                    msvcrt.locking(self.fd, msvcrt.LK_UNLCK, 1)
-            else:
-                import fcntl
-
-                fcntl.flock(self.fd, fcntl.LOCK_UN)
+                    msvcrt.locking(self._fd, msvcrt.LK_UNLCK, 1)
         finally:
-            os.close(self.fd)
+            # On POSIX only the descriptor is closed: an unlock would also free the lock
+            # for a child that inherited it and is still writing.
+            os.close(self._fd)
 
 
 class FileLocker:
-    """An exclusive advisory lock the operating system drops when its holder dies."""
+    """An exclusive advisory lock released when every process holding its descriptor exits."""
 
     def __init__(self, windows: bool | None = None, clock: Clock | None = None) -> None:
         self.windows = os.name == "nt" if windows is None else windows
@@ -238,7 +278,8 @@ class FileLocker:
         return True
 
     def acquire(self, path: str, timeout: float) -> Lease | None:
-        fd = os.open(path, os.O_RDWR | os.O_CREAT, 0o600)
+        flags = os.O_RDWR | os.O_CREAT | getattr(os, "O_NOFOLLOW", 0)
+        fd = os.open(path, flags, 0o600)
         try:
             deadline = self.clock.monotonic() + timeout
             while not self._try(fd):
@@ -259,6 +300,10 @@ class WritableFileSystem(FileSystem, Protocol):
     def replace(self, source: str, target: str) -> None: ...
     def remove_tree(self, path: str) -> None: ...
     def append_private(self, path: str, text: str) -> None: ...
+    def unsafe_reason(self, path: str) -> str | None: ...
+
+
+_NOFOLLOW = getattr(os, "O_NOFOLLOW", 0)
 
 
 class OsWritableFileSystem(OsFileSystem):
@@ -267,13 +312,14 @@ class OsWritableFileSystem(OsFileSystem):
 
     def read_text(self, path: str) -> str | None:
         try:
-            with open(path, encoding="utf-8") as handle:
+            fd = os.open(path, os.O_RDONLY | _NOFOLLOW)
+            with os.fdopen(fd, encoding="utf-8") as handle:
                 return handle.read(64 * 1024)
         except (OSError, UnicodeDecodeError):
             return None
 
     def write_new(self, path: str, text: str) -> None:
-        fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC | _NOFOLLOW, 0o600)
         with os.fdopen(fd, "w", encoding="utf-8") as handle:
             handle.write(text)
             handle.flush()
@@ -283,14 +329,62 @@ class OsWritableFileSystem(OsFileSystem):
         os.replace(source, target)
 
     def remove_tree(self, path: str) -> None:
-        shutil.rmtree(path)
+        """Remove everything under path, then its `.owner`, then path itself."""
+        for entry in os.scandir(path):
+            if entry.name == ".owner":
+                continue
+            if entry.is_dir(follow_symlinks=False):
+                _rmtree(entry.path)
+            else:
+                _unlink(entry.path)
+        with contextlib.suppress(FileNotFoundError):
+            _unlink(os.path.join(path, ".owner"))
+        os.rmdir(path)
 
     def append_private(self, path: str, text: str) -> None:
-        fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o600)
+        fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_APPEND | _NOFOLLOW, 0o600)
         with os.fdopen(fd, "a", encoding="utf-8") as handle:
             if os.name != "nt":
                 os.fchmod(handle.fileno(), 0o600)
             handle.write(text)
+
+    def unsafe_reason(self, path: str) -> str | None:
+        if os.name == "nt":
+            return None
+        info = os.stat(path)
+        if info.st_uid != os.getuid():
+            return "is owned by another user"
+        if info.st_mode & stat.S_IWOTH:
+            return "is writable by every user"
+        if info.st_mode & stat.S_IWGRP and info.st_gid != os.getgid():
+            return "is writable by a shared group"
+        return None
+
+
+def _unlink(path: str) -> None:
+    try:
+        os.unlink(path)
+    except PermissionError:
+        os.chmod(path, stat.S_IWRITE | stat.S_IREAD)
+        os.unlink(path)
+
+
+def _rmtree(path: str) -> None:
+    try:
+        shutil.rmtree(path)
+        return
+    except OSError:
+        pass
+    # Read-only entries (Windows attributes, or a directory without write permission).
+    for directory, dirs, files in os.walk(path):
+        for name in (*dirs, *files):
+            target = os.path.join(directory, name)
+            if not os.path.islink(target):
+                with contextlib.suppress(OSError):
+                    os.chmod(target, stat.S_IRWXU)
+    with contextlib.suppress(OSError):
+        os.chmod(path, stat.S_IRWXU)
+    shutil.rmtree(path)
 
 
 def _pm(host: Host) -> Any:
@@ -336,6 +430,7 @@ def data_root(host: Host) -> str:
 
 
 def runtime_key(version: str, interpreter: Interpreter) -> str:
+    """The base key; each generation of it is `<base>-r<n>`."""
     identity = "\0".join((interpreter.executable, interpreter.implementation, interpreter.platform))
     tag = hashlib.sha256(identity.encode("utf-8")).hexdigest()[:8]
     major, minor, _ = interpreter.version
@@ -343,27 +438,33 @@ def runtime_key(version: str, interpreter: Interpreter) -> str:
     return f"{safe}-py{major}{minor}-{tag}"
 
 
+_GENERATION = re.compile(r"(.+)-r([1-9][0-9]*)")
+
+
 def layout(root: str, key: str, console_script: str, windows: bool) -> Layout:
     pm = ntpath if windows else posixpath
+    match = _GENERATION.fullmatch(key)
+    base = match.group(1) if match else key
     runtime = pm.join(root, "runtimes", key)
     venv = pm.join(runtime, "venv")
     scripts = pm.join(venv, "Scripts" if windows else "bin")
     suffix = ".exe" if windows else ""
     return Layout(
         root=root,
+        base=base,
         key=key,
         runtime=runtime,
         venv=venv,
         owner=pm.join(runtime, ".owner"),
         ready=pm.join(runtime, "ready.json"),
-        lock=pm.join(root, "locks", key + ".lock"),
-        log=pm.join(root, "logs", key + ".log"),
+        lock=pm.join(root, "locks", base + ".lock"),
+        log=pm.join(root, "logs", base + ".log"),
         python=pm.join(scripts, "python" + suffix),
         console_script=pm.join(scripts, console_script + suffix),
     )
 
 
-def _parse_ready(text: str | None, key: str) -> dict[str, Any] | None:
+def _parse_ready(text: str | None, lay: Layout) -> dict[str, Any] | None:
     if text is None:
         return None
     try:
@@ -372,7 +473,7 @@ def _parse_ready(text: str | None, key: str) -> dict[str, Any] | None:
         return None
     if not isinstance(data, dict) or data.get("schema") != SENTINEL_SCHEMA:
         return None
-    if data.get("key") != key:
+    if data.get("key") != lay.key or data.get("console_script") != lay.console_script:
         return None
     fields = ("version", "compatibility", "created", "python")
     if not all(isinstance(data.get(name), str) for name in fields):
@@ -380,31 +481,42 @@ def _parse_ready(text: str | None, key: str) -> dict[str, Any] | None:
     return data
 
 
-def _owned(text: str | None, key: str) -> bool:
+def _marker(text: str | None) -> dict[str, Any] | None:
     if text is None:
-        return False
+        return None
     try:
         data = json.loads(text)
     except ValueError:
-        return False
-    return isinstance(data, dict) and data.get("owner") == OWNER and data.get("key") == key
+        return None
+    if not isinstance(data, dict) or data.get("owner") != OWNER:
+        return None
+    return data
 
 
-def cached_prefixes(*, host: Host | None = None, fs: WritableFileSystem | None = None) -> list[str]:
-    """Published runtime prefixes, newest first, for `discover(cached=...)`."""
+def cached_prefixes(
+    *,
+    host: Host | None = None,
+    fs: WritableFileSystem | None = None,
+    console_script: str = "visionset",
+) -> list[str]:
+    """Published runtime prefixes for `discover(cached=...)`, newest generation first."""
     host = host or Host.current()
     fs = fs or OsWritableFileSystem()
     pm = _pm(host)
     try:
-        runtimes = pm.join(data_root(host), "runtimes")
+        root = data_root(host)
     except BootstrapError:
         return []
-    found: list[tuple[str, str]] = []
-    for name in fs.listdir(runtimes):
-        sentinel = _parse_ready(fs.read_text(pm.join(runtimes, name, "ready.json")), name)
+    found: list[tuple[str, int, str]] = []
+    for name in fs.listdir(pm.join(root, "runtimes")):
+        match = _GENERATION.fullmatch(name)
+        if match is None:
+            continue
+        lay = layout(root, name, console_script, host.windows)
+        sentinel = _parse_ready(fs.read_text(lay.ready), lay)
         if sentinel is not None:
-            found.append((sentinel["created"], str(pm.join(runtimes, name, "venv"))))
-    return [prefix for _, prefix in sorted(found, reverse=True)]
+            found.append((sentinel["created"], int(match.group(2)), lay.venv))
+    return [prefix for _, _, prefix in sorted(found, reverse=True)]
 
 
 def _stderr(message: str) -> None:
@@ -415,7 +527,34 @@ def _stderr(message: str) -> None:
 
 
 def _opted_out(value: str | None) -> bool:
-    return value is not None and value.strip().casefold() not in ("0", "false", "no", "off", "")
+    return value is not None and value.strip().casefold() not in _FALSE
+
+
+def _index_tokens(value: str) -> list[str]:
+    tokens: list[str] = []
+    for item in value.split():
+        tokens.append(item)
+        try:
+            parts = urlsplit(item)
+        except ValueError:
+            continue
+        if not parts.netloc:
+            continue
+        if "@" in parts.netloc:
+            tokens.append(parts.netloc.rsplit("@", 1)[0])
+        if parts.path.strip("/") and parts.path.strip("/") not in _COMMON_SEGMENTS:
+            tokens.append(parts.path)
+        tokens += [
+            segment
+            for segment in parts.path.split("/")
+            if len(segment) >= 6 and segment.casefold() not in _COMMON_SEGMENTS
+        ]
+        tokens += [part for part in (parts.query, parts.fragment) if part]
+    return tokens
+
+
+def _lease_fds(lease: Lease) -> Sequence[int]:
+    return () if lease.fd is None else (lease.fd,)
 
 
 class _Job:
@@ -424,7 +563,7 @@ class _Job:
         bundle: Bundle,
         host: Host,
         fs: WritableFileSystem,
-        run: Runner,
+        run: InstallRunner,
         clock: Clock,
         progress: Callable[[str], None],
         install_timeout: float,
@@ -434,21 +573,47 @@ class _Job:
         self.fs = fs
         self.run = run
         self.clock = clock
-        self.progress = progress
+        self.progress_sink = progress
         self.install_timeout = install_timeout
         self.pm = _pm(host)
-        self.env = {k: v for k, v in host.env.items() if k.upper() not in PIP_ENV_SCRUB}
+        self.env = {
+            k: v
+            for k, v in host.env.items()
+            if k.upper() not in PROBE_ENV_SCRUB
+            and (not k.upper().startswith("PIP_") or k.upper() in PIP_ENV_KEEP)
+            and k.upper() != "PYTHONUSERBASE"
+        }
         self.env["NO_COLOR"] = "1"
+        self.sensitive: set[str] = set()
+        for name in INDEX_ENV:
+            value = host.get(name)
+            if value:
+                self.sensitive.update(_index_tokens(value))
         self.requirement = f"{bundle.distribution}{bundle.compatibility.strip()}"
+        self.wanted = _wanted_version(bundle.compatibility)
         self.manual = f"install it yourself: pipx install '{self.requirement}'"
         self.log: str | None = None
+        self.keep_fds: Sequence[int] = ()
 
     def shown(self, text: str) -> str:
+        for token in sorted(self.sensitive, key=len, reverse=True):
+            if len(token) >= 4:
+                text = text.replace(token, "<redacted>")
         return redact(text, self.host)
+
+    def progress(self, message: str) -> None:
+        self.progress_sink(self.shown(message))
 
     def fail(self, code: Code, message: str, hint: str = "") -> BootstrapError:
         log = self.shown(self.log) if self.log else None
         return BootstrapError(code, self.shown(message), hint or self.manual, log)
+
+    def disk(self, action: str, path: str, call: Callable[[], Any]) -> Any:
+        try:
+            return call()
+        except OSError as error:
+            reason = error.strerror or type(error).__name__
+            raise self.fail(Code.BAD_DATA_DIR, f"cannot {action} {path}: {reason}") from None
 
     # Interpreter selection
 
@@ -480,8 +645,7 @@ class _Job:
         return found
 
     def probe_python(self, argv: tuple[str, ...]) -> Interpreter | str:
-        if self.host.windows and "\\windowsapps\\" in argv[0].casefold().replace("/", "\\"):
-            return "broken"
+        # A Microsoft Store alias that installs nothing fails here like any broken interpreter.
         cwd = str(self.pm.dirname(argv[0]))
         result = self.run([*argv, "-I", "-c", _PROBE], cwd, self.env, PROBE_TIMEOUT, OUTPUT_CAP)
         if result.error is not None or result.timed_out or result.returncode != 0:
@@ -533,17 +697,24 @@ class _Job:
 
     # Steps
 
-    def step(self, argv: Sequence[str], cwd: str, timeout: float, cap: int) -> ProbeResult:
-        result = self.run(argv, cwd, self.env, timeout, cap)
-        if self.log is not None:
-            lines = [f"$ {self.shown(' '.join(argv))}"]
-            for stream in (result.stdout, result.stderr):
-                text = stream.decode("utf-8", "replace")
-                lines += [self.shown(line) for line in text.splitlines() if line.strip()]
-            status = result.error or ("timed out" if result.timed_out else result.returncode)
-            lines.append(f"# exit: {status}")
-            with contextlib.suppress(OSError):
-                self.fs.append_private(self.log, "\n".join(lines) + "\n")
+    def record(self, argv: Sequence[str], result: ProbeResult) -> None:
+        if self.log is None:
+            return
+        lines = [f"$ {self.shown(' '.join(argv))}"]
+        for stream in (result.stdout, result.stderr):
+            text = stream.decode("utf-8", "replace")
+            lines += [self.shown(line) for line in text.splitlines() if line.strip()]
+        status = result.error or ("timed out" if result.timed_out else result.returncode)
+        lines.append(f"# exit: {status}")
+        with contextlib.suppress(OSError):
+            self.fs.append_private(self.log, "\n".join(lines) + "\n")
+
+    def step(
+        self, argv: Sequence[str], cwd: str, timeout: float, cap: int, log: bool = True
+    ) -> ProbeResult:
+        result = self.run(argv, cwd, self.env, timeout, cap, pass_fds=self.keep_fds)
+        if log:
+            self.record(argv, result)
         return result
 
     def tail(self, result: ProbeResult) -> str:
@@ -563,48 +734,124 @@ class _Job:
             raise self.timed_out()
         return left
 
-    def reuse(self, lay: Layout) -> Bootstrapped | None:
-        sentinel = _parse_ready(self.fs.read_text(lay.ready), lay.key)
-        if sentinel is None or not self.fs.is_file(lay.console_script):
-            return None
-        alive = self.run(
-            [lay.python, "-I", "-c", "import sys"], lay.runtime, self.env, PROBE_TIMEOUT, OUTPUT_CAP
-        )
-        dead = alive.error is not None or (not alive.timed_out and alive.returncode != 0)
-        if dead:
-            self.progress("the cached runtime's interpreter no longer starts; rebuilding it")
-            return None
-        return Bootstrapped(lay.venv, lay.console_script, sentinel["version"], reused=True)
+    # Generations
 
-    def clear_incomplete(self, lay: Layout) -> None:
-        if not self.fs.lexists(lay.runtime):
-            return
-        # An empty directory is what a setup killed between mkdir and the marker leaves.
-        empty = self.fs.is_dir(lay.runtime) and not self.fs.listdir(lay.runtime)
-        if not empty and not _owned(self.fs.read_text(lay.owner), lay.key):
-            raise self.fail(
-                Code.NOT_OWNED,
-                f"{lay.runtime} exists but was not created by this plugin, so it is left alone",
-                hint=f"remove it yourself, or set {DATA_ENV} to another directory",
+    def runtimes(self, root: str) -> str:
+        return str(self.pm.join(root, "runtimes"))
+
+    def generations(self, root: str, base: str) -> list[tuple[int, Layout]]:
+        found = []
+        for name in self.fs.listdir(self.runtimes(root)):
+            match = _GENERATION.fullmatch(name)
+            if match and match.group(1) == base:
+                lay = layout(root, name, self.bundle.console_script, self.host.windows)
+                found.append((int(match.group(2)), lay))
+        return sorted(found, key=lambda item: item[0], reverse=True)
+
+    def owned(self, path: str, base: str, key: str | None) -> bool:
+        marker = _marker(self.fs.read_text(str(self.pm.join(path, ".owner"))))
+        if marker is not None:
+            return marker.get("base") == base and (key is None or marker.get("key") == key)
+        # A generation killed before its marker was in place holds nothing else.
+        return set(self.fs.listdir(path)) <= OWNER_ENTRIES and self.fs.is_dir(path)
+
+    def verify(self, lay: Layout) -> str:
+        """`ok`, `dead` when the runtime fails twice the same way, or `transient`."""
+        outcome = "dead"
+        for _ in (1, 2):
+            outcome = self._probe_runtime(lay)
+            if outcome != "dead":
+                return outcome
+        return outcome
+
+    def _probe_runtime(self, lay: Layout) -> str:
+        cwd = str(self.pm.dirname(lay.console_script))
+        for args in (["--version"], ["mcp", "--help"]):
+            if not (self.fs.is_file(lay.python) and self.fs.is_file(lay.console_script)):
+                return "dead"
+            result = self.run(
+                [lay.console_script, *args], cwd, self.env, VALIDATION_TIMEOUT, OUTPUT_CAP
             )
-        self.progress("removing an incomplete runtime left by an interrupted setup")
-        self.fs.remove_tree(lay.runtime)
+            if result.error is not None or result.timed_out or result.overflow:
+                gone = not (self.fs.is_file(lay.python) and self.fs.is_file(lay.console_script))
+                return "dead" if gone else "transient"
+            if result.returncode != 0:
+                return "dead"
+            if args == ["--version"]:
+                version = result.stdout.decode("utf-8", "replace").strip()
+                if _version_key(version) != self.wanted:
+                    return "dead"
+        return "ok"
 
-    def build(self, lay: Layout, interpreter: Interpreter) -> Bootstrapped:
+    def reuse(self, root: str, base: str) -> Bootstrapped | None:
+        for _, lay in self.generations(root, base):
+            sentinel = _parse_ready(self.fs.read_text(lay.ready), lay)
+            if sentinel is None:
+                continue
+            outcome = self.verify(lay)
+            if outcome == "dead":
+                self.progress(f"the cached runtime {lay.key} no longer works; building a new one")
+                return None
+            if outcome == "transient":
+                self.progress(f"the cached runtime {lay.key} did not answer; using it anyway")
+            return Bootstrapped(lay.venv, lay.console_script, sentinel["version"], reused=True)
+        return None
+
+    def discard(self, path: str, base: str) -> None:
+        trash = str(self.pm.join(self.pm.dirname(path), f".trash-{base}-{os.urandom(6).hex()}"))
+        try:
+            self.fs.replace(path, trash)
+        except OSError as error:
+            reason = error.strerror or type(error).__name__
+            raise self.fail(
+                Code.CLEANUP_FAILED,
+                f"cannot move the incomplete runtime {path} aside: {reason}",
+                hint="close any program using it and try again, or remove it yourself",
+            ) from None
+        self.remove_trash(trash)
+
+    def remove_trash(self, trash: str) -> None:
+        try:
+            self.fs.remove_tree(trash)
+        except OSError:
+            self.progress(f"could not remove {trash} yet; a later setup retries")
+
+    def tidy(self, root: str, base: str) -> int:
+        """Remove owned incomplete generations and trash; return the next generation number."""
+        runtimes = self.runtimes(root)
+        for name in self.fs.listdir(runtimes):
+            if name.startswith(f".trash-{base}-"):
+                path = str(self.pm.join(runtimes, name))
+                if self.owned(path, base, None):
+                    self.remove_trash(path)
+        highest = 0
+        for number, lay in self.generations(root, base):
+            highest = max(highest, number)
+            if _parse_ready(self.fs.read_text(lay.ready), lay) is not None:
+                continue
+            if self.owned(lay.runtime, base, lay.key):
+                self.progress(f"removing the incomplete runtime {lay.key}")
+                self.discard(lay.runtime, base)
+        return highest + 1
+
+    def build(self, root: str, base: str, number: int, interpreter: Interpreter) -> Bootstrapped:
+        lay = layout(root, f"{base}-r{number}", self.bundle.console_script, self.host.windows)
         deadline = self.clock.monotonic() + self.install_timeout
         shown_version = ".".join(map(str, interpreter.version))
         self.progress(
             f"creating a private runtime for {self.requirement} with Python {shown_version} "
-            f"in {self.shown(lay.runtime)}"
+            f"in {lay.runtime}"
         )
-        self.fs.makedirs(lay.runtime)
-        self.fs.write_new(lay.owner, json.dumps({"owner": OWNER, "key": lay.key}) + "\n")
+        marker = json.dumps({"owner": OWNER, "base": base, "key": lay.key}) + "\n"
+        self.disk("create", lay.runtime, lambda: self.fs.makedirs(lay.runtime))
         try:
+            self.disk("write", lay.owner, lambda: self.fs.write_new(lay.owner + ".tmp", marker))
+            self.disk("write", lay.owner, lambda: self.fs.replace(lay.owner + ".tmp", lay.owner))
             found = self._populate(lay, interpreter, deadline)
             self._publish(lay, interpreter, found)
         except BaseException:
-            with contextlib.suppress(OSError):
-                self.fs.remove_tree(lay.runtime)
+            with contextlib.suppress(BootstrapError, OSError):
+                self.discard(lay.runtime, base)
             raise
         self.progress("runtime ready")
         return Bootstrapped(lay.venv, lay.console_script, found.version, reused=False)
@@ -620,8 +867,34 @@ class _Job:
             "--disable-pip-version-check",
             "--progress-bar",
             "off",
+            "--no-user",
             self.requirement,
         ]
+
+    def check_pip_config(self, lay: Layout) -> None:
+        argv = [lay.python, "-I", "-m", "pip", "config", "list"]
+        result = self.step(argv, lay.runtime, PROBE_TIMEOUT, OUTPUT_CAP, log=False)
+        settings: list[tuple[str, str, str]] = []
+        if result.error is None and not result.timed_out and result.returncode == 0:
+            for line in result.stdout.decode("utf-8", "replace").splitlines():
+                match = _CONFIG_LINE.match(line.strip())
+                if match:
+                    settings.append((match.group(1), match.group(2), match.group(3)))
+        for _, key, value in settings:
+            if key in _INDEX_KEYS and value:
+                self.sensitive.update(_index_tokens(value))
+        self.record(argv, result)
+        for section, key, value in settings:
+            location = key in _CONFIG_LOCATION_KEYS and value.strip()
+            switch = key in _CONFIG_SWITCH_KEYS and value.strip().casefold() not in _FALSE
+            if location or switch:
+                raise self.fail(
+                    Code.BAD_PIP_CONFIG,
+                    f"pip is configured with {section}.{key}, which would install outside "
+                    "the private runtime or add to it",
+                    hint="remove that setting from pip.conf or PIP_CONFIG_FILE for this "
+                    f"setup; or {self.manual}",
+                )
 
     def _populate(self, lay: Layout, interpreter: Interpreter, deadline: float) -> Found:
         create = [*interpreter.argv, "-I", "-m", "venv", lay.venv]
@@ -640,6 +913,7 @@ class _Job:
             raise self.fail(
                 Code.NO_PIP, f"the new environment has no working pip: {self.tail(result)}"
             )
+        self.check_pip_config(lay)
         self.progress(f"installing {self.requirement}")
         argv = self.install_argv(lay)
         for attempt in (1, 2):
@@ -649,7 +923,7 @@ class _Job:
             if result.error is None and result.returncode == 0 and not result.overflow:
                 break
             output = (result.stdout + result.stderr).decode("utf-8", "replace")
-            if result.error is None and _NETWORK.search(output):
+            if result.error is None and not result.overflow and _NETWORK.search(output):
                 if attempt == 1:
                     self.progress("the package index did not answer; retrying once")
                     self.clock.sleep(RETRY_DELAY)
@@ -667,7 +941,7 @@ class _Job:
         verdict = check_executable(
             lay.console_script,
             compatibility=self.bundle.compatibility,
-            host=self.host,
+            host=dataclasses.replace(self.host, env=self.env),
             fs=self.fs,
             run=self.run,
             probe_timeout=VALIDATION_TIMEOUT,
@@ -687,15 +961,17 @@ class _Job:
             "distribution": self.bundle.distribution,
             "version": found.version,
             "compatibility": self.bundle.compatibility,
+            "console_script": lay.console_script,
             "python": interpreter.executable,
             "pip_args_digest": digest.hexdigest(),
             "created": created.strftime("%Y-%m-%dT%H:%M:%S.%fZ"),
         }
         staged = lay.ready + ".tmp"
-        self.fs.write_new(staged, json.dumps(sentinel, indent=2, sort_keys=True) + "\n")
-        if _parse_ready(self.fs.read_text(staged), lay.key) is None:
+        text = json.dumps(sentinel, indent=2, sort_keys=True) + "\n"
+        self.disk("write", staged, lambda: self.fs.write_new(staged, text))
+        if _parse_ready(self.fs.read_text(staged), lay) is None:
             raise self.fail(Code.VALIDATION_FAILED, "the readiness file did not read back")
-        self.fs.replace(staged, lay.ready)
+        self.disk("publish", lay.ready, lambda: self.fs.replace(staged, lay.ready))
 
 
 def _inside(path: str, root: str, host: Host, fs: FileSystem) -> bool:
@@ -715,10 +991,11 @@ def bootstrap(
     *,
     host: Host | None = None,
     fs: WritableFileSystem | None = None,
-    run: Runner = run_bounded,
+    run: InstallRunner = run_bounded,
     locker: Locker | None = None,
     clock: Clock | None = None,
     python: str | None = sys.executable,
+    project: str | None = None,
     plugin_root: str | None = str(Path(__file__).resolve().parent.parent),
     lock_timeout: float = LOCK_TIMEOUT,
     install_timeout: float = INSTALL_TIMEOUT,
@@ -726,8 +1003,9 @@ def bootstrap(
 ) -> Bootstrapped:
     """Return the plugin-owned runtime for the bundle's range, building it if needed.
 
-    `python` is the interpreter tried first, normally the one running this module. Raises
-    `BootstrapError`; never writes to stdout.
+    `python` is the interpreter tried first, normally the one running this module. `project`
+    is the absolute directory the agent works in, when known. Raises `BootstrapError`; never
+    writes to stdout.
     """
     host = host or Host.current()
     fs = fs or OsWritableFileSystem()
@@ -740,34 +1018,46 @@ def bootstrap(
     if _opted_out(host.get(NO_BOOTSTRAP_ENV)):
         raise job.fail(Code.OPTED_OUT, f"{NO_BOOTSTRAP_ENV} is set, so no runtime is created")
     root = data_root(host)
+    outside = f"set {DATA_ENV} to a directory outside it"
     if plugin_root is not None and _inside(root, plugin_root, host, fs):
-        raise job.fail(
-            Code.BAD_DATA_DIR,
-            "the data directory lies inside the installed plugin",
-            hint=f"set {DATA_ENV} to a directory outside it",
-        )
-    for directory in ("runtimes", "locks", "logs"):
-        fs.makedirs(str(job.pm.join(root, directory)))
+        raise job.fail(Code.BAD_DATA_DIR, "the data directory lies inside the plugin", outside)
+    if project is not None and _absolute(project, host):
+        for where in {project, checkout_of(project, host, fs)}:
+            if _inside(root, where, host, fs):
+                raise job.fail(
+                    Code.BAD_DATA_DIR, "the data directory lies inside the project", outside
+                )
+    for directory in (root, *(str(job.pm.join(root, d)) for d in ("runtimes", "locks", "logs"))):
+        job.disk("create", directory, functools.partial(fs.makedirs, directory))
+        reason = job.disk("inspect", directory, functools.partial(fs.unsafe_reason, directory))
+        if reason is not None:
+            raise job.fail(
+                Code.BAD_DATA_DIR,
+                f"the data directory {directory} {reason}",
+                hint=f"fix its ownership or permissions, or set {DATA_ENV}",
+            )
     interpreter = job.select_python(python)
     version = bundle.compatibility.strip().removeprefix("==").strip()
-    lay = layout(root, runtime_key(version, interpreter), bundle.console_script, host.windows)
+    base = runtime_key(version, interpreter)
+    lay = layout(root, base, bundle.console_script, host.windows)
     job.log = lay.log
 
-    ready = job.reuse(lay)
+    ready = job.reuse(root, base)
     if ready is not None:
         return ready
-    lease = locker.acquire(lay.lock, lock_timeout)
+    lease = job.disk("lock", lay.lock, lambda: locker.acquire(lay.lock, lock_timeout))
     if lease is None:
         raise job.fail(
             Code.LOCK_TIMEOUT,
             f"another setup of this runtime is still running after {lock_timeout:g} s",
-            hint="wait for it to finish and try again",
+            hint="wait for it to finish (or stop a leftover pip process) and try again",
         )
     try:
-        ready = job.reuse(lay)
+        ready = job.reuse(root, base)
         if ready is not None:
             return ready
-        job.clear_incomplete(lay)
-        return job.build(lay, interpreter)
+        job.keep_fds = () if host.windows else _lease_fds(lease)
+        number = job.tidy(root, base)
+        return job.build(root, base, number, interpreter)
     finally:
         lease.release()

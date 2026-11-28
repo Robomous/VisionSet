@@ -53,16 +53,17 @@ Never edit a generated file by hand; change `metadata.json` or the generator and
 
 | Path under the data root | What it is |
 | --- | --- |
-| `runtimes/<version>-py<MAJOR><MINOR>-<tag>/venv/` | The virtual environment, created in place and never moved |
-| `runtimes/<key>/.owner`, `runtimes/<key>/ready.json` | The ownership marker, written first, and the readiness sentinel, written last |
-| `locks/<key>.lock` | The cross-process lock |
-| `logs/<key>.log` | Redacted output of every setup step, mode 0600 |
+| `runtimes/<base>-r<n>/venv/` | One generation's virtual environment, where `<base>` is `<version>-py<MAJOR><MINOR>-<tag>`. Created in place and never moved; a broken generation is superseded by `-r<n+1>`, never rebuilt in place |
+| `runtimes/<base>-r<n>/.owner`, `runtimes/<base>-r<n>/ready.json` | The ownership marker, written first, and the readiness sentinel, written last |
+| `runtimes/.trash-<base>-*` | An unpublished generation moved aside before removal |
+| `locks/<base>.lock` | The cross-process lock, inherited by every process that writes into a generation |
+| `logs/<base>.log` | Redacted output of every setup step, mode 0600 |
 
 | Variable | Effect |
 | --- | --- |
 | `VISIONSET_PLUGIN_DATA` | Absolute data root, for operators and tests |
 | `VISIONSET_PLUGIN_NO_BOOTSTRAP` | Any value except `0`, `false`, `no` or `off` refuses to create a runtime and prints the manual `pipx install` command instead |
-| `PIP_INDEX_URL`, `PIP_FIND_LINKS`, `PIP_NO_INDEX`, `pip.conf`, netrc | Honoured as pip honours them. `PIP_TARGET`, `PIP_USER`, `PIP_PREFIX` and the other variables that would move the install are dropped |
+| `PIP_INDEX_URL`, `PIP_EXTRA_INDEX_URL`, `PIP_FIND_LINKS`, `PIP_NO_INDEX`, `PIP_CONFIG_FILE` and the other allow-listed index and network variables, `pip.conf`, netrc | Honoured as pip honours them. Every other `PIP_*` variable is dropped, and a `pip.conf` that sets `target`, `prefix`, `root`, `user` and similar fails setup with `BAD_PIP_CONFIG` |
 
 The rules, and what the tests prove, are in the decision record's "Settled by bootstrap"
 section. The real-install tests run on Linux, and one of them builds this checkout's wheel with

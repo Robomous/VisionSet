@@ -158,67 +158,106 @@ project-scoped configuration set `VISIONSET_PLUGIN_EXECUTABLE`.
 ## Settled by bootstrap
 
 [#1258](https://github.com/Robomous/VisionSet/issues/1258) implemented the last step of the
-resolution order in `runtime/bootstrap.py`. Its contract tests hold each rule below. The real
-tests run on Linux only.
+resolution order in `runtime/bootstrap.py`. Its contract tests hold each rule below. The tests
+that use real processes, real virtual environments and a real pip run on Linux only. Windows and
+macOS behaviour is covered by fakes, not by a run on either system.
 
 - **Where state lives.** The data root is `VISIONSET_PLUGIN_DATA` (absolute, or setup fails),
   else `CLAUDE_PLUGIN_DATA`, else `$XDG_DATA_HOME` or `~/.local/share`, `~/Library/Application
   Support` on macOS, or `%LOCALAPPDATA%` on Windows, each followed by `visionset-agent-plugin`.
-  A root inside the installed plugin is refused. A runtime lives in
-  `runtimes/<version>-py<MAJOR><MINOR>-<tag>/`, where the tag hashes the interpreter's real path,
-  implementation and platform, so each plugin version and each interpreter gets its own
-  directory. Its lock (`locks/<key>.lock`) and its log (`logs/<key>.log`, mode 0600) sit outside
-  it.
+  Setup refuses a root inside the installed plugin, inside the project, or inside the project's
+  checkout. On POSIX it also refuses a root, or its `runtimes`, `locks` or `logs` directory, that
+  another user owns, that every user can write, or that a group other than the user's primary
+  group can write. Failing to create or write any of them is a `BAD_DATA_DIR` error, never a raw
+  exception.
+- **Generations.** The base key is `<version>-py<MAJOR><MINOR>-<tag>`, where the tag hashes the
+  interpreter's real path, implementation and platform. Runtimes live in `runtimes/<base>-r<n>/`.
+  One lock (`locks/<base>.lock`, opened without following a symlink) and one log
+  (`logs/<base>.log`, mode 0600) serve every generation, outside all of them. A new plugin
+  version gets a new base and never modifies an older one.
 - **Which interpreter.** The interpreter running the bootstrap comes first, then `python3.14`
   down to `python3.11`, `python3` and `python` on `PATH`. On Windows the order is `py -3.14` down
-  to `py -3.11`, then `python.exe`, and a `WindowsApps` alias is never run. An interpreter needs
+  to `py -3.11`, then `python.exe`. Each candidate is probed with `-c`, so a Microsoft Store alias
+  that installs nothing fails the probe while a working Store Python is used. An interpreter needs
   3.11 or newer with both `venv` and `ensurepip`. When none qualifies, the failure says which of
   these was missing.
-- **One build at a time, published last.** An exclusive OS file lock (`flock`, or `msvcrt`
-  byte locking on Windows) is held with a bounded wait (300 s by default). The sentinel is
-  checked before the lock and again after it. The virtual environment is created at its final
-  path, after an `.owner` marker. `ready.json` is staged and read back, then renamed into place,
-  and only after `pip --version` works and the console script passes discovery's two probes.
-  Any failure removes the directory. Two processes starting together install once.
-- **Recovery never takes what it does not own.** Under the lock, a directory without
-  `ready.json` is removed and rebuilt only when it carries this plugin's marker for that key,
-  or is empty (a setup killed before the marker was written). Anything else fails with
-  `NOT_OWNED` and is left alone. A ready runtime is rebuilt only when its interpreter can no
-  longer be started. One that is merely slow to answer is reused. A new plugin version builds
-  beside the old runtime and never modifies it. Nothing prunes old runtimes yet.
-- **What pip runs.** The command is exactly
-  `<venv python> -I -m pip install --no-input --disable-pip-version-check --progress-bar off
-  visionset==<VERSION>`. The requirement must be a bare name pinned with `==`. There is no
-  `--user`, no `--upgrade`, no `--pre`, no extra and no elevation. Every child process loses
-  `PYTHONPATH`, `PYTHONHOME` and the other interpreter-steering variables, plus the `PIP_*`
-  variables that move the install target or the interpreter (`PIP_TARGET`, `PIP_USER`,
-  `PIP_PREFIX`, `PIP_ROOT`, `PIP_PYTHON`, `PIP_REQUIRE_VIRTUALENV` and similar). Index, mirror and
-  find-links settings pass through, and so do `pip.conf` and netrc. An air-gapped install points
-  `PIP_FIND_LINKS` at a wheel directory.
+- **One build at a time, published last.** An exclusive OS file lock (`flock`, or non-blocking
+  `msvcrt` byte locking on Windows) is held with a bounded wait of 1500 s by default, which is
+  longer than a whole build. Published generations are checked before the lock and again after
+  it, so a waiter that arrives during an install reuses the result. A generation is created at
+  its final path, and its `.owner` marker is written to a temporary file and renamed into place.
+  `ready.json` records the console script's path inside the generation. It is staged, read back
+  and renamed into place, and only after `pip --version` works and the console script passes
+  discovery's two probes. Two processes starting together install once.
+- **Reuse proves the runtime works.** Before reusing a published generation, bootstrap runs its
+  console script's `--version` (which must be inside the range) and `mcp --help`. A runtime is
+  broken only when its interpreter or console script file is gone, or when a check fails the
+  same way twice. A start error such as `EAGAIN`, `ENOMEM` or `EMFILE`, a timeout, or one check
+  that passes on retry counts as transient: the runtime is reused. A broken generation is never
+  removed or rebuilt in place, because a running server may be using it. A new generation is
+  built beside it, and `cached_prefixes()` lists the newest first. A `ready.json` naming a
+  console script outside its generation is not trusted.
+- **Recovery never takes what it does not own.** Under the lock, an unpublished generation is
+  cleared only when its marker names this base and key, or when it holds nothing but `.owner` or
+  `.owner.tmp`, which is what a setup killed before its marker was complete leaves behind. Such a
+  generation is first renamed to `runtimes/.trash-<base>-<nonce>`, then removed with `.owner`
+  last. If the rename fails (on Windows, a file in use), setup stops with `CLEANUP_FAILED` and
+  the generation stays recoverable. Trash that cannot be removed is left, and a later setup
+  removes it. Any other directory is left alone, and the build moves on to the next generation
+  number.
+- **No orphan writes under a new build.** Every process that writes into a generation (venv
+  creation and pip) inherits the lock's file descriptor, and the bootstrap only closes its own
+  copy, never unlocks. On POSIX a pip left running by a killed bootstrap therefore holds the lock
+  until it exits. A second setup waits, and fails with `LOCK_TIMEOUT` rather than recover a
+  generation under it.
+- **What pip runs.** The command is exactly `<venv python> -I -m pip install --no-input
+  --disable-pip-version-check --progress-bar off --no-user visionset==<VERSION>`. The requirement
+  must be a bare name pinned with `==`. There is no `--user`, `--upgrade`, `--pre`, extra or
+  elevation. Child processes lose `PYTHONPATH`, `PYTHONHOME` and the other interpreter-steering
+  variables. They keep only an allow-list of `PIP_*` variables, for the index, extra index,
+  find-links, `--no-index`, trusted hosts, certificates, proxy, retries, timeout, keyring, cache
+  and config file. Every other `PIP_*` variable is dropped, including `PIP_REQUIREMENT`,
+  `PIP_CONSTRAINT`, `PIP_TARGET` and `PIP_PREFIX`. Before installing, `pip config list` is read.
+  A configured `target`, `prefix`, `root`, `requirement`, `editable`, `src` or `python`, or a true
+  `user` or `dry-run`, fails with `BAD_PIP_CONFIG`. Other settings in `pip.conf`, and netrc, are
+  honoured. An air-gapped install points `PIP_FIND_LINKS` at a wheel directory.
 - **Failures are bounded and named.** Creating the environment and installing share one deadline
-  (900 s by default). A failure that shows a connection error is retried once, and a resolution
-  error is not retried. Each failure raises a `BootstrapError` with a stable code: `OPTED_OUT`,
-  `BAD_DATA_DIR`, `NO_PYTHON`, `PYTHON_TOO_OLD`, `NO_VENV`, `NO_PIP`, `LOCK_TIMEOUT`, `NOT_OWNED`,
-  `INDEX_UNAVAILABLE`, `INSTALL_FAILED`, `INSTALL_TIMEOUT`, `VALIDATION_FAILED` or
-  `INCOMPATIBLE_RESULT`. It also gives the manual command (`pipx install 'visionset==<VERSION>'`).
-  Error text, progress lines and the log go through discovery's redaction, so a credential in an
-  index URL never reaches them. `ready.json` holds no index setting.
+  (900 s by default). A failure that shows a connection error is retried exactly once. A
+  resolution error, or output beyond the capture limit, is not retried and never counts as
+  success. Each failure raises a `BootstrapError` with a stable code: `OPTED_OUT`,
+  `BAD_DATA_DIR`, `BAD_PIP_CONFIG`, `NO_PYTHON`, `PYTHON_TOO_OLD`, `NO_VENV`, `NO_PIP`,
+  `LOCK_TIMEOUT`, `CLEANUP_FAILED`, `INDEX_UNAVAILABLE`, `INSTALL_FAILED`, `INSTALL_TIMEOUT`,
+  `VALIDATION_FAILED` or `INCOMPATIBLE_RESULT`. It also gives the manual command
+  (`pipx install 'visionset==<VERSION>'`).
+- **Redaction.** Error text, progress lines and every logged line go through discovery's
+  redaction. The full values of `PIP_INDEX_URL`, `PIP_EXTRA_INDEX_URL` and `PIP_FIND_LINKS` are
+  removed as well, and so are the index values `pip config list` reports. For a URL this also
+  covers its user information, path, path segments that look like tokens, and query. Text is
+  redacted before it is truncated. `ready.json` holds no index setting.
 - **Opt-out and output.** A truthy `VISIONSET_PLUGIN_NO_BOOTSTRAP` refuses before anything is
   created. Progress goes to stderr, child output is captured, and stdout is never written.
-  `cached_prefixes()` returns the published runtimes, newest first, for `discover(cached=...)`.
 
-Deviations from the plan reviewed for this slice. Four codes were added: `PYTHON_TOO_OLD`,
-`NOT_OWNED`, `BAD_DATA_DIR` and `INSTALL_TIMEOUT`. There is no `VISIONSET_PLUGIN_FIND_LINKS`,
-because pip's own `PIP_FIND_LINKS` already covers it. An empty directory is recovered without a
-marker. The real-process tests (two simultaneous starts, a kill during install, offline reuse, a
-second version, an unreachable index) install a minimal stand-in wheel so that each run takes
-seconds. Only the clean-install test installs this checkout's own wheel, built with `uv build`,
-with its dependencies repacked from the synced environment and installed with `--no-index`.
+Deviations from the plan reviewed for this slice. There is no `VISIONSET_PLUGIN_FIND_LINKS`,
+because pip's own `PIP_FIND_LINKS` already covers it. A runtime directory without the marker is
+recovered when it holds only the marker files. A group-writable data directory is accepted when
+the group is the user's primary group, as it is with the per-user groups of a `002` umask.
+Trash that cannot be removed does not fail setup. The process tests (two simultaneous starts, a
+kill during install, a kill during a live pip, offline reuse, a second version, a deleted
+package, an unreachable index) install a minimal stand-in wheel so that each run takes seconds.
+Only the clean-install test installs this checkout's own wheel, built with `uv build`, with its
+dependencies repacked from the synced environment and installed with `--no-index`.
 
-Known limits. pip's output reaches the log when each step ends, not while it runs. A
-`target` or `user` setting in `pip.conf` is not overridden, and it makes validation fail rather
-than install elsewhere. A pip configured with zero retries reports an unreachable index without
-a connection error, which surfaces as `INSTALL_FAILED`. A dependency without a wheel may build
-from source. The two validation probes and `pip --version` have timeouts of their own, outside
-the install deadline. The launcher ([#1259](https://github.com/Robomous/VisionSet/issues/1259))
-calls none of this yet.
+Known limits.
+
+- On Windows the lock descriptor is not passed to pip, so an orphaned pip does not hold the lock.
+- A pip that is still writing output when its bootstrap dies is ended by `SIGPIPE`. Its own
+  subprocesses do not inherit the lock.
+- pip's output reaches the log when each step ends, not while it runs.
+- Published generations that were superseded are never pruned.
+- A pip configured with zero retries reports an unreachable index without a connection error,
+  which surfaces as `INSTALL_FAILED`.
+- A dependency without a wheel may build from source.
+- The two validation probes and `pip --version` have timeouts of their own, outside the install
+  deadline.
+- The launcher ([#1259](https://github.com/Robomous/VisionSet/issues/1259)) calls none of this
+  yet.

@@ -10,6 +10,7 @@ import base64
 import contextlib
 import csv
 import hashlib
+import http.server
 import io
 import json
 import os
@@ -19,10 +20,11 @@ import signal
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 import unittest
 import zipfile
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
 
 import _support
@@ -59,11 +61,11 @@ while not os.path.exists(go):
     time.sleep(0.01)
 
 
-def run(argv, cwd, env, timeout, cap):
+def run(argv, cwd, env, timeout, cap, *, pass_fds=()):
     if "install" in argv:
         with open(counter, "a") as handle:
             handle.write("install\\n")
-    result = discover.run_bounded(argv, cwd, env, timeout, cap)
+    result = discover.run_bounded(argv, cwd, env, timeout, cap, pass_fds=pass_fds)
     if "install" in argv and mode == "hang":
         open(marker, "w").close()
         time.sleep(300)
@@ -125,10 +127,17 @@ class CountingRunner:
         self.calls: list[list[str]] = []
 
     def __call__(
-        self, argv: Sequence[str], cwd: str, env: Mapping[str, str], timeout: float, cap: int
+        self,
+        argv: Sequence[str],
+        cwd: str,
+        env: Mapping[str, str],
+        timeout: float,
+        cap: int,
+        *,
+        pass_fds: Sequence[int] = (),
     ) -> ProbeResult:
         self.calls.append(list(argv))
-        return run_bounded(argv, cwd, env, timeout, cap)
+        return run_bounded(argv, cwd, env, timeout, cap, pass_fds=pass_fds)
 
     def installs(self) -> int:
         return sum("install" in call for call in self.calls)
@@ -206,8 +215,9 @@ class RealBootstrapTest(unittest.TestCase):
         runtime = prefix.parent
         sentinel = json.loads((runtime / "ready.json").read_text(encoding="utf-8"))
         self.assertEqual((sentinel["version"], sentinel["key"]), ("0.0.1b4", runtime.name))
+        self.assertTrue(runtime.name.endswith("-r1"))
         self.assertTrue((runtime / ".owner").is_file())
-        log = self.ws.data / "logs" / f"{runtime.name}.log"
+        log = self.ws.data / "logs" / f"{runtime.name.removesuffix('-r1')}.log"
         self.assertEqual(log.stat().st_mode & 0o777, 0o600)
         self.assertIn("pip install --no-input", log.read_text(encoding="utf-8"))
         printed = subprocess.run(
@@ -320,21 +330,216 @@ class RealProcessTest(unittest.TestCase):
         result = self.finish(self.start())
         self.assertFalse(result["reused"])
         self.assertEqual(self.installs(), 2)
-        self.assertTrue((runtime / "ready.json").is_file())
-        self.assertEqual(cached_prefixes(host=self.ws.host()), [str(runtime / "venv")])
+        self.assertFalse(runtime.exists())
+        rebuilt = runtime.with_name(runtime.name.removesuffix("-r1") + "-r2")
+        self.assertEqual(sorted((self.ws.data / "runtimes").iterdir()), [rebuilt])
+        self.assertEqual(cached_prefixes(host=self.ws.host()), [str(rebuilt / "venv")])
 
     def test_an_unreachable_index_fails_clearly_after_one_retry(self) -> None:
         for name in ("PIP_NO_INDEX", "PIP_FIND_LINKS"):
             del self.ws.env[name]
-        self.ws.env.update(
-            {"PIP_INDEX_URL": "http://127.0.0.1:9/simple", "PIP_RETRIES": "1", "PIP_TIMEOUT": "2"}
-        )
+        tokens = ("Sup3rS3cretPw", "Zq8xTOKENp4yLm2Kd7", "Qw3rtyTOKEN99")
+        url = f"http://alice:{tokens[0]}@127.0.0.1:9/{tokens[1]}/simple?api_key={tokens[2]}"
+        self.ws.env.update({"PIP_INDEX_URL": url, "PIP_RETRIES": "1", "PIP_TIMEOUT": "2"})
         clock = NoWaitClock()
         with self.assertRaises(BootstrapError) as raised:
             self.ws.bootstrap(clock=clock)
         self.assertIs(raised.exception.code, Code.INDEX_UNAVAILABLE)
         self.assertEqual(len(clock.sleeps), 1)
         self.assertEqual(list((self.ws.data / "runtimes").iterdir()), [])
+        log = "".join(p.read_text(encoding="utf-8") for p in (self.ws.data / "logs").iterdir())
+        self.assertIn("<redacted>", log)
+        for token in tokens:
+            self.assertNotIn(token, str(raised.exception))
+            self.assertNotIn(token, log)
+
+    def test_a_bootstrap_killed_during_a_live_pip_cannot_be_rebuilt_under_it(self) -> None:
+        if not Path("/proc/self/cmdline").exists():
+            self.skipTest("needs /proc")
+        release = threading.Event()
+        server = stalling_index(release)
+        try:
+            env = dict(self.ws.env)
+            for name in ("PIP_NO_INDEX", "PIP_FIND_LINKS"):
+                del self.ws.env[name]
+            port = server.server_address[1]
+            self.ws.env.update({"PIP_INDEX_URL": f"http://127.0.0.1:{port}/simple"})
+            self.ws.env.update({"PIP_TIMEOUT": "120", "PIP_RETRIES": "0"})
+            self.go.touch()
+            doomed = self.start()
+            orphan = wait_for(lambda: pip_installing(self.ws.data))
+            # Let pip finish printing; one that is still writing dies of SIGPIPE with its parent.
+            time.sleep(2)
+            os.killpg(doomed.pid, signal.SIGKILL)
+            doomed.communicate(timeout=30)
+            self.assertTrue(alive(orphan))
+            [runtime] = (self.ws.data / "runtimes").iterdir()
+            before = snapshot(runtime)
+
+            self.ws.env = env
+            with self.assertRaises(BootstrapError) as raised:
+                self.ws.bootstrap(lock_timeout=1.0)
+            self.assertIs(raised.exception.code, Code.LOCK_TIMEOUT)
+            self.assertEqual(snapshot(runtime), before)
+            self.assertEqual(sorted((self.ws.data / "runtimes").iterdir()), [runtime])
+
+            os.kill(orphan, signal.SIGKILL)
+            wait_for(lambda: not alive(orphan) or None)
+            result, runner = self.ws.bootstrap(lock_timeout=30.0)
+            self.assertFalse(result.reused)
+            self.assertTrue(result.prefix.endswith("-r2/venv"))
+            self.assertFalse(runtime.exists())
+        finally:
+            release.set()
+            server.shutdown()
+            for pid in pip_installing_all(self.ws.data):
+                with contextlib.suppress(OSError):
+                    os.kill(pid, signal.SIGKILL)
+
+
+@unittest.skipIf(os.name == "nt", "POSIX processes and paths")
+class RealSafetyTest(unittest.TestCase):
+    def setUp(self) -> None:
+        self._scratch = tempfile.TemporaryDirectory()
+        self.ws = Workspace(Path(self._scratch.name))
+        stub_wheel(self.ws.wheels, "0.0.1b4")
+
+    def tearDown(self) -> None:
+        for path in self.ws.root.rglob("*"):
+            if path.is_dir() and not path.is_symlink():
+                path.chmod(0o700)
+        self._scratch.cleanup()
+
+    def test_a_runtime_whose_package_was_deleted_is_superseded(self) -> None:
+        first, _ = self.ws.bootstrap()
+        site = next(Path(first.prefix).glob("lib/python*/site-packages"))
+        (site / "vsfixture.py").unlink()
+        old = Path(first.prefix).parent
+        before = snapshot(old)
+        second, runner = self.ws.bootstrap()
+        self.assertFalse(second.reused)
+        self.assertEqual(runner.installs(), 1)
+        self.assertTrue(second.prefix.endswith("-r2/venv"))
+        self.assertEqual(snapshot(old), before)
+        self.assertEqual(cached_prefixes(host=self.ws.host())[0], second.prefix)
+
+    def test_pip_configuration_that_moves_the_install_is_refused(self) -> None:
+        for key in ("target", "prefix"):
+            with self.subTest(key=key):
+                elsewhere = self.ws.root / f"elsewhere-{key}"
+                conf = self.ws.root / f"pip-{key}.conf"
+                conf.write_text(f"[install]\n{key} = {elsewhere}\n", encoding="utf-8")
+                self.ws.env["PIP_CONFIG_FILE"] = str(conf)
+                with self.assertRaises(BootstrapError) as raised:
+                    self.ws.bootstrap()
+                self.assertIs(raised.exception.code, Code.BAD_PIP_CONFIG)
+                self.assertFalse(elsewhere.exists())
+                self.assertEqual(list((self.ws.data / "runtimes").iterdir()), [])
+
+    def test_a_requirements_file_in_the_environment_adds_nothing(self) -> None:
+        extra = self.ws.wheels / "extrapkg-1.0-py3-none-any.whl"
+        dist = "extrapkg-1.0.dist-info"
+        write_wheel(
+            extra,
+            {
+                "extrapkg.py": b"X = 1\n",
+                f"{dist}/METADATA": b"Metadata-Version: 2.1\nName: extrapkg\nVersion: 1.0\n",
+                f"{dist}/WHEEL": (
+                    b"Wheel-Version: 1.0\nGenerator: t\nRoot-Is-Purelib: true\nTag: py3-none-any\n"
+                ),
+            },
+            dist,
+        )
+        requirements = self.ws.root / "req.txt"
+        requirements.write_text("extrapkg\n", encoding="utf-8")
+        self.ws.env["PIP_REQUIREMENT"] = str(requirements)
+        result, _ = self.ws.bootstrap()
+        site = next(Path(result.prefix).glob("lib/python*/site-packages"))
+        self.assertFalse((site / "extrapkg.py").exists())
+
+    @unittest.skipIf(hasattr(os, "geteuid") and os.geteuid() == 0, "root ignores permissions")
+    def test_a_read_only_data_directory_fails_clearly(self) -> None:
+        self.ws.data.mkdir(mode=0o700)
+        self.ws.data.chmod(0o500)
+        with self.assertRaises(BootstrapError) as raised:
+            self.ws.bootstrap()
+        self.assertIs(raised.exception.code, Code.BAD_DATA_DIR)
+        self.assertIn("Permission denied", raised.exception.message)
+
+    def test_a_world_writable_data_directory_is_refused(self) -> None:
+        self.ws.data.mkdir(mode=0o700)
+        self.ws.data.chmod(0o777)
+        with self.assertRaises(BootstrapError) as raised:
+            self.ws.bootstrap()
+        self.assertIs(raised.exception.code, Code.BAD_DATA_DIR)
+        self.assertEqual(list(self.ws.data.iterdir()), [])
+
+    def test_an_unremovable_incomplete_runtime_is_recovered(self) -> None:
+        first, _ = self.ws.bootstrap()
+        runtime = Path(first.prefix).parent
+        (runtime / "ready.json").unlink()
+        locked = Path(first.prefix) / "lockeddir"
+        locked.mkdir()
+        (locked / "f").write_text("x", encoding="utf-8")
+        locked.chmod(0o555)
+        second, _ = self.ws.bootstrap()
+        self.assertTrue(second.prefix.endswith("-r2/venv"))
+        self.assertFalse(runtime.exists())
+        names = [p.name for p in (self.ws.data / "runtimes").iterdir()]
+        self.assertEqual(names, [Path(second.prefix).parent.name])
+
+
+def stalling_index(release: threading.Event) -> http.server.ThreadingHTTPServer:
+    class Stall(http.server.BaseHTTPRequestHandler):
+        def log_message(self, *args: object) -> None:
+            pass
+
+        def do_GET(self) -> None:
+            release.wait(120)
+            self.send_response(404)
+            self.end_headers()
+
+    server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Stall)
+    server.daemon_threads = True
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    return server
+
+
+def pip_installing_all(data: Path) -> list[int]:
+    found = []
+    for entry in Path("/proc").iterdir():
+        if not entry.name.isdigit():
+            continue
+        try:
+            argv = (entry / "cmdline").read_bytes().split(b"\0")
+        except OSError:
+            continue
+        if b"install" in argv and any(str(data).encode() in part for part in argv):
+            found.append(int(entry.name))
+    return found
+
+
+def pip_installing(data: Path) -> int | None:
+    found = pip_installing_all(data)
+    return found[0] if found else None
+
+
+def alive(pid: int) -> bool:
+    try:
+        status = Path(f"/proc/{pid}/status").read_text(encoding="utf-8")
+    except OSError:
+        return False
+    return "State:\tZ" not in status
+
+
+def wait_for(probe: Callable[[], int | bool | None], seconds: float = 120) -> int:
+    deadline = time.monotonic() + seconds
+    while time.monotonic() < deadline:
+        value = probe()
+        if value:
+            return int(value)
+        time.sleep(0.05)
+    raise AssertionError("condition not reached")
 
 
 def _normal(name: str) -> str:
