@@ -91,15 +91,15 @@ export function FitArt({ fit, width, height, className }: { readonly fit: Resize
 }
 
 /**
- * The resize's stage: a tinted ground with one surface of the product on it,
+ * The preview's stage, drawn while there is no picture: a tinted ground with one surface of the product on it,
  * running off its end and bottom edges, so it reads as a glimpse of something
  * larger rather than a framed picture. The caption names what is drawn.
  */
-export function ArtStage({ caption, children }: { readonly caption: string; readonly children: ReactNode }): JSX.Element {
+export function ArtStage({ caption, className, children }: { readonly caption: string; readonly className?: string; readonly children: ReactNode }): JSX.Element {
   return (
-    <div aria-hidden="true" className="relative mx-4 mt-1 mb-1.5 h-40 overflow-hidden rounded-xl bg-stage" data-testid="recipe-stage">
+    <div aria-hidden="true" className={cn("relative h-40 overflow-hidden rounded-xl bg-stage", className)} data-testid="recipe-stage">
       {/* 12px outside, 8px on the surface: its corner sits inside the panel's. It runs off the
-          stage by the stage's own 16px inset, so it ends at the dialog's edge and never past it. */}
+          stage by 16px, the pane's own inset, so it ends at the pane's edge and never past it. */}
       <div className="vs-recipe-art-surface absolute top-4 -right-4 -bottom-4 left-5 rounded-lg bg-card" data-testid="recipe-stage-surface">
         <span key={caption} className="vs-recipe-label block truncate ps-3 pe-7 pt-2 text-[11px] text-muted-foreground" data-testid="recipe-stage-caption">
           {caption}

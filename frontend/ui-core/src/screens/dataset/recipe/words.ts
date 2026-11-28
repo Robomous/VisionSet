@@ -1,7 +1,7 @@
 /**
  * The recipe's words and the class every pressable shares: what each choice
- * is called, the line that says what it does, and the three steps a recipe is
- * written in. Only what a person needs to decide.
+ * is called and the line that says what it does. Only what a person needs to
+ * decide.
  */
 
 import { exportTargetMeta } from "../../../patterns/exportTargets";
@@ -26,7 +26,7 @@ export const FITS: readonly { readonly value: ResizeChoice; readonly label: stri
 ];
 
 /**
- * Labels short enough for the label column. What each one does is said once,
+ * Short labels. What each one does is said once,
  * in its info card: `title` is the answer in a few words, `body` the rest —
  * so the row itself carries only the label and the switch.
  */
@@ -43,13 +43,6 @@ export function wholePx(value: string): number | undefined {
 
 export const SPLIT_NOTE = "Variants are written for the training split only, so the release needs a split.";
 
-/** The three steps a recipe is written in, in the order they are asked. */
-export const STEPS = [
-  { key: "basics", title: "Name and model" },
-  { key: "size", title: "Resize" },
-  { key: "augment", title: "Augmentation" },
-] as const;
-
 export function fitLabel(fit: ResizeChoice): string {
   return FITS.find((one) => one.value === fit)?.label ?? fit;
 }
@@ -65,7 +58,7 @@ export function targetLine(target: ExportTarget | undefined): string {
 
 /**
  * `Letterboxes to 640 on its own.` — the model's own fit and size, on one
- * line: what the Resize step was filled in from.
+ * line: what the resize was filled in from.
  */
 export function hintLine(target: ExportTarget): string | undefined {
   const fit = target.hints.recommended_strategy as ResizeChoice | null | undefined;
@@ -84,9 +77,7 @@ export function sizeProblem(flow: RecipeFlow): string | undefined {
   return flow.draft.strategy === "none" ? undefined : flow.problems.resize[0];
 }
 
-/** What holds Next on a step: that step's own problem, and only its own. */
-export function stepProblem(flow: RecipeFlow, step: number): string | undefined {
-  if (step === 0) return flow.problems.name ?? undefined;
-  if (step === 1) return sizeProblem(flow);
-  return flow.problems.augment[0];
+/** What holds the save: the first problem down the page. */
+export function pageProblem(flow: RecipeFlow): string | undefined {
+  return flow.problems.name ?? sizeProblem(flow) ?? flow.problems.augment[0];
 }

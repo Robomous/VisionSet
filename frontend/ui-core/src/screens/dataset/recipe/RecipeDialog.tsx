@@ -1,25 +1,27 @@
 /**
- * A recipe, written or edited in a modal over the Dataset page, in three
- * steps: Name and model, Resize, Augmentation.
+ * A recipe, written or edited in a modal over the Dataset page, on one page.
  *
- * ## One step at a time
+ * ## One page, two panes
  *
- * The header names the step, counts it (`2/3`) and draws a bar per step. The
- * bottom bar is Previous and Next, nothing else; on the last step Next is the
- * save. The modal fits each step, so a short step leaves no empty room (the
- * motion is in `steps.tsx`).
+ * The header names what is being done (*New recipe*, *Edit recipe*), a strip
+ * under it holds the name and the model, and the body is two panes: the
+ * controls on the left (resize, then augmentation) and, on the right, what
+ * they make — a picture of one training image through the recipe and the
+ * images it writes for the release the dialog was opened from. Narrower than
+ * 40rem the right pane drops under the controls. The bottom bar is Cancel and
+ * the save. The controls scroll inside the frame, so the bar is always there.
  *
- * ## What holds Next
+ * ## What holds the save
  *
- * A step's own problem — and only its own — holds Next on it. It is said once,
- * between Previous and Next, and the field it is about points at it. A save
- * that was refused says why in the same place, until the draft changes.
+ * The first problem down the page holds the save. It is said once, beside the
+ * buttons, and the field it is about points at it. A save that was refused
+ * says why in the same place, until the draft changes.
  *
  * ## Nothing is lost by closing
  *
- * Escape, the close button or a press outside asks the host to close, and the
- * host asks the dialog (`RecipeEditorHandle`) whether its draft holds unsaved
- * work before it closes; when it does, the host asks the person
+ * Escape, the close button, Cancel or a press outside asks the host to close,
+ * and the host asks the dialog (`RecipeEditorHandle`) whether its draft holds
+ * unsaved work before it closes; when it does, the host asks the person
  * (`DiscardRecipeDialog`). The draft is never mirrored into the host.
  *
  * ## Saving
@@ -27,6 +29,9 @@
  * Save is a create for a new recipe and a whole-replace `PUT` at the stored
  * name for one that exists. Success is a view of its own — the recipe's name
  * and what it does — because it is the thing the person came to do.
+ *
+ * Recipes belong to the project; the release is context only, for the
+ * picture and the counts, and the dialog works without one.
  */
 
 import { useImperativeHandle, useRef, useState, type JSX, type ReactNode, type Ref } from "react";
@@ -43,11 +48,13 @@ import {
   useUpdatePreprocessingRecipe,
   type ExportTarget,
   type PreprocessingRecipe,
+  type Release,
 } from "../../queries";
-import { AugmentFields, Basics, SizeFields } from "./fields";
+import { ConsequencePane } from "./consequence";
+import { AugmentFields, Basics, SizeFields, usePeek } from "./fields";
 import { useRecipeFlow, type RecipeFlow, type Stored } from "./flow";
-import { Saved, StepBar, StepBody, StepHeader, type Direction } from "./steps";
-import { EASE_OUT, STEPS, stepProblem } from "./words";
+import { RecipeHeader, SaveBar, Saved } from "./frame";
+import { EASE_OUT, pageProblem } from "./words";
 
 /** The recipe the dialog shows: a name, or `null` for one being written. */
 export interface OpenRecipe {
@@ -63,6 +70,8 @@ export interface RecipeEditorHandle {
 
 export interface RecipeDialogProps {
   readonly projectId: string;
+  /** The release the recipe is being written for, when there is one: its picture and counts come from it. */
+  readonly release?: Release | undefined;
   /** `null` while the dialog is closed. */
   readonly recipe: OpenRecipe | null;
   readonly editor: Ref<RecipeEditorHandle>;
@@ -80,7 +89,7 @@ function useLastShown(recipe: OpenRecipe | null): OpenRecipe | null {
   return recipe ?? last;
 }
 
-export function RecipeDialog({ projectId, recipe, editor, onRequestClose, onSaved }: RecipeDialogProps): JSX.Element {
+export function RecipeDialog({ projectId, release, recipe, editor, onRequestClose, onSaved }: RecipeDialogProps): JSX.Element {
   const shown = useLastShown(recipe);
   return (
     <Dialog open={recipe !== null} onOpenChange={(next) => !next && onRequestClose()}>
@@ -92,11 +101,11 @@ export function RecipeDialog({ projectId, recipe, editor, onRequestClose, onSave
           event.preventDefault();
           (event.currentTarget as HTMLElement | null)?.focus();
         }}
-        // As wide as the view needs: the steps fit 31rem, the saved view's
-        // sentence reads best at 24rem. The width follows the view with the same 250ms
-        // the height does (`steps.tsx`).
+        // Two panes need 47.5rem; the saved view's sentence reads best at 24rem.
+        // The width follows the view (250ms). A container, so the panes stack by
+        // the dialog's own width rather than the window's.
         className={cn(
-          "flex max-h-[calc(100dvh-2rem)] w-[31rem] max-w-[calc(100vw-2rem)] flex-col gap-0 overflow-hidden overscroll-contain p-0 text-xs/relaxed outline-none [--vs-label-column:6rem] [--vs-row-height:2.25rem] [--vs-row-pad:0.25rem] sm:max-w-[calc(100vw-2rem)]",
+          "@container flex max-h-[calc(100dvh-2rem)] w-[47.5rem] max-w-[calc(100vw-2rem)] flex-col gap-0 overflow-hidden overscroll-contain p-0 text-xs/relaxed outline-none sm:max-w-[calc(100vw-2rem)]",
           "has-[[data-testid=recipe-saved]]:w-[24rem]",
           "transition-[width] duration-250 motion-reduce:transition-none",
           EASE_OUT,
@@ -108,6 +117,7 @@ export function RecipeDialog({ projectId, recipe, editor, onRequestClose, onSave
             // changes the name and must not start a new draft.
             key={shown.session}
             projectId={projectId}
+            release={release}
             name={shown.name}
             editor={editor}
             onRequestClose={onRequestClose}
@@ -121,6 +131,7 @@ export function RecipeDialog({ projectId, recipe, editor, onRequestClose, onSave
 
 interface SessionProps {
   readonly projectId: string;
+  readonly release: Release | undefined;
   readonly name: string | null;
   readonly editor: Ref<RecipeEditorHandle>;
   readonly onRequestClose: () => void;
@@ -128,13 +139,13 @@ interface SessionProps {
 }
 
 /** Waits for what the draft starts from — the stored recipe and the catalog — then opens it. */
-function Session({ projectId, name, editor, onRequestClose, onSaved }: SessionProps): JSX.Element {
+function Session({ projectId, release, name, editor, onRequestClose, onSaved }: SessionProps): JSX.Element {
   const recipes = usePreprocessingRecipes(projectId);
   const targets = useExportTargets();
   // Only the opening name decides what loads: a save that renames the recipe is
   // the session's own news, not a reason to start again.
   const opening = useRef(name).current;
-  const context = opening ?? "New recipe";
+  const context = opening;
 
   if (recipes.isError) {
     return (
@@ -172,6 +183,7 @@ function Session({ projectId, name, editor, onRequestClose, onSaved }: SessionPr
   return (
     <Editor
       projectId={projectId}
+      release={release}
       opened={stored === undefined || stored === null ? null : { name: stored.name, spec: stored.spec }}
       seed={opening === null ? catalog.find((one) => one.name === lastTarget) : undefined}
       catalog={catalog}
@@ -184,12 +196,12 @@ function Session({ projectId, name, editor, onRequestClose, onSaved }: SessionPr
   );
 }
 
-/** The first step's header over what stands before the draft opens. */
-function Before({ context, children }: { readonly context: string; readonly children: JSX.Element }): JSX.Element {
+/** The header over what stands before the draft opens. */
+function Before({ context, children }: { readonly context: string | null; readonly children: JSX.Element }): JSX.Element {
   return (
     <>
-      <StepHeader at={0} context={context} />
-      <div className="border-t border-border/70">{children}</div>
+      <RecipeHeader editing={context} />
+      {children}
     </>
   );
 }
@@ -232,6 +244,7 @@ function useRecipeSave(projectId: string, flow: RecipeFlow, onSaved: (name: stri
 
 interface EditorProps {
   readonly projectId: string;
+  readonly release: Release | undefined;
   readonly opened: Stored | null;
   readonly seed: ExportTarget | undefined;
   readonly catalog: readonly ExportTarget[];
@@ -242,23 +255,15 @@ interface EditorProps {
   readonly onSaved: (name: string) => void;
 }
 
-function Editor({ projectId, opened, seed, catalog, notice, usage, editor, onRequestClose, onSaved }: EditorProps): JSX.Element {
+function Editor({ projectId, release, opened, seed, catalog, notice, usage, editor, onRequestClose, onSaved }: EditorProps): JSX.Element {
   const flow = useRecipeFlow(catalog, opened, seed);
   const { saving, refusal, done, save, again } = useRecipeSave(projectId, flow, onSaved);
-  const [at, setAt] = useState(0);
-  const [direction, setDirection] = useState<Direction>(null);
-  const last = at === STEPS.length - 1;
-  const problem = stepProblem(flow, at);
-  // On the last step Next is the save: it also needs the whole recipe sound, and a change to save.
-  const blocked = problem !== undefined || (last && (flow.spec === null || flow.problems.name !== null || (flow.stored !== null && !flow.dirty)));
+  const { peek, on } = usePeek();
+  const problem = pageProblem(flow);
+  // The save needs the whole recipe sound and, for a stored one, a change to save.
+  const blocked = problem !== undefined || flow.spec === null || (flow.stored !== null && !flow.dirty);
 
   useImperativeHandle(editor, () => ({ hasUnsavedChanges: () => done === null && flow.dirty }), [done, flow.dirty]);
-
-  function go(next: number): void {
-    if (next < 0 || next >= STEPS.length || next === at) return;
-    setDirection(next > at ? "forward" : "back");
-    setAt(next);
-  }
 
   if (done !== null) return <Saved flow={flow} done={done} onAgain={again} onClose={onRequestClose} />;
 
@@ -267,36 +272,32 @@ function Editor({ projectId, opened, seed, catalog, notice, usage, editor, onReq
       className="flex min-h-0 flex-1 flex-col"
       data-testid="recipe-editor"
       data-mode={flow.stored === null ? "create" : "edit"}
-      data-step={STEPS[at]?.key}
       onSubmit={(event) => {
         event.preventDefault();
         if (blocked || saving) return;
-        if (last) save();
-        else go(at + 1);
+        save();
       }}
     >
-      <StepHeader at={at} context={flow.stored === null ? "New recipe" : `Editing ${flow.stored.name}`} />
-      <StepBody at={at} direction={direction}>
-        <StepFields at={at} flow={flow} notice={notice} usage={usage} />
-      </StepBody>
-      <StepBar
-        at={at}
-        last={last}
+      <RecipeHeader editing={flow.stored?.name ?? null} />
+      <Basics flow={flow} notice={notice} usage={usage} />
+      {/* One scroll for both panes while they stack; side by side, the controls scroll on their own. */}
+      <div className="grid min-h-0 flex-1 overflow-y-auto @min-[40rem]:grid-cols-[minmax(0,1fr)_16rem] @min-[40rem]:overflow-hidden" data-testid="recipe-body">
+        <div className="@container flex min-w-0 flex-col gap-5 px-5 py-4 @min-[40rem]:overflow-y-auto" data-testid="recipe-controls">
+          <SizeFields flow={flow} peekOn={on} />
+          <AugmentFields flow={flow} />
+        </div>
+        <ConsequencePane projectId={projectId} release={release} flow={flow} peek={peek} />
+      </div>
+      <SaveBar
         editing={flow.stored !== null}
         message={problem ?? refusal}
         messageKind={problem !== undefined ? "problem" : refusal !== undefined ? "refusal" : undefined}
         blocked={blocked}
         saving={saving}
-        onPrevious={() => go(at - 1)}
+        onCancel={onRequestClose}
       />
     </form>
   );
-}
-
-/** The step's fields: the groups, as the step names them. */
-function StepFields({ at, flow, notice, usage }: { readonly at: number; readonly flow: RecipeFlow; readonly notice: ReactNode; readonly usage: string | undefined }): JSX.Element {
-  if (at === 0) return <Basics flow={flow} notice={notice} usage={usage} />;
-  return <div className="py-1.5">{at === 1 ? <SizeFields flow={flow} /> : <AugmentFields flow={flow} />}</div>;
 }
 
 function targetsNotice(failed: unknown, count: number, onRetry: () => void): ReactNode {
