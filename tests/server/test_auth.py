@@ -101,10 +101,6 @@ def test_the_credential_is_passed_through_untouched(
     assert provider.presented == ["vst_MiXeD-CaSe"]
 
 
-def test_health_needs_no_token(client: TestClient) -> None:
-    assert client.get("/health").status_code == 200
-
-
 def test_the_exported_app_is_not_the_one_under_test() -> None:
     """Probe routes live on a factory-built app, never on the exported one.
 

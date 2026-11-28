@@ -84,10 +84,7 @@ run_python() {
   # counter, and a second one stacks to `-qq` — dropping the count and summary
   # line that make a run auditable.
   #
-  # `-n auto` distributes across this machine's cores; the suite has no fat tail
-  # to cut, so parallelism is the only thing that makes it faster. `auto` rather
-  # than a number, because a number chosen for a twenty-core desktop would slow
-  # the gate on a four-core laptop. CI's `python` job passes `-n auto` too.
+  # `-n auto` uses the machine's core count, as in CI's `python` job.
   step "python tests" uv run pytest -n auto
   step "ruff (lint)" uv run ruff check .
   step "ruff (format)" uv run ruff format --check .

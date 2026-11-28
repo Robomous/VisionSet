@@ -364,7 +364,9 @@ test("the old Batches section address, and ?tab=batches, land on the Overview", 
   // old links keep landing where the batches now are.
   await openCold(page, `/projects/${PROJECT}/batches`);
   await expect(page).toHaveURL(new RegExp(`/projects/${PROJECT}/overview$`));
+  await expect(page.getByTestId("nav-overview")).toHaveAttribute("aria-current", "page");
   await expect(page.getByTestId("overview-batches")).toBeVisible();
+  await expect(page.getByTestId("batches-screen")).toHaveCount(0);
 
   await page.goto(`/projects/${PROJECT}?tab=batches`);
   await expect(page).toHaveURL(new RegExp(`/projects/${PROJECT}/overview$`));

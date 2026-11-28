@@ -24,10 +24,6 @@ def script() -> ModuleType:
     return module
 
 
-def test_the_committed_reference_matches_the_tables(script: ModuleType) -> None:
-    assert script.OUTPUT_PATH.read_text(encoding="utf-8") == script.render()
-
-
 def test_every_code_has_a_row(script: ModuleType) -> None:
     written = script.OUTPUT_PATH.read_text(encoding="utf-8")
     for code in ERROR_CODES.values():

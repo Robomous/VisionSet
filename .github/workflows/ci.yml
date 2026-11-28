@@ -171,10 +171,7 @@ jobs:
         if: needs.changes.result != 'success' || needs.changes.outputs.python == 'true'
         run: uv run python scripts/export_augmentation_matrix.py --check
 
-      # `-n auto` resolves to the runner's core count. The suite has no expensive
-      # test to remove — ~63 ms mean, no fat tail — so parallelism is the only
-      # thing that makes this step faster, and it is ~90% of the run's critical
-      # path when serial.
+      # `-n auto` resolves to the runner's core count.
       - name: Pytest
         if: needs.changes.result != 'success' || needs.changes.outputs.python == 'true'
         run: uv run pytest -n auto
@@ -227,10 +224,8 @@ jobs:
   # one broken leg from cancelling the other two and reporting on a third of the
   # criterion. Stills only in all three.
   #
-  # Each Python leg also runs inside `uv run pytest` above, as a smoke test
-  # asserting on the frozen Summary it returns. This is the other half of that
-  # pair: the only thing that proves the *installed console script* works from a
-  # clean checkout, which an in-process runner cannot.
+  # The examples assert the outcomes directly while exercising the installed
+  # console script over an HTTP socket, from a shell, and over MCP stdio.
   e2e:
     name: e2e (${{ matrix.surface }})
     runs-on: ubuntu-latest
@@ -297,9 +292,8 @@ jobs:
         if: needs.changes.result != 'success' || needs.changes.outputs.frontend == 'true'
         run: pnpm version:check
 
-      # The spec this reads is kept fresh by the `openapi` job and by the pytest gate in the
-      # `python` job, so this one needs no Python. Two independent links: spec matches the app,
-      # client matches the spec.
+      # The OpenAPI job checks the spec against the app. This job checks the
+      # generated client against that spec and needs no Python.
       - name: Generated client drift gate
         if: needs.changes.result != 'success' || needs.changes.outputs.frontend == 'true'
         run: |

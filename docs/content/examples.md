@@ -32,14 +32,11 @@ actually lives.
 deliverable rather than an exception to it. The three run as a matrix in CI, one job each, so
 a failure names the surface that broke.
 
-Each example runs in CI **twice**: once as a pytest smoke test
-([M1](../../tests/examples/test_sdk_end_to_end.py), [M2](../../tests/examples/test_ingest_end_to_end.py),
-[HTTP](../../tests/examples/test_http_end_to_end.py), [CLI](../../tests/examples/test_cli_end_to_end.py),
-[MCP](../../tests/examples/test_mcp_end_to_end.py),
-[M6](../../tests/examples/test_thirty_minute_flow.py)) that asserts on outcomes, and once as a plain
-script, which is the only way to prove it still works from a clean checkout. The last one runs its
-second pass from the **installed wheel** rather than from the source tree, which is the whole
-point of it — see [The thirty-minute flow](#the-thirty-minute-flow).
+The HTTP, CLI and MCP examples assert their outcomes in the CI `e2e` matrix. The
+[SDK](../../tests/examples/test_sdk_end_to_end.py) and
+[ingest](../../tests/examples/test_ingest_end_to_end.py) examples also run as pytest smoke tests.
+CI runs [the thirty-minute flow](#the-thirty-minute-flow) from the **installed wheel**, in
+addition to its [source-level smoke test](../../tests/examples/test_thirty_minute_flow.py).
 
 They overlap by design and none subsumes another. The SDK example walks the whole cycle
 and treats ingest as one stage of thirteen; the ingest example stops at an approved batch and

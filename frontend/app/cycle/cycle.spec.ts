@@ -15,10 +15,6 @@
  * the order load-bearing and invisible. `test.step` gives the reporting a
  * multi-test file would have bought, without the lie.
  *
- * This is `test_external_client.py`'s shape one surface over: that file walks the
- * whole HTTP cycle in one function using none of the suite's helpers, for the same
- * reason.
- *
  * ## What it deliberately does not do
  *
  * **The source is images, not a video.** The issue says "generated video"; video is

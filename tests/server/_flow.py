@@ -5,9 +5,6 @@ uploaded stills, and a batch that an ingest filled — before they can test
 anything about batches, jobs or annotations. Written once here rather than
 copied three times, the `_api.py` / `_jobs.py` precedent: plain functions in a
 private module, and still no `conftest.py` anywhere.
-
-`test_external_client.py` deliberately does **not** use any of this. Its whole
-point is that the walk is visible, so it spells every request out.
 """
 
 from __future__ import annotations

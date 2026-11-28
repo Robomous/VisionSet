@@ -10,7 +10,7 @@ import json
 from pathlib import Path
 
 import pytest
-from tests.cli._flow import ok, payload, run, workspace
+from tests.cli._flow import ok, payload, plain, run, workspace
 
 from visionset.kernel.services import WORKSPACE_ENV_VAR, ProjectService, WorkspaceService
 
@@ -63,6 +63,8 @@ def test_a_repeated_name_exits_one(root: Path) -> None:
     ok(root, "project", "create", "road-signs")
     result = run(root, "project", "create", "ROAD-SIGNS")
     assert result.exit_code == 1, result.output
+    assert result.stdout == ""
+    assert plain(result.stderr).startswith("Error:")
     assert _stored(root) == ["road-signs"]
 
 

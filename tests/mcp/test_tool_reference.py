@@ -1,16 +1,4 @@
-"""`docs/content/mcp-tools.md` is generated, and this is what keeps it that way.
-
-The same argument `test_openapi_contract.py` makes about the committed spec:
-the CI step that regenerates and diffs is the gate, and duplicating it as a test
-is deliberate, because the mistake is made during `uv run pytest` and that is
-where it should surface.
-
-What makes this reference worth generating at all is that a tool description in
-this surface is not prose *about* the code — it **is** the interface. MCPServer
-ships it verbatim to every client, and it is the only thing a model reads before
-choosing. A hand-written copy would be a second spelling of a contract, and its
-drift would be invisible until an agent acted on the wrong information.
-"""
+"""Check completeness, gating and determinism of the MCP tool reference."""
 
 from __future__ import annotations
 
@@ -32,10 +20,6 @@ def script() -> ModuleType:
     sys.modules[spec.name] = module
     spec.loader.exec_module(module)
     return module
-
-
-def test_the_committed_reference_matches_the_served_listing(script: ModuleType) -> None:
-    assert script.OUTPUT_PATH.read_text(encoding="utf-8") == script.render()
 
 
 def test_every_advertised_tool_is_in_it(script: ModuleType) -> None:

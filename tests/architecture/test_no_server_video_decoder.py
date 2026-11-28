@@ -103,14 +103,10 @@ def _program(command: str) -> str:
     return name.removesuffix(".exe")
 
 
-def test_importing_everything_and_building_the_app_loads_no_decoder() -> None:
+def test_importing_everything_and_building_the_app_uses_no_decoder() -> None:
     observed = _observe()
     loaded = DECODER_MODULES & set(observed["loaded"])
     assert not loaded, f"the distribution pulled in a server-side video decoder: {sorted(loaded)}"
-
-
-def test_importing_everything_and_building_the_app_starts_no_decoder_program() -> None:
-    observed = _observe()
     started = [command for command in observed["spawned"] if _program(command) in DECODER_PROGRAMS]
     assert not started, f"the distribution started a server-side video decoder: {started}"
 

@@ -152,24 +152,16 @@ def test_the_gated_listing_is_exactly_the_shipped_set_plus_the_destructive_one()
     assert {tool.__name__ for tool, _hints in DESTRUCTIVE_TOOLS} == DESTRUCTIVE
 
 
-@pytest.mark.parametrize("name", sorted(SHIPPED))
-def test_every_tool_has_a_description_written_for_an_agent(name: str) -> None:
-    described = tool_schemas()[name].description
-    assert described
-    # `inspect.cleandoc` is applied at registration because MCPServer ships `__doc__`
-    # raw. Without it every description after the first line arrives indented.
-    assert not described.startswith(" ")
-    assert "\n    " not in described
-
-
-@pytest.mark.parametrize("name", sorted(SHIPPED))
-def test_every_parameter_of_every_tool_is_documented(name: str) -> None:
-    # There is no docstring-argument parser anywhere in MCPServer, so a parameter is
-    # documented only if it carries `Annotated[..., Field(description=...)]`. A
-    # bare `project: str` tells a model nothing about what to put there.
-    properties = tool_schemas()[name].input_schema.get("properties", {})
-    undocumented = [p for p, schema in properties.items() if not schema.get("description")]
-    assert undocumented == []
+def test_all_advertised_tools_document_themselves_and_their_parameters() -> None:
+    # The listing is one protocol response. Reuse it across the entire walk.
+    schemas = tool_schemas()
+    for name in sorted(SHIPPED):
+        tool = schemas[name]
+        described = tool.description
+        assert described and not described.startswith(" ") and "\n    " not in described, name
+        properties = tool.input_schema.get("properties", {})
+        undocumented = [key for key, schema in properties.items() if not schema.get("description")]
+        assert undocumented == [], name
 
 
 @pytest.mark.parametrize(

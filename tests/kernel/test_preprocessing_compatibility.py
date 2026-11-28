@@ -109,17 +109,18 @@ def _expected(kind: LabelKind, op: AugmentOp, task: Task | None) -> tuple[Reason
 
 
 @pytest.mark.parametrize("task", TARGETS, ids=lambda task: "none" if task is None else task.value)
-@pytest.mark.parametrize("op", OPS, ids=lambda op: op.value)
-@pytest.mark.parametrize("kind", list(LabelKind), ids=lambda kind: kind.value)
-def test_the_matrix_answers_every_kind_op_and_target(
-    kind: LabelKind, op: AugmentOp, task: Task | None
-) -> None:
+def test_the_matrix_answers_every_kind_and_op(task: Task | None) -> None:
     tasks = None if task is None else frozenset({task})
-    (cell,) = [one for one in augmentation_matrix(tasks) if one.kind is kind and one.op == op.value]
+    cells = augmentation_matrix(tasks)
+    by_key = {(cell.kind, cell.op): (cell.reasons, cell.verdict) for cell in cells}
+    expected = {}
+    for kind in LabelKind:
+        for op in OPS:
+            reasons = _expected(kind, op, task)
+            expected[kind, op.value] = (reasons, Verdict.REFUSED if reasons else Verdict.SUPPORTED)
 
-    expected = _expected(kind, op, task)
-    assert cell.reasons == expected
-    assert cell.verdict is (Verdict.REFUSED if expected else Verdict.SUPPORTED)
+    assert len(cells) == len(by_key)
+    assert by_key == expected
 
 
 def test_a_label_is_judged_by_the_task_its_geometry_feeds_not_every_task_of_the_target() -> None:
