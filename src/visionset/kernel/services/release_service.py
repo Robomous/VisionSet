@@ -82,6 +82,9 @@ from visionset.kernel.domain import (
     ManifestTrack,
     ModalityCompatibility,
     ReasonCode,
+    RecipeAssessment,
+    RecipeCounts,
+    RecipeRefusal,
     RecipeSpec,
     Release,
     ReleasePublished,
@@ -116,6 +119,7 @@ from visionset.kernel.domain import (
     validate_schema_annotation,
     variant_seed,
 )
+from visionset.kernel.error_codes import error_code
 from visionset.kernel.errors import (
     AugmentationIncompatible,
     AugmentationRequiresSplit,
@@ -537,6 +541,36 @@ class ReleaseService:
             target,
             drivers,
         )
+
+    def assess_recipe(
+        self,
+        release_id: UUID,
+        exporter: Exporter,
+        recipe: RecipeSpec,
+        *,
+        target: ExportTarget | None = None,
+        drivers: Mapping[str, PreprocessingDriver] | None = None,
+    ) -> RecipeAssessment:
+        """What ``recipe`` would do to this release for this export, without raising for it.
+
+        :meth:`recipe_compatibility`'s resolution beside either the files an
+        export of the recipe writes or the refusal it would raise instead. The
+        refusal comes from running the transform :meth:`check_export` and
+        :meth:`export` run, and catching what it raises, so the assessment
+        refuses exactly when export does, with the same code and sentence.
+        Consent is not asked: whether the format or a cropping resize loses
+        labels is :meth:`check_export`'s report, and the crop's losses are
+        counted here and listed as ``conditional`` entries.
+
+        ``drivers`` has :meth:`check_export`'s meaning: ``None`` leaves driver
+        availability unjudged. Nothing is written and the recipe is not saved.
+
+        Raises:
+            ReleaseNotFound: no such release in this workspace.
+            WorkspaceCorrupt: the manifest blob is gone, or is not a manifest.
+        """
+        release = self.get(release_id)
+        return _assessed(release, self._read_manifest(release), exporter, recipe, target, drivers)
 
     def require_export_consent(
         self,
@@ -1318,15 +1352,88 @@ def _transformed(
             ``transform_manifest``.
     """
     handed = _handed(manifest, exporter, target)
+    resolution = _resolved(handed, recipe, assignment, target, drivers)
+    return _transform_handed(handed, exporter, recipe, assignment, resolution, drivers)
+
+
+def _transform_handed(
+    handed: Manifest,
+    exporter: Exporter,
+    recipe: RecipeSpec,
+    assignment: SplitAssignment | None,
+    resolution: AugmentationResolution,
+    drivers: Mapping[str, PreprocessingDriver] | None,
+) -> TransformedView:
+    """:func:`_transformed` over a manifest already handed and resolved.
+
+    Raises:
+        ExportSourceUnreadable: the export would hand the plugin a point-cloud
+            asset, which records no pixel size and is not an image.
+        AugmentationRequiresSplit, PreprocessingStepUnsupportedGeometry,
+            AugmentationIncompatible, PreprocessingDriverNotFound,
+            ExportSourceUnreadable: from :func:`_refuse_unresolved` and
+            ``transform_manifest``.
+    """
     scan = next((asset for asset in handed.assets if asset.modality != "image"), None)
     if scan is not None:
         raise ExportSourceUnreadable(
             f"asset {scan.asset_id} is a {scan.modality}, and a pre-processing recipe "
             f"transforms images only; export to {exporter.format_name} without a recipe"
         )
-    resolution = _resolved(handed, recipe, assignment, target, drivers)
     _refuse_unresolved(resolution, handed, recipe, assignment, drivers)
     return transform_manifest(handed, recipe, assignment)
+
+
+def _assessed(
+    release: Release,
+    manifest: Manifest,
+    exporter: Exporter,
+    recipe: RecipeSpec,
+    target: ExportTarget | None,
+    drivers: Mapping[str, PreprocessingDriver] | None,
+) -> RecipeAssessment:
+    """The assessment :meth:`ReleaseService.assess_recipe` answers, over a manifest in hand.
+
+    Only the refusals :func:`_transformed` raises are caught, the set
+    :func:`_consented` re-raises after consent, so an error that is not about
+    the recipe still escapes.
+    """
+    assignment = _split_of(release, manifest)
+    handed = _handed(manifest, exporter, target)
+    resolution = _resolved(handed, recipe, assignment, target, drivers)
+    addressed = {
+        "release_id": release.id,
+        "format_name": exporter.format_name,
+        "target": None if target is None else target.name,
+        "resolution": resolution,
+    }
+    try:
+        view = _transform_handed(handed, exporter, recipe, assignment, resolution, drivers)
+    except _RECIPE_REFUSALS as refused:
+        code = error_code(refused)
+        assert code is not None, "every recipe refusal has a published code"
+        return RecipeAssessment.model_validate(
+            {**addressed, "refusal": RecipeRefusal(code=code, message=str(refused))}
+        )
+    return RecipeAssessment.model_validate({**addressed, "counts": _counted(view, assignment)})
+
+
+def _counted(view: TransformedView, assignment: SplitAssignment | None) -> RecipeCounts:
+    """The files ``view`` makes, per fold when the release has a split."""
+    folds: dict[str, int] = {}
+    for file in view.files:
+        if file.fold is not None:
+            folds[file.fold] = folds.get(file.fold, 0) + 1
+    split = assignment is not None
+    return RecipeCounts(
+        source_files=view.source_file_count,
+        augmented_files=view.augmented_file_count,
+        train_images=folds.get("train", 0) if split else None,
+        val_images=folds.get("val", 0) if split else None,
+        test_images=folds.get("test", 0) if split else None,
+        dropped_labels=view.dropped_count,
+        clipped_labels=view.clipped_count,
+    )
 
 
 def _resolved(

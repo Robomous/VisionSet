@@ -377,6 +377,11 @@ from visionset.kernel.domain.raster_mask import (
     split_class_map,
     trace_mask,
 )
+from visionset.kernel.domain.recipe_assessment import (
+    RecipeAssessment,
+    RecipeCounts,
+    RecipeRefusal,
+)
 from visionset.kernel.domain.release import (
     CALIBRATED_MANIFEST_VERSION,
     GROUPED_MANIFEST_VERSION,
@@ -795,6 +800,9 @@ __all__ = [
     "PreprocessingPreview",
     "PreprocessingRecipe",
     "RecipeUsage",
+    "RecipeAssessment",
+    "RecipeCounts",
+    "RecipeRefusal",
     "recipe_usage",
     "EXPORT_JOB_TYPE",
     "EXPORT_RELEASE_KEY",
