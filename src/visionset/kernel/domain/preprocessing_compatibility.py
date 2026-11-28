@@ -54,6 +54,7 @@ from visionset.kernel.domain.preprocessing import (
 )
 from visionset.kernel.domain.release import Manifest, SplitAssignment
 from visionset.kernel.domain.schema import GeometryType
+from visionset.kernel.errors import AugmentationIncompatible
 
 
 class Verdict(StrEnum):
@@ -253,6 +254,22 @@ class AugmentationResolution(BaseModel):
     def reasons(self) -> frozenset[ReasonCode]:
         """Every reason any refused entry gives."""
         return frozenset(reason for one in self.refusals() for reason in one.reasons)
+
+
+#: How many offenders a refusal's message names before it counts the rest.
+MESSAGE_OFFENDERS: Final = 5
+
+
+def incompatible(offenders: tuple[StepCompatibility, ...]) -> AugmentationIncompatible:
+    """The refusal for ``offenders``: every one in ``offenders``, the first few in the message."""
+    named = " ".join(one.message for one in offenders[:MESSAGE_OFFENDERS])
+    rest = len(offenders) - MESSAGE_OFFENDERS
+    more = f" ... and {rest} more." if rest > 0 else ""
+    return AugmentationIncompatible(
+        f"the recipe cannot run over what this export carries: {named}{more} "
+        "Remove the step, or export to a target that does not train that task",
+        offenders=offenders,
+    )
 
 
 class _Judged:

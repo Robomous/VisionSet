@@ -319,6 +319,7 @@ from visionset.kernel.domain.preprocessing_compatibility import (
     Verdict,
     augmentation_matrix,
     carried_by,
+    incompatible,
     resolve_augmentation,
 )
 from visionset.kernel.domain.preprocessing_plan import (
@@ -759,6 +760,7 @@ __all__ = [
     "Verdict",
     "augmentation_matrix",
     "carried_by",
+    "incompatible",
     "resolve_augmentation",
     "STEP_STREAM_DOMAIN",
     "BrightnessContrastDraw",

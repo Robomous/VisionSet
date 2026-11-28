@@ -7,6 +7,7 @@ instead of silently moving the published table with it.
 
 from __future__ import annotations
 
+from io import BytesIO
 from pathlib import Path
 from uuid import UUID
 
@@ -15,7 +16,10 @@ from tests.kernel.test_export_seam import SPLIT, ImageWriter, MarkingDriver, dri
 from tests.kernel.test_release_service import SIGN, Fixture, _box
 
 from visionset.kernel.domain import (
+    GEOMETRY_TASKS,
+    KIND_LABELS,
     Annotation,
+    Asset,
     AugmentOp,
     AugmentStep,
     CarriedExport,
@@ -27,6 +31,7 @@ from visionset.kernel.domain import (
     LabelClass,
     LabelKind,
     LossPolicy,
+    ManifestAsset,
     PolylineGeometry,
     PreprocessingHints,
     ReasonCode,
@@ -37,14 +42,17 @@ from visionset.kernel.domain import (
     TargetFamily,
     Task,
     Verdict,
+    assign_split,
     augment_operation,
     augmentation_matrix,
     carried_by,
+    incompatible,
     resolve_augmentation,
 )
 from visionset.kernel.error_codes import error_detail
 from visionset.kernel.errors import (
     AugmentationIncompatible,
+    ExportSourceUnreadable,
     PreprocessingDriverNotFound,
     PreprocessingStepUnsupportedGeometry,
 )
@@ -459,4 +467,125 @@ def test_carried_counts_the_train_fold_as_what_an_augmentation_meets(tmp_path: P
     )
     assert split.split and not unsplit.split
     assert {one.augmented for one in unsplit.labels} == {5}
+    fixture.close()
+
+
+def test_the_task_and_kind_tables_are_total() -> None:
+    assert set(GEOMETRY_TASKS) == set(GeometryType)
+    assert set(KIND_LABELS) == set(LabelKind)
+    carried = {label[0] for label in KIND_LABELS.values() if label is not None}
+    assert carried | {GeometryType.POLYLINE_3D} == set(GeometryType)
+
+
+def test_a_missing_driver_keeps_its_refusal_beside_a_task_refusal(tmp_path: Path) -> None:
+    fixture = Fixture(tmp_path)
+    release_id = _mixed_release(fixture)
+    plugin = ImageWriter()
+    pose = _target(Task.DETECT, Task.POSE)
+    resize_only = {"resize": MarkingDriver()}
+
+    with pytest.raises(PreprocessingDriverNotFound):
+        fixture.releases.check_export(
+            release_id, plugin, target=pose, recipe=HFLIP, drivers=resize_only
+        )
+    with pytest.raises(PreprocessingDriverNotFound):
+        fixture.releases.export(
+            release_id,
+            plugin,
+            tmp_path / "out",
+            allow_lossy=True,
+            target=pose,
+            recipe=HFLIP,
+            drivers=resize_only,
+        )
+    with pytest.raises(AugmentationIncompatible) as caught:
+        fixture.releases.check_export(
+            release_id, plugin, target=pose, recipe=HFLIP, drivers=drivers_of(MarkingDriver())
+        )
+    assert ReasonCode.DRIVER_UNAVAILABLE not in {
+        reason
+        for one in caught.value.offenders  # type: ignore[attr-defined]
+        for reason in one.reasons
+    }
+    fixture.close()
+
+
+def test_a_missing_source_size_is_answered_before_a_missing_driver(tmp_path: Path) -> None:
+    fixture = Fixture(tmp_path, assets=0)
+    for index in range(5):
+        content_hash = fixture.workspace.blob_store.put(BytesIO(f"unsized-{index}".encode()))
+        with fixture.workspace.unit_of_work() as uow:
+            fixture.asset_ids.append(
+                uow.assets.add(
+                    Asset(
+                        project_id=fixture.project.id,
+                        content_hash=content_hash,
+                        uri=f"/tmp/unsized-{index}.png",
+                    )
+                ).id
+            )
+    fixture.schemas.create_version(fixture.project.id, [SIGN])
+    fixture.promote()
+    release = fixture.releases.publish(fixture.dataset_id, "v1", split=SPLIT)
+    resize_only = {"resize": MarkingDriver()}
+
+    with pytest.raises(ExportSourceUnreadable):
+        fixture.releases.check_export(release.id, ImageWriter(), recipe=HFLIP, drivers=resize_only)
+    with pytest.raises(ExportSourceUnreadable):
+        fixture.releases.export(
+            release.id, ImageWriter(), tmp_path / "out", recipe=HFLIP, drivers=resize_only
+        )
+    fixture.close()
+
+
+def test_a_long_refusal_names_a_few_offenders_and_counts_the_rest() -> None:
+    labels = tuple(_label(f"class{index:02d}", GeometryType.BBOX) for index in range(12))
+    resolution = resolve_augmentation(
+        _recipe(AugmentOp.HFLIP), _carried(*labels), target_tasks=frozenset({Task.DEPTH})
+    )
+
+    error = incompatible(resolution.refusals())
+
+    assert "class00" in str(error)
+    assert "class11" not in str(error)
+    assert "and 7 more" in str(error)
+    detail = error_detail(error)
+    assert detail is not None
+    assert len(detail["offenders"]) == 12
+
+
+def test_a_val_only_geometry_a_step_cannot_move_does_not_refuse(tmp_path: Path) -> None:
+    fixture = Fixture(tmp_path)
+    with fixture.workspace.unit_of_work() as uow:
+        hashes = {asset_id: uow.assets.get(asset_id).content_hash for asset_id in fixture.asset_ids}
+    predicted = assign_split(
+        SPLIT,
+        [
+            ManifestAsset.model_construct(asset_id=one, content_hash=hashes[one], group_label=None)
+            for one in fixture.asset_ids
+        ],
+    )
+    fixture.schemas.create_version(fixture.project.id, [SIGN, LANE])
+    batch = fixture.batches.create(fixture.project.id, "val-lanes", fixture.asset_ids)
+    fixture.batches.approve(batch.id)
+    (job,) = fixture.batches.jobs(batch.id)
+    fixture.batches.start(batch.id)
+    fixture.jobs.start(job.id)
+    for asset_id in fixture.asset_ids:
+        lane = [] if asset_id in predicted.train else [_lane(asset_id)]
+        fixture.annotations.add(job.id, [_box(asset_id), *lane])
+    fixture.jobs.complete(job.id)
+    fixture.batches.complete(batch.id)
+    fixture.datasets.promote(batch.id)
+    release = fixture.releases.publish(fixture.dataset_id, "v1", split=SPLIT)
+    rot90 = RecipeSpec(target=None, steps=(AugmentStep(op=AugmentOp.ROT90),), variants_per_asset=1)
+    drivers = drivers_of(MarkingDriver())
+
+    assert fixture.releases.assignment(release.id) == predicted
+    assert set(predicted.train) != set(fixture.asset_ids)
+    fixture.releases.check_export(release.id, ImageWriter(), recipe=rot90, drivers=drivers)
+    result = fixture.releases.export(
+        release.id, ImageWriter(), tmp_path / "out", recipe=rot90, drivers=drivers
+    )
+    assert result.augmented_file_count == len(predicted.train)
     fixture.close()

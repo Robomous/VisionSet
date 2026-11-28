@@ -1585,12 +1585,13 @@ class PreprocessingStepUnsupportedGeometry(VisionSetError):
 class AugmentationIncompatible(VisionSetError):
     """A recipe step cannot serve a label the export carries, for a reason beyond its geometry.
 
-    The compatibility resolver's refusal for everything the older refusals do
-    not already name: a step the export target's task cannot use, an
-    unregistered operation version, a label kind nothing declares support for.
-    A refusal, never a consent, for ``PreprocessingStepUnsupportedGeometry``'s
-    reason: the export would otherwise ship labels that disagree with their
-    images, or drop them silently. The remedy is a recipe without the step, or
+    The compatibility resolver's refusal for whatever the older refusals do not
+    already name. Today that is one cause: the export's target trains a label
+    for a task the step does not declare, such as a flip over keypoints a
+    target trains for pose. A refusal, never a consent, for
+    ``PreprocessingStepUnsupportedGeometry``'s reason: the export would
+    otherwise ship labels that disagree with their images, or drop them
+    silently. The remedy is a recipe without the step, or
     an export target that does not train the task.
     """
 

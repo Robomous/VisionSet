@@ -98,6 +98,7 @@ from visionset.kernel.domain import (
     carried_by,
     geometry_needs_calibration,
     geometry_needs_scan_frame,
+    incompatible,
     manifest_version_for,
     manifest_within,
     normalize_release_tag,
@@ -484,9 +485,8 @@ class ReleaseService:
                 published without a split recipe.
             PreprocessingStepUnsupportedGeometry: a recipe step cannot
                 transform a geometry the export would carry.
-            AugmentationIncompatible: a recipe step cannot serve a label the
-                export would carry for another reason the resolution names -
-                the target's task, an unregistered version, an undeclared kind.
+            AugmentationIncompatible: ``target`` trains a label the export
+                would carry for a task a recipe step does not serve.
             PreprocessingDriverNotFound: ``drivers`` was given and none of
                 them applies a step the recipe holds.
             ExportSourceUnreadable: a recipe step needs a source size the
@@ -581,8 +581,8 @@ class ReleaseService:
                 published without a split recipe.
             PreprocessingStepUnsupportedGeometry: a recipe step cannot
                 transform a geometry the export would carry.
-            AugmentationIncompatible: a recipe step cannot serve a label the
-                export would carry for another reason the resolution names.
+            AugmentationIncompatible: ``target`` trains a label the export
+                would carry for a task a recipe step does not serve.
             PreprocessingDriverNotFound: ``drivers`` was given and none of
                 them applies a step the recipe holds.
             ExportSourceUnreadable: a recipe step needs a source size the
@@ -684,8 +684,8 @@ class ReleaseService:
                 published without a split recipe.
             PreprocessingStepUnsupportedGeometry: a recipe step cannot
                 transform a geometry the export would carry.
-            AugmentationIncompatible: a recipe step cannot serve a label the
-                export would carry for another reason the resolution names.
+            AugmentationIncompatible: ``target`` trains a label the export
+                would carry for a task a recipe step does not serve.
             PreprocessingDriverNotFound: no driver in ``drivers`` applies a
                 step the recipe holds.
             ExportSourceUnreadable: a recipe step needs a source size the
@@ -1348,11 +1348,6 @@ def _resolved(
     )
 
 
-#: Reasons ``transform_manifest`` already refuses with a typed refusal of its
-#: own, which keeps its class, message and first-offender order.
-_TRANSFORM_REASONS: Final = frozenset({ReasonCode.REQUIRES_SPLIT, ReasonCode.GEOMETRY_UNSUPPORTED})
-
-
 def _refuse_unresolved(
     resolution: AugmentationResolution,
     handed: Manifest,
@@ -1362,34 +1357,32 @@ def _refuse_unresolved(
 ) -> None:
     """Refuse a recipe the resolution refuses, with the refusal each reason has always had.
 
-    A recipe refused today keeps the refusal it gets today: a missing split
-    or a geometry a step cannot move is answered by ``transform_manifest``,
-    a missing driver by ``driver_for``, both with their own class and message.
-    Every other reason is :class:`AugmentationIncompatible`, carrying every
-    refused entry. A resolution that refuses and is answered by neither older
-    path is still refused: unknown support is never assumed.
+    Answered in the order an export always met them: ``transform_manifest``
+    first, so a missing split, a geometry a step cannot move or a source size
+    the manifest never recorded keeps its class, message and first offender;
+    then a missing driver, as ``driver_for`` words it; then every other reason
+    as :class:`AugmentationIncompatible`, which never names a missing driver.
+    A resolution that refuses and is answered by none of these is still
+    refused: unknown support is never assumed.
 
     Raises:
         AugmentationRequiresSplit, PreprocessingStepUnsupportedGeometry,
             ExportSourceUnreadable: from ``transform_manifest``.
-        PreprocessingDriverNotFound: the only refusals are missing drivers.
+        PreprocessingDriverNotFound: a step's kind has no installed driver,
+            or the registry declares none for its operation.
         AugmentationIncompatible: any other refusal.
     """
     refused = resolution.refusals()
     if not refused:
         return
-    reasons = resolution.reasons()
-    if reasons & _TRANSFORM_REASONS:
-        transform_manifest(handed, recipe, assignment)
-    if reasons == {ReasonCode.DRIVER_UNAVAILABLE} and drivers is not None:
-        for step in recipe.steps:
-            driver_for(drivers, step.kind)
-    raise AugmentationIncompatible(
-        f"the recipe cannot run over what this export carries: "
-        f"{' '.join(one.message for one in refused)} "
-        "Remove the step, or export to a target that does not train that task",
-        offenders=refused,
-    )
+    transform_manifest(handed, recipe, assignment)
+    if ReasonCode.DRIVER_UNAVAILABLE in resolution.reasons():
+        if drivers is not None:
+            for step in recipe.steps:
+                driver_for(drivers, step.kind)
+        undriven = next(one for one in refused if ReasonCode.DRIVER_UNAVAILABLE in one.reasons)
+        raise PreprocessingDriverNotFound(undriven.message, installed=tuple(sorted(drivers or {})))
+    raise incompatible(refused)
 
 
 def _hand_over(

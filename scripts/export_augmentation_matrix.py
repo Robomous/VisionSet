@@ -18,6 +18,7 @@ import sys
 from pathlib import Path
 
 from visionset.kernel.domain import (
+    GATED_KINDS,
     GEOMETRY_TASKS,
     KIND_LABELS,
     LabelKind,
@@ -52,12 +53,41 @@ def _reasons(reasons: tuple[ReasonCode, ...]) -> str:
     return ", ".join(f"`{reason.value}`" for reason in reasons)
 
 
-def _cell(base: MatrixCell, refused_for: list[Task]) -> str:
+def _tasks(tasks: list[Task], joiner: str) -> str:
+    return joiner.join(task.value for task in tasks)
+
+
+def _fed(kind: LabelKind) -> list[Task]:
+    label = KIND_LABELS[kind]
+    fed = frozenset() if label is None else GEOMETRY_TASKS[label[0]]
+    return [task for task in Task if task in fed]
+
+
+def _cell(kind: LabelKind, base: MatrixCell, task_refused: list[Task]) -> str:
+    """The verdict without a target, then what a target's tasks add to it.
+
+    A label is judged for the tasks it feeds that the target trains, and
+    against every task the target trains when it trains none of them - so a
+    label feeding nothing is refused by any target training a task the op
+    does not serve, and the cell says so rather than reading as supported.
+    """
     text = (
         "supported" if base.verdict is Verdict.SUPPORTED else f"refused: {_reasons(base.reasons)}"
     )
-    if refused_for:
-        text += f"; `task_unsupported` for {', '.join(task.value for task in refused_for)}"
+    if kind in GATED_KINDS:
+        return text
+    fed = _fed(kind)
+    trained = [task for task in task_refused if task in fed]
+    fallback = [task for task in task_refused if task not in fed]
+    if trained:
+        text += f"; `task_unsupported` when trained for {_tasks(trained, ', ')}"
+    if fallback and fed:
+        text += (
+            f"; `task_unsupported` under a target training none of {_tasks(fed, ' or ')} "
+            f"and training {_tasks(fallback, ' or ')}"
+        )
+    elif fallback:
+        text += f"; `task_unsupported` under a target training {_tasks(fallback, ' or ')}"
     return text
 
 
@@ -72,7 +102,7 @@ def render() -> str:
         }
         for task in Task
     }
-    columns = ["Label", *(f"`{one.op.value}` v{one.version}" for one in operations)]
+    columns = ["Label", "Feeds", *(f"`{one.op.value}` v{one.version}" for one in operations)]
     lines = [
         BEGIN,
         "| " + " | ".join(columns) + " |",
@@ -82,15 +112,12 @@ def render() -> str:
         cells = []
         for operation in operations:
             key = (kind, operation.op.value, operation.version)
-            label = KIND_LABELS[kind]
-            fed = frozenset() if label is None else GEOMETRY_TASKS[label[0]]
-            refused_for = [
-                task
-                for task in Task
-                if task in fed and ReasonCode.TASK_UNSUPPORTED in by_task[task][key].reasons
+            task_refused = [
+                task for task in Task if ReasonCode.TASK_UNSUPPORTED in by_task[task][key].reasons
             ]
-            cells.append(_cell(base[key], refused_for))
-        lines.append("| " + " | ".join([_label(kind), *cells]) + " |")
+            cells.append(_cell(kind, base[key], task_refused))
+        feeds = "—" if kind in GATED_KINDS else (_tasks(_fed(kind), ", ") or "nothing")
+        lines.append("| " + " | ".join([_label(kind), feeds, *cells]) + " |")
     lines.append(END)
     return "\n".join(lines)
 
