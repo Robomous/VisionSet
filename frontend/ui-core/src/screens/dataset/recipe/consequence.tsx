@@ -84,9 +84,9 @@ function Preview({
           className="flex-wrap"
           data-testid="recipe-preview-tabs"
         >
-          {Array.from({ length: variants + 1 }, (_, index) => (
-            <ToggleGroupItem key={index} value={String(index)} className="text-xs" data-testid={`recipe-preview-${index}`}>
-              {index === 0 ? "Original" : `Variant ${index}`}
+          {previewTabs(variants).map((tab) => (
+            <ToggleGroupItem key={tab.name} value={String(tab.index)} className="text-xs" data-testid={`recipe-preview-${tab.index}`}>
+              {tab.name}
             </ToggleGroupItem>
           ))}
         </ToggleGroup>
@@ -103,6 +103,10 @@ function Preview({
       )}
     </section>
   );
+}
+
+function previewTabs(variants: number): readonly { readonly index: number; readonly name: string }[] {
+  return Array.from({ length: variants + 1 }, (_, index) => ({ index, name: index === 0 ? "Original" : `Variant ${index}` }));
 }
 
 /** What the fit does, drawn: the option pointed at, else the one chosen, captioned with its line. */
@@ -122,7 +126,7 @@ function Picture({ picture, label, stale }: { readonly picture: PreprocessingPre
     <div className="relative overflow-hidden rounded-lg bg-stage" data-testid="recipe-preview-image">
       <img
         src={`data:${picture.media_type};base64,${picture.image_base64}`}
-        alt={`A training image of the release through the recipe: ${label}`}
+        alt={`A training asset of the release through the recipe: ${label}`}
         className={cn("block h-auto w-full transition-opacity duration-150 motion-reduce:transition-none", stale && "opacity-60")}
       />
       <svg aria-hidden="true" viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none" className="pointer-events-none absolute inset-0 size-full">
@@ -166,29 +170,52 @@ function TallyView({ tag, tally, failure }: { readonly tag: string | undefined; 
         <p className="text-pretty text-muted-foreground" data-testid="recipe-tally-error">
           {refusalProse(failure)}
         </p>
-      ) : tally.kind === "pending" ? (
-        <div className="flex flex-col gap-1.5">
-          <Skeleton className="h-4 w-full" />
-          <Skeleton className="h-4 w-full" />
-          <Skeleton className="h-4 w-2/3" />
-        </div>
-      ) : tally.kind === "no-split" && tally.written === null ? (
-        <p className="text-pretty text-muted-foreground" data-testid="recipe-tally-no-split">
-          {tag} has no split. {SPLIT_NOTE}
-        </p>
-      ) : tally.kind === "no-split" ? (
-        <dl className="flex flex-col gap-1.5">
-          <Row label="Images written" value={formatCount(tally.written ?? 0)} note="no split" testId="recipe-tally-written" strong />
-        </dl>
       ) : (
-        <dl className="flex flex-col gap-1.5">
-          <Row label="Training" value={formatCount(tally.train)} testId="recipe-tally-train" />
-          {tally.added > 0 && <Row label="Variants added" value={`+${formatCount(tally.added)}`} testId="recipe-tally-added" />}
-          <Row label="Validation" value={formatCount(tally.val)} note={tally.added > 0 ? "unchanged" : undefined} testId="recipe-tally-val" />
-          <Row label="Test" value={formatCount(tally.test)} note={tally.added > 0 ? "unchanged" : undefined} testId="recipe-tally-test" />
-          <Row label="Images written" value={formatCount(tally.written)} testId="recipe-tally-written" strong />
-        </dl>
+        <TallyBody tag={tag} tally={tally} />
       )}
     </section>
+  );
+}
+
+function TallyBody({ tag, tally }: { readonly tag: string | undefined; readonly tally: Tally }): JSX.Element | null {
+  if (tally.kind === "pending") {
+    return (
+      <div className="flex flex-col gap-1.5">
+        <Skeleton className="h-4 w-full" />
+        <Skeleton className="h-4 w-full" />
+        <Skeleton className="h-4 w-2/3" />
+      </div>
+    );
+  }
+  if (tally.kind === "no-split") return <NoSplit tag={tag} written={tally.written} />;
+  if (tally.kind === "folds") return <FoldRows tally={tally} />;
+  return null;
+}
+
+function NoSplit({ tag, written }: { readonly tag: string | undefined; readonly written: number | null }): JSX.Element {
+  if (written === null) {
+    return (
+      <p className="text-pretty text-muted-foreground" data-testid="recipe-tally-no-split">
+        {tag} has no split. {SPLIT_NOTE}
+      </p>
+    );
+  }
+  return (
+    <dl className="flex flex-col gap-1.5">
+      <Row label="Images written" value={formatCount(written)} note="no split" testId="recipe-tally-written" strong />
+    </dl>
+  );
+}
+
+function FoldRows({ tally }: { readonly tally: Extract<Tally, { readonly kind: "folds" }> }): JSX.Element {
+  const unchanged = tally.added > 0 ? "unchanged" : undefined;
+  return (
+    <dl className="flex flex-col gap-1.5">
+      <Row label="Training" value={formatCount(tally.train)} testId="recipe-tally-train" />
+      {tally.added > 0 && <Row label="Variants added" value={`+${formatCount(tally.added)}`} testId="recipe-tally-added" />}
+      <Row label="Validation" value={formatCount(tally.val)} note={unchanged} testId="recipe-tally-val" />
+      <Row label="Test" value={formatCount(tally.test)} note={unchanged} testId="recipe-tally-test" />
+      <Row label="Images written" value={formatCount(tally.written)} testId="recipe-tally-written" strong />
+    </dl>
   );
 }
