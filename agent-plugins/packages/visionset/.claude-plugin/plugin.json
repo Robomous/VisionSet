@@ -1,6 +1,5 @@
 {
   "name": "visionset",
-  "displayName": "VisionSet",
   "version": "0.0.1-beta.4",
   "description": "Create, curate and version computer-vision datasets through the local VisionSet MCP server.",
   "author": {
@@ -8,11 +7,5 @@
   },
   "homepage": "https://github.com/Robomous/VisionSet",
   "repository": "https://github.com/Robomous/VisionSet",
-  "license": "Apache-2.0",
-  "keywords": [
-    "computer-vision",
-    "datasets",
-    "annotation",
-    "mcp"
-  ]
+  "license": "Apache-2.0"
 }

@@ -1,5 +1,6 @@
-"""Find an existing VisionSet installation the bundle's compatibility rule accepts.
+"""Find a `visionset` the bundle's compatibility range accepts.
 
-Order: the user's installation, then the project's, then the plugin-owned runtime.
-A candidate is only ever run, never modified.
+Order: an explicit operator override, a user installation, a project installation, then the
+plugin-owned cached runtime. The range is `compatibility` in `bundle.json`. A candidate is
+only ever run, never modified.
 """

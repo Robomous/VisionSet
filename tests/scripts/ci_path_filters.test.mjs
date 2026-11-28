@@ -97,7 +97,7 @@ test("the agent-plugin bundle wakes only its own job", () => {
   // The bundle never imports the distribution, so nothing under it can break a
   // Python, frontend or docs check; its own job is the only one with work to do.
   assert.deepEqual(groupsFor("agent-plugins/tools/bundle.py"), ["agent-plugins"]);
-  assert.deepEqual(groupsFor("agent-plugins/packages/visionset/bundle.toml"), ["agent-plugins"]);
+  assert.deepEqual(groupsFor("agent-plugins/metadata.json"), ["agent-plugins"]);
 });
 
 test("the version file wakes the agent-plugin job, whose manifests carry it", () => {

@@ -3,7 +3,7 @@
 This tree packages VisionSet as a plugin for coding-agent clients. The plugin starts the
 local `visionset mcp` server and ships end-user skills; it holds no dataset logic. The rule,
 and what it rules out, is
-[An agent plugin only launches the MCP server](../docs/content/architecture/decisions/an-agent-plugin-only-launches-the-mcp-server.md).
+[An agent plugin wraps the installed CLI](../docs/content/architecture/decisions/an-agent-plugin-wraps-the-installed-cli.md).
 
 ## Three things called "plugin" or "skill"
 
@@ -20,11 +20,11 @@ Python distribution.
 
 | Path | What it is |
 | --- | --- |
+| `metadata.json` | The one hand-edited source of the plugin's metadata, including the compatibility range `=={VERSION}` |
 | `packages/visionset/` | The plugin root. Every client installs this directory, and nothing outside it |
-| `packages/visionset/bundle.toml` | The one hand-edited source of the plugin's metadata |
 | `packages/visionset/.claude-plugin/plugin.json`, `.mcp.json` | Claude Code manifest and server declaration, **generated** |
 | `packages/visionset/.codex-plugin/plugin.json`, `codex.mcp.json` | Codex manifest and server declaration, **generated** |
-| `packages/visionset/runtime/` | The launcher, standard library only |
+| `packages/visionset/runtime/` | The launcher, standard library only; `bundle.json` in it is **generated** and carries the rendered compatibility range |
 | `packages/visionset/skills/` | End-user skills, shared by every client |
 | `schemas/` | Hand-written schemas for the files the generator emits, each citing its source |
 | `tools/` | `render_manifests.py` (generator), `validate_manifests.py` (schema and containment check) |
@@ -36,10 +36,10 @@ The version is never written here. It is the repository `VERSION`, mapped to sem
 way the frontend packages map it (`0.0.1b4` is `0.0.1-beta.4`).
 
 ```bash
-python3 agent-plugins/tools/render_manifests.py          # after editing bundle.toml or VERSION
+python3 agent-plugins/tools/render_manifests.py          # after editing metadata.json or VERSION
 python3 agent-plugins/tools/render_manifests.py --check  # exit 1 when a generated file is stale
 python3 agent-plugins/tools/validate_manifests.py
 bash scripts/check.sh agent-plugins                      # the tests, ruff and mypy, as CI runs them
 ```
 
-Never edit a generated file by hand; change `bundle.toml` or the generator and render again.
+Never edit a generated file by hand; change `metadata.json` or the generator and render again.

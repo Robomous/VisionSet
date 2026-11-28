@@ -8,12 +8,6 @@
   "homepage": "https://github.com/Robomous/VisionSet",
   "repository": "https://github.com/Robomous/VisionSet",
   "license": "Apache-2.0",
-  "keywords": [
-    "computer-vision",
-    "datasets",
-    "annotation",
-    "mcp"
-  ],
   "skills": "./skills/",
   "mcpServers": "./codex.mcp.json"
 }

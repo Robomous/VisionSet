@@ -56,13 +56,6 @@
       "type": "string",
       "minLength": 1
     },
-    "keywords": {
-      "type": "array",
-      "items": {
-        "type": "string",
-        "minLength": 1
-      }
-    },
     "skills": {
       "type": "string",
       "pattern": "^\\./(?!.*(^|/)\\.\\.(/|$))"

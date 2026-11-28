@@ -23,6 +23,7 @@ from bundle import (
     GENERATED,
     PLUGIN_ROOT,
     REPO,
+    RUNTIME_BUNDLE,
 )
 
 SCHEMAS = REPO / "agent-plugins" / "schemas"
@@ -31,6 +32,7 @@ SCHEMA_FOR = {
     CODEX_MANIFEST: "codex-plugin.schema.json",
     CLAUDE_MCP: "claude-mcp.schema.json",
     CODEX_MCP: "codex-mcp.schema.json",
+    RUNTIME_BUNDLE: "runtime-bundle.schema.json",
 }
 
 _ANNOTATIONS = {"$schema", "$id", "$comment", "$defs", "title", "description"}
