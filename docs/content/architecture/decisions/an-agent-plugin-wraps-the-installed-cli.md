@@ -116,3 +116,29 @@ through any client.
 Several things are left to later work: the data directory used when a client gives none, the
 version a plugin-created runtime installs, how the launcher finds the project under Codex, and
 the interpreter command on macOS and Windows.
+
+## Settled by discovery
+
+[#1257](https://github.com/Robomous/VisionSet/issues/1257) implemented the first four steps of
+the resolution order in `runtime/discover.py`, and its contract tests hold each rule below.
+
+- **The override is `VISIONSET_PLUGIN_EXECUTABLE`**, an absolute path to the console script.
+  An empty value counts as unset. It is checked like any candidate, and when it fails discovery
+  reports why and tries nothing else.
+- **A candidate's tier comes from where it was found**, never from where a link resolves. A
+  `PATH` directory is a project one when it lies inside the checkout or is the scripts directory
+  of an active `VIRTUAL_ENV`, a non-base `CONDA_PREFIX` or `UV_PROJECT_ENVIRONMENT`; every other
+  absolute `PATH` directory, and the pipx, uv tool and `pip --user` locations, is a user one. A
+  user install therefore wins with a project environment first on `PATH`. Relative `PATH`
+  entries are not searched.
+- **The checkout** is the nearest directory above the project holding `.git` (a directory or a
+  worktree's file), else the nearest holding `pyproject.toml`, `.venv` or `venv`. The walk stops
+  below the home directory, so a dotfiles repository does not turn `~/.local/bin` into a project.
+- **A binary inside the checkout is not run unless the host trusts the project**; the launcher
+  supplies that verdict. The override is exempt, and an activated environment outside the
+  checkout needs no trust.
+- **A candidate is accepted after two probes**, `--version` inside the range and `mcp --help`
+  exiting 0. Probes take an argument list and no shell, close stdin, capture and cap output, and
+  are killed at a timeout, with their process group on POSIX. On Windows only `visionset.exe` runs; a
+  `.cmd` or `.bat` shim needs a shell and is refused. Every skip reason is redacted: no home
+  directory, secret-named variable values, credentials in URLs or common token shapes.
