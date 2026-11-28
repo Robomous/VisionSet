@@ -13,12 +13,9 @@ spec is already a committed artifact in a public repository, and a contract you
 must authenticate to read is a contract nobody generates a client from.
 
 This module also pins the parts of the contract that no single endpoint owns:
-the security scheme, the page envelope's naming, and the fact that the committed
-`openapi.json` is the application's own output.
+the security scheme and the page envelope's naming.
 """
 
-import json
-from pathlib import Path
 from typing import Any
 
 import pytest
@@ -29,8 +26,6 @@ from tests.server._probe import probe_app
 from visionset.server import models
 from visionset.server.dependencies import require_token
 from visionset.server.main import app, create_app
-
-REPO_ROOT = Path(__file__).resolve().parents[2]
 
 
 def test_every_documented_operation_except_health_requires_a_token() -> None:
@@ -51,20 +46,6 @@ def test_the_committed_contract_declares_the_bearer_scheme() -> None:
     assert (
         schemes["HTTPBearer"]
         == probe_app().openapi()["components"]["securitySchemes"]["HTTPBearer"]
-    )
-
-
-def test_the_committed_openapi_matches_the_application() -> None:
-    """The drift gate, run where the mistake is actually made.
-
-    CI has its own job for this. Duplicating it here is deliberate: this one
-    fails during ``uv run pytest``, in the same command a contributor was already
-    running, instead of ten minutes later on a push.
-    """
-    committed = json.loads((REPO_ROOT / "openapi.json").read_text())
-
-    assert committed == json.loads(json.dumps(app.openapi())), (
-        "openapi.json is stale — run 'uv run python scripts/export_openapi.py'"
     )
 
 

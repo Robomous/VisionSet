@@ -4,8 +4,7 @@ This example takes a local directory of images from an empty workspace to a publ
 release. The [MCP server guide](mcp.md) covers client setup and shared tool conventions.
 
 [Run the example](../../examples/mcp_end_to_end.py) to try the same workflow against
-`visionset mcp` over stdio. The [protocol test](../../tests/mcp/test_agent_walk.py) exercises the
-flow over an in-memory connection.
+`visionset mcp` over stdio. CI runs this example in the `e2e (mcp)` job.
 
 ---
 

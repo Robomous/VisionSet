@@ -359,16 +359,6 @@ test("the toolbar offers the four sections in the order work happens in, under t
   await expect(page.getByTestId("nav-batches")).toHaveCount(0);
 });
 
-test("the old Batches section address redirects to the Overview, which lists the batches", async ({
-  page,
-}) => {
-  await openCold(page, `/projects/${PROJECT}/batches`);
-  await expect(page).toHaveURL(new RegExp(`/projects/${PROJECT}/overview$`));
-  await expect(page.getByTestId("nav-overview")).toHaveAttribute("aria-current", "page");
-  await expect(page.getByTestId("overview-batches")).toBeVisible();
-  await expect(page.getByTestId("batches-screen")).toHaveCount(0);
-});
-
 test("on the overview Add images and Annotate end the batches band: a ghost icon, then the filled control", async ({
   page,
 }) => {

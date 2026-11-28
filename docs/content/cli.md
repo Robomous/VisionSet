@@ -824,5 +824,5 @@ ones are `test_<noun>_commands.py`. Private helpers are exempt: `tests/cli/_flow
 namespace packages resolve.
 
 `tests/cli/_flow.py` walks the CLI up to a given rung *by invoking the CLI*, so the ladder is itself
-under test on the way up; `tests/cli/test_full_cycle.py` uses none of it, because the point there is
-that the whole walk is readable in one function.
+under test on the way up. CI runs the complete workflow through the installed CLI in
+`examples/cli_end_to_end.sh`.

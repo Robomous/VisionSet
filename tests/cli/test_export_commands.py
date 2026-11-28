@@ -107,302 +107,26 @@ def lossy(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
 # --- format list -------------------------------------------------------------
 
 
-def test_format_list_names_the_installed_exporters() -> None:
-    # No ``--workspace``: this command opens nothing, so ``_flow.ok`` (which
-    # always appends the flag) cannot be used and the runner is called directly.
-    result = CliRunner().invoke(app, ["format", "list"])
-    assert result.exit_code == 0, result.output
-    rows = result.stdout.splitlines()
-    assert rows[0].split() == ["NAME", "LOSSY"]
-    # Sorted by name, so `bdd100k-lane` leads and `yolov5-yaml` closes. Five of
-    # the twenty-three are the lane family, and every one of them is lossy — a lane file has
-    # fields for a lane and none for an annotation's attributes or confidence.
-    assert [row.split() for row in rows[1:]] == [
-        ["bdd100k-lane", "yes"],
-        ["classification", "yes"],
-        ["classification-dir", "yes"],
-        ["coco", "no"],
-        ["coco-panoptic", "yes"],
-        ["createml", "yes"],
-        ["culane", "yes"],
-        ["curvelanes", "yes"],
-        ["cvat-images", "yes"],
-        ["cvat-video", "yes"],
-        ["darknet", "yes"],
-        ["dota", "yes"],
-        ["dummy", "no"],
-        ["kitti", "yes"],
-        ["labelme", "yes"],
-        ["mot", "yes"],
-        ["open-images", "yes"],
-        ["openlane-2d", "yes"],
-        ["segmentation-png", "yes"],
-        ["tfrecord", "yes"],
-        ["tusimple", "yes"],
-        ["ultralytics", "yes"],
-        ["voc", "yes"],
-        ["yolo-obb", "yes"],
-        ["yolov5-yaml", "yes"],
-    ]
-
-
-def test_format_list_needs_no_workspace_at_all(
+def test_format_list_prints_the_installed_exporters_without_a_workspace(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    # Plugins are a fact about the process, not about any dataset — and you ask
-    # what is available *before* choosing a ``--format``.
     monkeypatch.chdir(tmp_path)
     result = CliRunner().invoke(app, ["format", "list"])
     assert result.exit_code == 0, result.output
-    assert "dummy" in result.stdout
+    header, *rows = result.stdout.splitlines()
+    assert header.split() == ["NAME", "LOSSY"]
+    assert [row.split() for row in rows] == [
+        [name, "yes" if plugin.lossy else "no"]
+        for name, plugin in sorted(registry.exporters().items())
+    ]
 
 
 def test_format_list_json_is_the_envelope() -> None:
     result = CliRunner().invoke(app, ["format", "list", "--json"])
     assert result.exit_code == 0, result.output
-    # A format declares its capabilities, so the row carries what it can
-    # express as well as whether it loses anything. `dummy` writes nothing, so it
-    # claims everything — declaring less would make the report describe a loss
-    # that never happens.
-    assert json.loads(result.stdout)["items"] == [
-        # The lane family. All five lossy; only `tusimple` reduces the geometry,
-        # because its file *is* the X where a lane crosses each of a fixed set of
-        # rows — vertices in, samples out.
-        {
-            "name": "bdd100k-lane",
-            "lossy": True,
-            "geometries": ["polyline"],
-            "degraded_geometries": [],
-            "modalities": ["image"],
-            "targets": ["bdd100k-lane"],
-        },
-        {
-            # The one format whose content is tags: a box has a location it
-            # cannot record, so nothing is reduced and everything else is
-            # dropped.
-            "name": "classification",
-            "lossy": True,
-            "geometries": ["classification_tag"],
-            "degraded_geometries": [],
-            "modalities": ["image"],
-            "targets": ["classification"],
-        },
-        {
-            "name": "classification-dir",
-            "lossy": True,
-            "geometries": ["classification_tag"],
-            "degraded_geometries": [],
-            "modalities": ["image"],
-            "targets": ["classification-dir"],
-        },
-        {
-            # Lossless: boxes and polygons are native, and everything COCO
-            # has no field for rides in a `visionset` object per annotation.
-            "name": "coco",
-            "lossy": False,
-            "geometries": ["bbox", "keypoints", "mask", "polygon"],
-            "degraded_geometries": [],
-            "modalities": ["image"],
-            "targets": ["coco"],
-        },
-        {
-            "name": "coco-panoptic",
-            "lossy": True,
-            "geometries": ["mask"],
-            "degraded_geometries": ["polygon"],
-            "modalities": ["image"],
-            "targets": ["coco-panoptic"],
-        },
-        {
-            "name": "createml",
-            "lossy": True,
-            "geometries": ["bbox"],
-            "degraded_geometries": [],
-            "modalities": ["image"],
-            "targets": ["createml"],
-        },
-        {
-            "name": "culane",
-            "lossy": True,
-            "geometries": ["polyline"],
-            "degraded_geometries": [],
-            "modalities": ["image"],
-            "targets": ["culane"],
-        },
-        {
-            "name": "curvelanes",
-            "lossy": True,
-            "geometries": ["polyline"],
-            "degraded_geometries": [],
-            "modalities": ["image"],
-            "targets": ["curvelanes"],
-        },
-        {
-            "name": "cvat-images",
-            "lossy": True,
-            "geometries": ["bbox", "classification_tag", "obb", "polygon", "polyline"],
-            "degraded_geometries": [],
-            "modalities": ["image"],
-            "targets": ["cvat-images"],
-        },
-        {
-            "name": "cvat-video",
-            "lossy": True,
-            "geometries": ["bbox", "obb", "polygon", "polyline"],
-            "degraded_geometries": [],
-            "modalities": ["image"],
-            "targets": ["cvat-video"],
-        },
-        {
-            "name": "darknet",
-            "lossy": True,
-            "geometries": ["bbox"],
-            "degraded_geometries": ["obb", "polygon"],
-            "modalities": ["image"],
-            "targets": ["yolov4"],
-        },
-        {
-            "name": "dota",
-            "lossy": True,
-            "geometries": ["obb"],
-            "degraded_geometries": [],
-            "modalities": ["image"],
-            "targets": ["dota"],
-        },
-        {
-            "name": "dummy",
-            "lossy": False,
-            "geometries": [
-                "bbox",
-                "classification_tag",
-                "cuboid_3d",
-                "keypoints",
-                "mask",
-                "obb",
-                "polygon",
-                "polyline",
-                "polyline_3d",
-            ],
-            "degraded_geometries": [],
-            "modalities": ["image", "point_cloud", "video"],
-            "targets": ["dummy"],
-        },
-        {
-            "name": "kitti",
-            "lossy": True,
-            "geometries": ["cuboid_3d"],
-            "degraded_geometries": [],
-            "modalities": ["point_cloud"],
-            "targets": ["kitti"],
-        },
-        {
-            "name": "labelme",
-            "lossy": True,
-            "geometries": ["bbox", "polygon"],
-            "degraded_geometries": [],
-            "modalities": ["image"],
-            "targets": ["labelme"],
-        },
-        {
-            "name": "mot",
-            "lossy": True,
-            "geometries": ["bbox"],
-            "degraded_geometries": [],
-            "modalities": ["image"],
-            "targets": ["mot"],
-        },
-        {
-            "name": "open-images",
-            "lossy": True,
-            "geometries": ["bbox"],
-            "degraded_geometries": [],
-            "modalities": ["image"],
-            "targets": ["open-images"],
-        },
-        {
-            "name": "openlane-2d",
-            "lossy": True,
-            "geometries": ["polyline"],
-            "degraded_geometries": [],
-            "modalities": ["image"],
-            "targets": ["openlane-2d"],
-        },
-        {
-            "name": "segmentation-png",
-            "lossy": True,
-            "geometries": ["mask"],
-            "degraded_geometries": ["polygon"],
-            "modalities": ["image"],
-            "targets": ["segmentation-png"],
-        },
-        {
-            "name": "tfrecord",
-            "lossy": True,
-            "geometries": ["bbox"],
-            "degraded_geometries": [],
-            "modalities": ["image"],
-            "targets": ["tfrecord"],
-        },
-        {
-            # The one lane format that does not write the vertices it was given.
-            "name": "tusimple",
-            "lossy": True,
-            "geometries": [],
-            "degraded_geometries": ["polyline"],
-            "modalities": ["image"],
-            "targets": ["tusimple"],
-        },
-        {
-            # Lossy because a label row is a class index and coordinates:
-            # attributes, confidence and provenance never survive, whatever a
-            # release happens to hold. Boxes, polygons and tags each arrive
-            # intact in the layout the release selects.
-            "name": "ultralytics",
-            "lossy": True,
-            "geometries": ["bbox", "classification_tag", "keypoints", "polygon"],
-            "degraded_geometries": [],
-            "modalities": ["image"],
-            "targets": [
-                "yolo11",
-                "yolo12",
-                "yolo26",
-                "yolov10",
-                "yolov3",
-                "yolov5",
-                "yolov6",
-                "yolov8",
-                "yolov9",
-            ],
-        },
-        {
-            # Lossy for a different reason: a VOC `<object>` has a fixed set
-            # of children its consumers index by tag name, so there is nowhere
-            # to put an attribute or a confidence.
-            "name": "voc",
-            "lossy": True,
-            "geometries": ["bbox"],
-            "degraded_geometries": ["obb", "polygon"],
-            "modalities": ["image"],
-            "targets": ["voc"],
-        },
-        {
-            "name": "yolo-obb",
-            "lossy": True,
-            "geometries": ["obb"],
-            "degraded_geometries": [],
-            "modalities": ["image"],
-            "targets": ["yolo-obb"],
-        },
-        {
-            # Detection only, so a polygon is reduced to its box.
-            "name": "yolov5-yaml",
-            "lossy": True,
-            "geometries": ["bbox"],
-            "degraded_geometries": ["obb", "polygon"],
-            "modalities": ["image"],
-            "targets": ["yolov7"],
-        },
-    ]
+    # test_release_tools.py pins the actual catalog values for the shared projection.
+    expected = [wire.export_format(plugin) for _, plugin in sorted(registry.exporters().items())]
+    assert json.loads(result.stdout) == {"items": expected, "total": len(expected)}
 
 
 # --- format matrix -----------------------------------------------------------
@@ -446,20 +170,11 @@ def test_format_matrix_json_is_the_wire_projection() -> None:
 # --- export ------------------------------------------------------------------
 
 
-def test_export_writes_into_the_directory_it_was_given(root: Path, tmp_path: Path) -> None:
-    name = published_release(root, tmp_path)
-    out = tmp_path / "out"
-    document = payload(
-        root, "export", "-p", name, "--release", "v1.0", "--format", "dummy", "--out", str(out)
-    )
-    assert document["directory"] == str(out)
-    assert out.is_dir()
-
-
-def test_the_dummy_exporter_reports_zero_files_and_that_is_correct(
+def test_export_uses_the_requested_directory_and_reports_no_payload_files(
     root: Path, tmp_path: Path
 ) -> None:
     name = published_release(root, tmp_path)
+    out = tmp_path / "out"
     document = payload(
         root,
         "export",
@@ -470,8 +185,10 @@ def test_the_dummy_exporter_reports_zero_files_and_that_is_correct(
         "--format",
         "dummy",
         "--out",
-        str(tmp_path / "out"),
+        str(out),
     )
+    assert document["directory"] == str(out)
+    assert out.is_dir()
     # Still zero, and the compatibility report is why that takes work: it is
     # written into the directory too, so it is excluded from the walk on both
     # sides — not counted when it is written, and skipped when an earlier run
@@ -479,7 +196,7 @@ def test_the_dummy_exporter_reports_zero_files_and_that_is_correct(
     assert document["file_count"] == 0
     assert document["total_bytes"] == 0
     assert document["format"] == "dummy"
-    assert document["directory"] == str(tmp_path / "out")
+    assert document["directory"] == str(out)
     # And the report rides on the result, for the caller that never sees the bytes.
     assert document["compatibility"]["compatible"] is True
     assert document["compatibility"]["excluded_annotations"] == 0

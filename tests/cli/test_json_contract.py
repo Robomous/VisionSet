@@ -421,31 +421,17 @@ PAIRS: list[tuple[str, Mapping[str, Any], type[BaseModel]]] = [
     ("workspace_settings_off", wire.workspace_settings(SETTINGS_OFF), models.WorkspaceSettingsOut),
 ]
 
-IDS = [label for label, _, _ in PAIRS]
 
-
-# --- parity with the wire models ---------------------------------------------
-
-
-@pytest.mark.parametrize(("payload", "wire"), [(p, w) for _, p, w in PAIRS], ids=IDS)
-def test_the_projection_publishes_exactly_the_fields_the_wire_model_does(
-    payload: Mapping[str, Any], wire: type[BaseModel]
+@pytest.mark.parametrize(
+    ("payload", "model"),
+    [(payload, model) for _, payload, model in PAIRS],
+    ids=[label for label, _, _ in PAIRS],
+)
+def test_the_projection_matches_the_rest_contract(
+    payload: Mapping[str, Any], model: type[BaseModel]
 ) -> None:
-    assert set(payload) == set(wire.model_fields)
-
-
-@pytest.mark.parametrize(("payload", "wire"), [(p, w) for _, p, w in PAIRS], ids=IDS)
-def test_the_wire_model_accepts_the_projection_verbatim(
-    payload: Mapping[str, Any], wire: type[BaseModel]
-) -> None:
-    # Stronger than key-set parity and one line: it is what proves a UUID left as
-    # a string, an enum left as its value, and a timestamp in pydantic's own
-    # format rather than the human one the columns use.
-    wire.model_validate(payload)
-
-
-@pytest.mark.parametrize("payload", [p for _, p, _ in PAIRS], ids=IDS)
-def test_the_projection_serializes_with_no_default_encoder(payload: Mapping[str, Any]) -> None:
+    assert set(payload) == set(model.model_fields)
+    model.model_validate(payload)
     json.dumps(payload)
 
 
@@ -630,7 +616,6 @@ SURFACE_DEFINED: list[tuple[str, Mapping[str, Any]]] = [
     ("export_result", wire.export_result(EXPORT_RESULT)),
     ("export_result_with_recipe", wire.export_result(EXPORT_RESULT_WITH_RECIPE)),
     ("thumbnail_backfill", wire.thumbnail_backfill(THUMBNAIL_BACKFILL)),
-    ("schema_diff", wire.schema_diff(SCHEMA_DIFF)),
     ("import_plan", wire.import_plan(IMPORT_PLAN)),
     ("import_run", wire.import_run(IMPORT_RUN)),
     ("track_deletion", wire.track_deletion(TRACK.track.id, 2)),

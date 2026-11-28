@@ -437,6 +437,7 @@ def _walk(client: Client, base_url: str, downloads: Path) -> Summary:
     promoted = client.json("POST", f"/batches/{batch}/promote", 200)["total"]
     dataset = client.json("GET", f"/projects/{project}/dataset", 200)["id"]
     stats = client.json("GET", f"/datasets/{dataset}/stats", 200)
+    assert promoted == written == stats["annotation_count"] == FRAME_COUNT // 2, stats
     _say(f"{promoted} of {FRAME_COUNT} promoted; trunk holds {stats['annotation_count']} labels")
 
     # (8) Freeze it. The manifest is hash-pinned evidence, so what comes down the
@@ -463,6 +464,8 @@ def _walk(client: Client, base_url: str, downloads: Path) -> Summary:
     assert again["manifest_hash"] == release["manifest_hash"], "an unchanged trunk moved"
 
     verified = client.json("GET", f"/releases/{release['id']}/verify", 200)["ok"]
+    assert release["tag"] == "v1.0", release
+    assert verified is True
     _say(f"release {release['tag']} — {len(manifest)} manifest bytes hash true, verify {verified}")
 
     # (9) Export it. Which formats exist is a property of the deployment, so the
@@ -542,6 +545,7 @@ def _walk(client: Client, base_url: str, downloads: Path) -> Summary:
         "GET", f"/projects/{project}/assets/{asset['id']}/content", 200
     )
     content_matched = sha256(picture).hexdigest() == asset["content_hash"]
+    assert content_matched, "asset bytes changed in transit"
     assert picture_headers["Content-Type"] == "image/png", picture_headers
     assert "immutable" in picture_headers["Cache-Control"], picture_headers
 

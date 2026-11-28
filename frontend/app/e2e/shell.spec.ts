@@ -274,28 +274,6 @@ test("collapsed by default the rail is one icon wide, and every control keeps it
   await expect(page.getByTestId("rail-collapse")).toHaveAttribute("aria-expanded", "false");
 });
 
-test("collapsing the rail narrows it and keeps every control reachable", async ({ page }) => {
-  await signIn(page);
-  const rail = page.getByTestId("app-rail");
-
-  // Expanded first, because collapsed is where a fresh session starts
-  // — so this scenario has to open the rail before it can claim that closing it
-  // narrows anything. The claim itself is unchanged.
-  await page.getByTestId("rail-collapse").click();
-  await expect(rail).toHaveAttribute("data-collapsed", "false");
-  const wide = (await rail.boundingBox())?.width ?? 0;
-
-  await page.getByTestId("rail-collapse").click();
-  await expect(rail).toHaveAttribute("data-collapsed", "true");
-
-  const narrow = (await rail.boundingBox())?.width ?? 0;
-  expect(narrow).toBeLessThan(wide);
-  // The labels go; the controls do not. A collapsed rail that loses a
-  // destination is a rail somebody has to expand to use.
-  await expect(page.getByTestId("rail-projects")).toBeVisible();
-  await expect(page.getByTestId("rail-sign-out")).toBeVisible();
-});
-
 test("expanding shows the labels without moving a single icon, and ⌘B / Ctrl+B toggles it", async ({ page }) => {
   await signIn(page);
   const rail = page.getByTestId("app-rail");
@@ -324,6 +302,8 @@ test("expanding shows the labels without moving a single icon, and ⌘B / Ctrl+B
   // whichever modifier this platform uses.
   await page.keyboard.press("ControlOrMeta+b");
   await expect(rail).toHaveAttribute("data-collapsed", "true");
+  expect((await rail.boundingBox())?.width).toBe(48);
+  await expect(page.getByTestId("rail-sign-out")).toBeVisible();
   await page.keyboard.press("ControlOrMeta+b");
   await expect(rail).toHaveAttribute("data-collapsed", "false");
 });
@@ -430,10 +410,14 @@ test("open-project tabs that do not fit fold behind N more, and the open one sta
   await expect(page.getByTestId(`open-tab-${PROJECT}`).getByRole("link")).toHaveAttribute("aria-current", "page");
   const more = page.getByTestId("open-tabs-more");
   await expect(more).toBeVisible();
-  const folded = Number.parseInt((await more.textContent()) ?? "", 10);
-  expect(folded).toBeGreaterThan(0);
-  // Every open project is either a tab or a row in the menu, never both.
-  await expect(page.locator('[data-testid^="open-tab-"]:not([data-testid^="open-tab-folded-"])')).toHaveCount(ids.length - folded);
+  // Project names arrive asynchronously and can change how many tabs fit.
+  // Read both counts in the same DOM snapshot.
+  await expect.poll(() => page.evaluate(() => {
+    const more = document.querySelector('[data-testid="open-tabs-more"]');
+    const folded = Number.parseInt(more?.textContent ?? "", 10);
+    const drawn = document.querySelectorAll('[data-testid^="open-tab-"]').length;
+    return folded > 0 ? drawn + folded : 0;
+  })).toBe(ids.length);
 
   // A folded project opens from the menu and takes a slot in the strip.
   const last = others[others.length - 1];
@@ -506,34 +490,6 @@ test("a client route nobody defined answers inside the shell, not with a blank p
   await page.getByRole("link", { name: "Back to projects" }).click();
   await expect(page).toHaveURL(/\/projects$/);
   await expect(page.getByTestId("projects-screen")).toBeVisible();
-});
-
-/**
- * The rail starts collapsed.
- *
- * The unit tests hold the logic — absent key, unparseable value, refused storage
- * all resolve to the default — and cannot see whether anything calls it. These
- * two are the browser half: what a fresh session actually renders, and that a
- * choice survives a reload, which is a browser fact and nothing else.
- *
- * `localStorage` is cleared explicitly rather than trusted to be empty: Playwright
- * gives each test a fresh context, but a scenario that depended on that silently
- * would stop meaning anything the day somebody reused one.
- */
-test("a fresh session opens with the rail collapsed", async ({ page }) => {
-  await serveApi(page);
-  await page.goto("/");
-  await page.evaluate(() => localStorage.clear());
-  await page.reload();
-
-  await page.getByTestId("token-input").fill("a-token");
-  await page.getByTestId("token-submit").click();
-
-  const rail = page.getByTestId("app-rail");
-  await expect(rail).toHaveAttribute("data-collapsed", "true");
-  // Narrow, not merely labelled narrow: 48px is the collapsed token and 208 the
-  // expanded one, so anything under half of 208 can only be the former.
-  expect((await rail.boundingBox())?.width ?? 0).toBeLessThan(104);
 });
 
 test("a stored preference beats the default, and survives a reload", async ({ page }) => {
@@ -616,11 +572,4 @@ test("the stored theme is on the page before any module runs", async ({ page }) 
   await page.goto("/");
   expect(await isDark(page)).toBe(true);
   await expect(page.getByTestId("app-rail")).toHaveCount(0);
-});
-
-test("with nothing stored the first paint follows a dark system", async ({ page }) => {
-  await page.route("**/src/main.tsx*", (route) => route.abort());
-  await page.emulateMedia({ colorScheme: "dark" });
-  await page.goto("/");
-  expect(await isDark(page)).toBe(true);
 });

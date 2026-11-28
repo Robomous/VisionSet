@@ -1,9 +1,4 @@
-"""The export-target table in `docs/content/releases.md` is generated, and this keeps it so.
-
-The `tests/mcp/test_tool_reference.py` argument: the CI step that regenerates
-and diffs is the gate, and duplicating it as a test is deliberate, because the
-mistake is made during `uv run pytest` and that is where it should surface.
-"""
+"""Check that target catalog generation covers every target and detects drift."""
 
 from __future__ import annotations
 
@@ -27,16 +22,6 @@ def script() -> ModuleType:
     sys.modules[spec.name] = module
     spec.loader.exec_module(module)
     return module
-
-
-def test_the_committed_table_matches_the_installed_catalog(
-    script: ModuleType, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    production = {name: one for name, one in exporters().items() if name != "dummy"}
-    monkeypatch.setattr(script, "exporters", lambda: production)
-    document = script.DOCUMENT_PATH.read_text(encoding="utf-8")
-    _, current, _ = script._split(document)
-    assert current == script.render()
 
 
 def test_every_installed_target_has_a_row(script: ModuleType) -> None:

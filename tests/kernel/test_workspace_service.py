@@ -80,36 +80,15 @@ def _sql(root: Path, statement: str) -> None:
 # --- init: layout and contents ------------------------------------------------
 
 
-def test_init_creates_the_database_and_the_blob_directory(tmp_path: Path) -> None:
-    workspace = _init(tmp_path)
-    assert (workspace.root / DB_FILENAME).is_file()
-    assert (workspace.root / BLOBS_DIRNAME).is_dir()
-    workspace.close()
-
-
-def test_init_creates_missing_parent_directories(tmp_path: Path) -> None:
-    workspace = WorkspaceService.init(tmp_path / "a" / "b" / "ws")
-    assert (workspace.root / DB_FILENAME).is_file()
-    workspace.close()
-
-
-def test_init_stamps_the_current_format_version(tmp_path: Path) -> None:
-    workspace = _init(tmp_path)
-    assert workspace.format_version == FORMAT_VERSION
-    workspace.close()
-
-
-def test_init_stores_exactly_one_workspace_row(tmp_path: Path) -> None:
-    workspace = _init(tmp_path)
-    with workspace.unit_of_work() as uow:
-        assert [row.id for row in uow.workspaces.list()] == [workspace.workspace_id]
-    workspace.close()
-
-
-def test_init_names_the_workspace_after_its_directory_by_default(tmp_path: Path) -> None:
-    workspace = _init(tmp_path, "road-signs")
-    assert workspace.workspace.name == "road-signs"
-    workspace.close()
+def test_init_creates_a_versioned_workspace_in_a_new_directory_tree(tmp_path: Path) -> None:
+    root = tmp_path / "new" / "nested" / "road-signs"
+    with WorkspaceService.init(root) as workspace:
+        assert (root / DB_FILENAME).is_file()
+        assert (root / BLOBS_DIRNAME).is_dir()
+        assert workspace.format_version == FORMAT_VERSION
+        assert workspace.workspace.name == "road-signs"
+        with workspace.unit_of_work() as uow:
+            assert [row.id for row in uow.workspaces.list()] == [workspace.workspace_id]
 
 
 def test_init_accepts_an_explicit_workspace_name(tmp_path: Path) -> None:
@@ -155,19 +134,11 @@ def test_init_on_a_directory_that_is_already_a_workspace_is_refused(tmp_path: Pa
         _init(tmp_path)
 
 
-def test_init_on_a_non_empty_directory_is_refused(tmp_path: Path) -> None:
-    root = tmp_path / "ws"
-    root.mkdir()
-    (root / "notes.txt").write_text("mine")
-    with pytest.raises(WorkspaceNotEmpty, match="notes.txt"):
-        WorkspaceService.init(root)
-
-
 def test_init_on_a_non_empty_directory_leaves_it_exactly_as_it_was(tmp_path: Path) -> None:
     root = tmp_path / "ws"
     root.mkdir()
     (root / "notes.txt").write_text("mine")
-    with pytest.raises(WorkspaceNotEmpty):
+    with pytest.raises(WorkspaceNotEmpty, match="notes.txt"):
         WorkspaceService.init(root)
     assert sorted(entry.name for entry in root.iterdir()) == ["notes.txt"]
     assert (root / "notes.txt").read_text() == "mine"
@@ -299,27 +270,12 @@ def test_open_on_a_file_is_refused(tmp_path: Path) -> None:
         WorkspaceService.open(path)
 
 
-def test_open_on_an_empty_directory_is_refused(tmp_path: Path) -> None:
+def test_open_creates_nothing_when_it_refuses(tmp_path: Path) -> None:
     root = tmp_path / "empty"
     root.mkdir()
     with pytest.raises(NotAWorkspace, match=DB_FILENAME):
         WorkspaceService.open(root)
-
-
-def test_open_creates_nothing_when_it_refuses(tmp_path: Path) -> None:
-    root = tmp_path / "empty"
-    root.mkdir()
-    with pytest.raises(NotAWorkspace):
-        WorkspaceService.open(root)
     assert list(root.iterdir()) == []
-
-
-def test_open_on_a_database_that_was_never_initialized_is_refused(tmp_path: Path) -> None:
-    root = tmp_path / "ws"
-    root.mkdir()
-    (root / DB_FILENAME).touch()
-    with pytest.raises(WorkspaceCorrupt, match="no VisionSet schema"):
-        WorkspaceService.open(root)
 
 
 def test_open_never_creates_a_schema_in_a_stray_database(tmp_path: Path) -> None:
@@ -327,7 +283,7 @@ def test_open_never_creates_a_schema_in_a_stray_database(tmp_path: Path) -> None
     root.mkdir()
     stray = root / DB_FILENAME
     stray.touch()
-    with pytest.raises(WorkspaceCorrupt):
+    with pytest.raises(WorkspaceCorrupt, match="no VisionSet schema"):
         WorkspaceService.open(root)
     assert stray.stat().st_size == 0
 

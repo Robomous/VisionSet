@@ -14,10 +14,7 @@ application's own output. The second is
 `frontend/annotator/src/core/wire.test.ts`, which proves the TypeScript mirror
 parses what this file contains.
 
-Duplicating the regeneration in a test rather than leaving it to CI is
-deliberate, for `test_the_committed_openapi_matches_the_application`'s reason:
-this one fails during `uv run pytest`, in the command a contributor was already
-running, instead of ten minutes later on a push.
+Pytest checks this fixture directly for drift.
 """
 
 import json

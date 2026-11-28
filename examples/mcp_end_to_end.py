@@ -294,6 +294,7 @@ async def _walk(root: Path, incoming: Path, export: Path) -> Summary:
                 native = (frame["width"], frame["height"])
                 scale = frame["scale"]
                 assert native == FRAME_SIZE, native
+                assert scale == native[0] / preview[0], frame
                 assert scale > 1, "the preview was not smaller — this example proves nothing now"
 
                 if index == 0:
@@ -323,6 +324,7 @@ async def _walk(root: Path, incoming: Path, export: Path) -> Summary:
                     assert ok(await tool("get_job", job_id=job_id))["state"] == "in_progress"
                     written += len(labels["items"])
                     box = labels["items"][0]["geometry"]
+                    assert box == {"type": "bbox", **scaled}, box
                     assert box["x"] + box["width"] <= frame["width"], box
                 else:
                     ok(
@@ -350,7 +352,8 @@ async def _walk(root: Path, incoming: Path, export: Path) -> Summary:
         # A class the schema declares but nobody used is absent, not zero —
         # which classes exist is the schema's answer, read from the schema.
         classes = tuple(row["label_class"] for row in stats["classes"])
-        assert "empty-road" not in classes, classes
+        assert classes == ("sign",), classes
+        assert promoted == written == stats["annotation_count"] == FRAME_COUNT // 2, stats
         _say(f"{promoted} assets promoted, {stats['annotation_count']} labels, classes {classes}")
 
         # (7) Freeze, check, and write it where something can train on it. The
@@ -367,7 +370,11 @@ async def _walk(root: Path, incoming: Path, export: Path) -> Summary:
         )
         assert ok(await tool("list_releases", project=PROJECT))["total"] == 1
         verified = ok(await tool("verify_release", project=PROJECT, tag=TAG))["ok"]
+        assert release["tag"] == TAG, release
+        assert release["asset_count"] == release["annotation_count"] == promoted, release
+        assert verified is True
         formats = tuple(row["name"] for row in ok(await tool("list_formats"))["items"])
+        assert "coco" in formats, formats
         exported = ok(
             await tool("export_release", project=PROJECT, tag=TAG, format="coco", dest=str(export))
         )
