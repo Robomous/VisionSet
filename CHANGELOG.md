@@ -25,6 +25,17 @@ nothing was being distributed. This is the first version that is.
   unit of work; a blank description clears it. `PATCH /projects/{project_id}` now takes `description` beside `name`
   (both optional; null leaves a field alone), and `visionset project update PROJECT --description TEXT` and the MCP
   tool `update_project` change the description (#1280).
+- **The agent plugin can build its own runtime.** When discovery finds no compatible `visionset`,
+  `agent-plugins/packages/visionset/runtime/bootstrap.py` creates a private virtual environment under the plugin's
+  data directory (`VISIONSET_PLUGIN_DATA`, else `CLAUDE_PLUGIN_DATA`, else the user's data directory). It uses a local
+  Python 3.11 or newer and installs the pinned `visionset==VERSION` with that environment's own pip: no `--user`, no
+  upgrade, no extras, no elevation, and with the variables that would move the install dropped. Pip's index, mirror
+  and find-links settings are honoured. A cross-process lock and a double-checked `ready.json`, published only after
+  the console script passes discovery's probes, mean simultaneous starts install once. A setup killed partway is
+  rebuilt only when its directory carries the plugin's ownership marker, and a new version never touches the old
+  runtime. Failures carry stable codes, a redacted message and a manual `pipx install` command, with one retry for an
+  unreachable index. Stdout is never written, and `VISIONSET_PLUGIN_NO_BOOTSTRAP` turns all of it off. The launcher
+  does not call it yet.
 - **Agent-plugin discovery finds an installed `visionset`.** `agent-plugins/packages/visionset/runtime/discover.py`
   resolves the `VISIONSET_PLUGIN_EXECUTABLE` override, then user installs (`PATH` outside the project, pipx, uv tool,
   `pip --user`), then project installs (an active virtual or conda environment, `UV_PROJECT_ENVIRONMENT`, `.venv` and

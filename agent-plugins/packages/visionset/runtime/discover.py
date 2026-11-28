@@ -161,6 +161,7 @@ class Host:
     windows: bool
     home: str | None
     fold_case: bool = False
+    macos: bool = False
 
     @classmethod
     def current(cls) -> Host:
@@ -170,6 +171,7 @@ class Host:
             windows=os.name == "nt",
             home=None if home == "~" else home,
             fold_case=sys.platform == "darwin",
+            macos=sys.platform == "darwin",
         )
 
     @property
@@ -685,6 +687,23 @@ class _Checker:
             detail = redact(stderr, self.host)[-REASON_TAIL:] or "no output"
             return stdout, f"{label} exited with {result.returncode}: {detail}"
         return stdout, None
+
+
+def check_executable(
+    path: str,
+    *,
+    compatibility: str,
+    host: Host | None = None,
+    fs: FileSystem | None = None,
+    run: Runner = run_bounded,
+    probe_timeout: float = PROBE_TIMEOUT,
+) -> Found | Skipped:
+    """Check one plugin-owned console script with the probes discovery applies to a candidate."""
+    host = host or Host.current()
+    search = _Search(host, fs or OsFileSystem(), "visionset", "visionset", None, ())
+    wanted = _wanted_version(compatibility)
+    checker = _Checker(search, wanted, compatibility, False, run, probe_timeout)
+    return checker.check(Candidate(path, Tier.CACHE, "bootstrap"))
 
 
 def discover(

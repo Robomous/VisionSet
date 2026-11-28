@@ -26,6 +26,7 @@ Python distribution.
 | `packages/visionset/.codex-plugin/plugin.json`, `codex.mcp.json` | Codex manifest and server declaration, **generated** |
 | `packages/visionset/runtime/` | The launcher, standard library only; `bundle.json` in it is **generated** and carries the rendered compatibility range |
 | `packages/visionset/runtime/discover.py` | Finds a compatible installed `visionset`: the `VISIONSET_PLUGIN_EXECUTABLE` override, then user, project and plugin-cached installs |
+| `packages/visionset/runtime/bootstrap.py` | Builds the plugin-owned runtime when discovery finds nothing: a private virtual environment under the plugin's data directory, populated by its own pip with the pinned `visionset` |
 | `packages/visionset/skills/` | End-user skills, shared by every client |
 | `schemas/` | Hand-written schemas for the files the generator emits, each citing its source |
 | `tools/` | `render_manifests.py` (generator), `validate_manifests.py` (schema and containment check) |
@@ -44,3 +45,25 @@ bash scripts/check.sh agent-plugins                      # the tests, ruff and m
 ```
 
 Never edit a generated file by hand; change `metadata.json` or the generator and render again.
+
+## The plugin-owned runtime
+
+`bootstrap.py` keeps its state under one data root: `VISIONSET_PLUGIN_DATA`, else
+`CLAUDE_PLUGIN_DATA`, else the user's data directory followed by `visionset-agent-plugin`.
+
+| Path under the data root | What it is |
+| --- | --- |
+| `runtimes/<version>-py<MAJOR><MINOR>-<tag>/venv/` | The virtual environment, created in place and never moved |
+| `runtimes/<key>/.owner`, `runtimes/<key>/ready.json` | The ownership marker, written first, and the readiness sentinel, written last |
+| `locks/<key>.lock` | The cross-process lock |
+| `logs/<key>.log` | Redacted output of every setup step, mode 0600 |
+
+| Variable | Effect |
+| --- | --- |
+| `VISIONSET_PLUGIN_DATA` | Absolute data root, for operators and tests |
+| `VISIONSET_PLUGIN_NO_BOOTSTRAP` | Any value except `0`, `false`, `no` or `off` refuses to create a runtime and prints the manual `pipx install` command instead |
+| `PIP_INDEX_URL`, `PIP_FIND_LINKS`, `PIP_NO_INDEX`, `pip.conf`, netrc | Honoured as pip honours them. `PIP_TARGET`, `PIP_USER`, `PIP_PREFIX` and the other variables that would move the install are dropped |
+
+The rules, and what the tests prove, are in the decision record's "Settled by bootstrap"
+section. The real-install tests run on Linux, and one of them builds this checkout's wheel with
+`uv build`.

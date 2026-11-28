@@ -154,3 +154,71 @@ launcher runs a path that was probed moments before, and a binary replaced in be
 re-checked. The override is trusted, so the launcher work
 ([#1259](https://github.com/Robomous/VisionSet/issues/1259)) has to confirm that no host lets
 project-scoped configuration set `VISIONSET_PLUGIN_EXECUTABLE`.
+
+## Settled by bootstrap
+
+[#1258](https://github.com/Robomous/VisionSet/issues/1258) implemented the last step of the
+resolution order in `runtime/bootstrap.py`. Its contract tests hold each rule below. The real
+tests run on Linux only.
+
+- **Where state lives.** The data root is `VISIONSET_PLUGIN_DATA` (absolute, or setup fails),
+  else `CLAUDE_PLUGIN_DATA`, else `$XDG_DATA_HOME` or `~/.local/share`, `~/Library/Application
+  Support` on macOS, or `%LOCALAPPDATA%` on Windows, each followed by `visionset-agent-plugin`.
+  A root inside the installed plugin is refused. A runtime lives in
+  `runtimes/<version>-py<MAJOR><MINOR>-<tag>/`, where the tag hashes the interpreter's real path,
+  implementation and platform, so each plugin version and each interpreter gets its own
+  directory. Its lock (`locks/<key>.lock`) and its log (`logs/<key>.log`, mode 0600) sit outside
+  it.
+- **Which interpreter.** The interpreter running the bootstrap comes first, then `python3.14`
+  down to `python3.11`, `python3` and `python` on `PATH`. On Windows the order is `py -3.14` down
+  to `py -3.11`, then `python.exe`, and a `WindowsApps` alias is never run. An interpreter needs
+  3.11 or newer with both `venv` and `ensurepip`. When none qualifies, the failure says which of
+  these was missing.
+- **One build at a time, published last.** An exclusive OS file lock (`flock`, or `msvcrt`
+  byte locking on Windows) is held with a bounded wait (300 s by default). The sentinel is
+  checked before the lock and again after it. The virtual environment is created at its final
+  path, after an `.owner` marker. `ready.json` is staged and read back, then renamed into place,
+  and only after `pip --version` works and the console script passes discovery's two probes.
+  Any failure removes the directory. Two processes starting together install once.
+- **Recovery never takes what it does not own.** Under the lock, a directory without
+  `ready.json` is removed and rebuilt only when it carries this plugin's marker for that key,
+  or is empty (a setup killed before the marker was written). Anything else fails with
+  `NOT_OWNED` and is left alone. A ready runtime is rebuilt only when its interpreter can no
+  longer be started. One that is merely slow to answer is reused. A new plugin version builds
+  beside the old runtime and never modifies it. Nothing prunes old runtimes yet.
+- **What pip runs.** The command is exactly
+  `<venv python> -I -m pip install --no-input --disable-pip-version-check --progress-bar off
+  visionset==<VERSION>`. The requirement must be a bare name pinned with `==`. There is no
+  `--user`, no `--upgrade`, no `--pre`, no extra and no elevation. Every child process loses
+  `PYTHONPATH`, `PYTHONHOME` and the other interpreter-steering variables, plus the `PIP_*`
+  variables that move the install target or the interpreter (`PIP_TARGET`, `PIP_USER`,
+  `PIP_PREFIX`, `PIP_ROOT`, `PIP_PYTHON`, `PIP_REQUIRE_VIRTUALENV` and similar). Index, mirror and
+  find-links settings pass through, and so do `pip.conf` and netrc. An air-gapped install points
+  `PIP_FIND_LINKS` at a wheel directory.
+- **Failures are bounded and named.** Creating the environment and installing share one deadline
+  (900 s by default). A failure that shows a connection error is retried once, and a resolution
+  error is not retried. Each failure raises a `BootstrapError` with a stable code: `OPTED_OUT`,
+  `BAD_DATA_DIR`, `NO_PYTHON`, `PYTHON_TOO_OLD`, `NO_VENV`, `NO_PIP`, `LOCK_TIMEOUT`, `NOT_OWNED`,
+  `INDEX_UNAVAILABLE`, `INSTALL_FAILED`, `INSTALL_TIMEOUT`, `VALIDATION_FAILED` or
+  `INCOMPATIBLE_RESULT`. It also gives the manual command (`pipx install 'visionset==<VERSION>'`).
+  Error text, progress lines and the log go through discovery's redaction, so a credential in an
+  index URL never reaches them. `ready.json` holds no index setting.
+- **Opt-out and output.** A truthy `VISIONSET_PLUGIN_NO_BOOTSTRAP` refuses before anything is
+  created. Progress goes to stderr, child output is captured, and stdout is never written.
+  `cached_prefixes()` returns the published runtimes, newest first, for `discover(cached=...)`.
+
+Deviations from the plan reviewed for this slice. Four codes were added: `PYTHON_TOO_OLD`,
+`NOT_OWNED`, `BAD_DATA_DIR` and `INSTALL_TIMEOUT`. There is no `VISIONSET_PLUGIN_FIND_LINKS`,
+because pip's own `PIP_FIND_LINKS` already covers it. An empty directory is recovered without a
+marker. The real-process tests (two simultaneous starts, a kill during install, offline reuse, a
+second version, an unreachable index) install a minimal stand-in wheel so that each run takes
+seconds. Only the clean-install test installs this checkout's own wheel, built with `uv build`,
+with its dependencies repacked from the synced environment and installed with `--no-index`.
+
+Known limits. pip's output reaches the log when each step ends, not while it runs. A
+`target` or `user` setting in `pip.conf` is not overridden, and it makes validation fail rather
+than install elsewhere. A pip configured with zero retries reports an unreachable index without
+a connection error, which surfaces as `INSTALL_FAILED`. A dependency without a wheel may build
+from source. The two validation probes and `pip --version` have timeouts of their own, outside
+the install deadline. The launcher ([#1259](https://github.com/Robomous/VisionSet/issues/1259))
+calls none of this yet.
