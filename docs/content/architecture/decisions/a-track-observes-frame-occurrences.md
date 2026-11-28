@@ -127,7 +127,8 @@ sources need no backfill: none existed before the amendments that added them.
   added for the purpose. It is never classified as `human` or `model` by omission, and paste never
   triggers it.
 - **2D labels on images, cuboids on scans.** A nuScenes `instance_token` follows a `cuboid_3d`
-  through a scene's lidar keyframes and lands as a track over a point-cloud sequence. Tracking a
+  through a scene's lidar keyframes and lands as a track over a point-cloud sequence, which the
+  annotation workspace reads and edits as it does an image sequence's (#1233). Tracking a
   camera-calibrated 3D label through images, or a `polyline_3d` through scans, is deferred. A
   `group_label` is not an ordering, a timestamp or an ego pose, and no observation carries an ego
   pose: a scan sequence's cuboids are each in their own scan's sensor frame.

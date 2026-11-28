@@ -342,8 +342,8 @@ takes its own state with it.
 follows one object through the frame occurrences of one video, image-sequence or point-cloud-sequence source, so the
 region reads the frame's occurrences in every source (`GET
 /projects/{id}/assets/{id}/occurrences`) and renders only when it has some; a folder's frame and an
-upload in no sequence have none, and a scan is never asked, so a point-cloud sequence's tracks
-are read and edited through REST, the CLI and MCP only. Identical bytes imported into two
+upload in no sequence have none. A scan of a point-cloud sequence has the same region, the same
+writes and the same refusals as an image, with its cuboids where an image has its shapes. Identical bytes imported into two
 sequences are one asset in both, and each source keeps its own tracks, so the region reads and
 lists the tracks of every source the frame sits in; with more than one, each source's tracks sit
 under its name (each read from `GET /sources/{id}`, only when there is more than one), and a
@@ -370,7 +370,10 @@ rest of a sequence a correction batch did not take — are passed over, and the 
 disabled with its reason (`No later frame on this track`, or `Every later frame of this track is
 outside this job (3)`). Gaps need nothing: a track ends where its observations end and reappears at
 the next one. A frame whose bytes repeat at two positions is one asset at two occurrences, so the
-position last stepped to is what tells the two apart.
+position last stepped to is what tells the two apart. On a scan a step, or a press of a cuboid's
+track badge, also selects the cuboid the track follows there, once, in the stage's own selected
+highlight, so stepping keeps you on the same object. A selection made on that scan first is kept,
+and reaching a scan by plain navigation selects nothing; on an image the selection is left alone.
 
 **Two writes, both a job's, both the kernel's to judge.** *Add selected object* observes the one
 selected drawn object at this frame, and *Remove from track* takes the track's observation here away
@@ -389,12 +392,16 @@ prose from the one vocabulary (`ASSET_NOT_JUDGED`: confirm or edit the model's l
 an object on this frame`. An object of another class is listed-and-refused, as the reassignment
 menu refuses a geometry: `This track follows “car”`. A shape of another kind than the one the
 track reads as `geometry_kind` (a rotated box counting as a box) is refused the same way, with the
-kernel's own `TRACK_GEOMETRY_MISMATCH` wording. What only the kernel can know — an asset
+kernel's own `TRACK_GEOMETRY_MISMATCH` wording. On a scan a track follows cuboids only, so a
+selected polyline is withheld from both writes with `A track follows a scan's cuboids only — a
+polyline cannot be on one.`, and a track write the kernel refuses `INVALID_ANNOTATION` is said as
+that rule, for an image or a scan. What only the kernel can know — an asset
 another job carries, a declaration gone stale — is its refusal, rendered under the region as prose;
 what landed is said there too (`Added at frame 4`). Merging, splitting, changing a
 track's class and deleting a track are not offered in the editor.
 
-**An observed object's row carries a track badge** (`Route`), after the model mark: its name and
+**An observed object's row carries a track badge** (`Route`), after the model mark — a scan's
+cuboid row too, before its delete: its name and
 position on hover (`On track car 7 at frame 12`), and a press follows that track. The badge is keyed
 by the annotation the kernel stored, so **a pasted copy is on no track** — paste mints a fresh id,
 which no observation names — and copy and paste are otherwise untouched by tracking. **The

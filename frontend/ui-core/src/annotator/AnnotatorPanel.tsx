@@ -437,6 +437,7 @@ export function AnnotatorPanel({
                 index={index}
                 color={classColor(classNamed(snapshot.document, annotation.label_class), annotation.label_class)}
                 selected={scanSnapshot?.selection.has(annotation.id) === true}
+                trackMark={trackMarks.get(annotation.id)}
                 onSelect={() => {
                   scan?.store.select(selectOnly(annotation.id));
                   onReturnFocus?.();
@@ -898,6 +899,7 @@ function CuboidRow({
   index,
   color,
   selected,
+  trackMark,
   onSelect,
   onRemove,
 }: {
@@ -905,6 +907,7 @@ function CuboidRow({
   readonly index: number;
   readonly color: string;
   readonly selected: boolean;
+  readonly trackMark: TrackMark | undefined;
   readonly onSelect: () => void;
   readonly onRemove: (() => void) | null;
 }): JSX.Element {
@@ -935,6 +938,7 @@ function CuboidRow({
           <span className="text-muted-foreground">· {geometryLabel3D(annotation.geometry)}</span>
         </span>
       </button>
+      <TrackBadge mark={trackMark} index={index} />
       <Button
         variant="ghost"
         size="icon-xs"
