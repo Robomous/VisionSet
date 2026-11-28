@@ -1083,7 +1083,7 @@ test("a scan whose source request fails says so with a retry, and never that it 
   await expect(page.getByTestId("point-cloud-canvas")).toHaveAttribute("data-editing", "on");
 });
 
-/** Scan 1 holds the tracked car and a second car; scan 2 holds the tracked car again, one position on. */
+/** Scan 1 holds the tracked car and a second car; scan 2 holds another car, then the tracked car one position on. */
 const SCAN_OCCURRENCES: readonly Wire["FrameOccurrenceOut"][] = [
   { id: "scan-occ-1", source_id: SOURCE, position: 1, timestamp: 0.1, asset_id: "asset-1" },
   { id: "scan-occ-2", source_id: SOURCE, position: 2, timestamp: 0.2, asset_id: "asset-2" },
@@ -1091,6 +1091,7 @@ const SCAN_OCCURRENCES: readonly Wire["FrameOccurrenceOut"][] = [
 
 const OTHER_CAR: Wire["AnnotationOut"] = { ...CAR, id: "car-3d-b", geometry: { type: "cuboid_3d", center: [-8, 4, 0], size: [4, 2, 1.6], yaw: 0 } };
 const CAR_LATER: Wire["AnnotationOut"] = { ...CAR, id: "car-3d-later", asset_id: "asset-2" };
+const PARKED_LATER: Wire["AnnotationOut"] = { ...OTHER_CAR, id: "car-3d-parked", asset_id: "asset-2" };
 
 function scanTracks(): TrackWorld {
   const at = (occurrence: Wire["FrameOccurrenceOut"], annotationId: string): Wire["TrackObservationOut"] => ({
@@ -1118,7 +1119,7 @@ function scanTracks(): TrackWorld {
 
 test("a scan of a sequence lists its tracks, steps to the next scan on its cuboid, and its cuboids join and leave a track", async ({ page }) => {
   await requireWebGl2(page);
-  const sent = await serveScan(page, openedWorld(), { schema: CUBOID_SCHEMA, tracks: scanTracks(), seeded: [CAR, OTHER_CAR, CAR_LATER] });
+  const sent = await serveScan(page, openedWorld(), { schema: CUBOID_SCHEMA, tracks: scanTracks(), seeded: [CAR, OTHER_CAR, PARKED_LATER, CAR_LATER] });
 
   await expect(page.getByTestId("track-region")).toBeVisible();
   await expect(page.getByTestId("track-row-track-1")).toContainText("vehicle scene-1-car");
@@ -1131,11 +1132,12 @@ test("a scan of a sequence lists its tracks, steps to the next scan on its cuboi
   await page.getByTestId("track-next").click();
   await expect(page.getByTestId("asset-position")).toContainText("2/2");
   await expect(page.getByTestId("track-where")).toHaveText("On this frame at 2");
-  await expect(page.getByTestId("object-row-0")).toHaveAttribute("data-selected", "true");
+  await expect(page.getByTestId("object-row-1")).toHaveAttribute("data-selected", "true");
+  await expect(page.getByTestId("object-row-0")).toHaveAttribute("data-selected", "false");
 
   await page.getByTestId("track-unobserve-2").click();
   await expect(page.getByTestId("track-done")).toContainText("the object stays");
-  await expect(page.getByTestId("object-track-0")).toHaveCount(0);
+  await expect(page.getByTestId("object-track-1")).toHaveCount(0);
 
   await page.getByTestId("track-previous").click();
   await expect(page.getByTestId("asset-position")).toContainText("1/2");
