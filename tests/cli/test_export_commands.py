@@ -200,7 +200,7 @@ def test_format_list_json_is_the_envelope() -> None:
             # has no field for rides in a `visionset` object per annotation.
             "name": "coco",
             "lossy": False,
-            "geometries": ["bbox", "mask", "polygon"],
+            "geometries": ["bbox", "keypoints", "mask", "polygon"],
             "degraded_geometries": [],
             "modalities": ["image"],
             "targets": ["coco"],
@@ -426,7 +426,7 @@ def test_format_matrix_needs_no_workspace_and_lists_each_direction(
     ]
     cells = {tuple(row.split()[:2]): row.split()[2:] for row in rows}
     assert cells[("coco", "export")] == [
-        "bbox,mask,polygon",
+        "bbox,keypoints,mask,polygon",
         "-",
         "no",
         "validated",

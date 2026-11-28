@@ -75,37 +75,44 @@
       }
     },
     "coco": {
-      "task": "object detection, instance segmentation",
+      "task": "object detection, instance segmentation, keypoint detection",
       "dialects": [
         "COCO instances JSON, one instances file per fold (instances_train.json and so on)",
-        "segmentation as polygons or as compressed RLE masks"
+        "segmentation as polygons or as compressed RLE masks",
+        "keypoints: a category's keypoints names and 1-based skeleton, rows of (x, y, v) triplets with num_keypoints, in the instances file beside the other classes; person_keypoints_*.json is read when no instances file is present"
       ],
       "export": {
         "lossy": false,
-        "geometries": ["bbox", "mask", "polygon"],
+        "geometries": ["bbox", "keypoints", "mask", "polygon"],
         "degraded_geometries": [],
         "modalities": ["image"],
         "evidence": [
           {"kind": "fixture", "test": "tests/formats/test_coco.py::test_a_box_and_a_polygon_land_in_the_same_document", "gate": "python"},
           {"kind": "fixture", "test": "tests/formats/test_coco_masks.py::test_a_mask_is_written_as_compressed_rle_with_its_own_box_and_area", "gate": "python"},
+          {"kind": "fixture", "test": "tests/formats/test_coco_keypoints.py::test_a_keypoints_row_is_triplets_with_the_labeled_extent_as_its_box", "gate": "python"},
           {"kind": "round_trip", "test": "tests/formats/test_coco_import.py::test_a_coco_export_of_boxes_and_polygons_imports_back_without_loss", "gate": "python"},
           {"kind": "round_trip", "test": "tests/formats/test_coco_masks.py::test_masks_round_trip_pixel_for_pixel_with_no_loss", "gate": "python"},
+          {"kind": "round_trip", "test": "tests/formats/test_coco_keypoints.py::test_a_coco_export_of_keypoints_and_boxes_imports_back_with_only_the_boxes_lost", "gate": "python"},
           {"kind": "independent_reader", "test": "tests/formats/test_coco_smoke.py::test_pycocotools_loads_every_fold_and_resolves_every_category", "gate": "format-smoke", "reader": "pycocotools", "external": true, "requires": "coco"},
-          {"kind": "independent_reader", "test": "tests/formats/test_coco_smoke.py::test_pycocotools_decodes_an_exported_mask_pixel_for_pixel", "gate": "format-smoke", "reader": "pycocotools", "external": true, "requires": "coco"}
+          {"kind": "independent_reader", "test": "tests/formats/test_coco_smoke.py::test_pycocotools_decodes_an_exported_mask_pixel_for_pixel", "gate": "format-smoke", "reader": "pycocotools", "external": true, "requires": "coco"},
+          {"kind": "independent_reader", "test": "tests/formats/test_coco_smoke.py::test_pycocotools_reads_the_keypoint_category_and_rows", "gate": "format-smoke", "reader": "pycocotools", "external": true, "requires": "coco"},
+          {"kind": "independent_reader", "test": "tests/formats/test_coco_smoke.py::test_cocoeval_scores_the_keypoints_against_themselves_perfectly", "gate": "format-smoke", "reader": "pycocotools", "external": true, "requires": "coco"}
         ],
-        "notes": "Classification tags are dropped under consent; everything COCO has no field for rides in a visionset object per annotation."
+        "notes": "Classification tags are dropped under consent; everything COCO has no field for rides in a visionset object per annotation. A keypoints row's box is the tight extent of its labeled points, and an unlabeled point is written 0, 0, 0."
       },
       "import": {
-        "geometries": ["bbox", "mask", "polygon"],
+        "geometries": ["bbox", "keypoints", "mask", "polygon"],
         "modalities": ["image"],
         "evidence": [
           {"kind": "fixture", "test": "tests/formats/test_coco_import.py::test_boxes_and_single_ring_polygons_are_read_without_loss", "gate": "python"},
           {"kind": "fixture", "test": "tests/formats/test_coco_masks.py::test_an_rle_mask_reads_pixel_for_pixel", "gate": "python"},
+          {"kind": "fixture", "test": "tests/formats/test_coco_keypoints.py::test_a_keypoints_row_is_one_keypoints_label_and_its_box_is_lost", "gate": "python"},
           {"kind": "round_trip", "test": "tests/formats/test_coco_import.py::test_a_coco_export_of_boxes_and_polygons_imports_back_without_loss", "gate": "python"},
           {"kind": "round_trip", "test": "tests/formats/test_coco_import.py::test_attribute_values_round_trip_through_a_coco_export", "gate": "python"},
+          {"kind": "round_trip", "test": "tests/formats/test_coco_keypoints.py::test_a_coco_export_of_keypoints_and_boxes_imports_back_with_only_the_boxes_lost", "gate": "python"},
           {"kind": "independent_reader", "test": "tests/formats/test_coco_smoke.py::test_pycocotools_encodes_the_same_counts_and_both_spellings_import_alike", "gate": "format-smoke", "reader": "pycocotools", "external": true, "requires": "coco"}
         ],
-        "notes": "A multi-part polygon is read as the union of its parts (a mask unless one drawable ring remains); iscrowd is reported as an attribute loss."
+        "notes": "A multi-part polygon is read as the union of its parts (a mask unless one drawable ring remains); iscrowd is reported as an attribute loss. A keypoints row keeps its points and reports its box and segmentation lost."
       }
     },
     "coco-panoptic": {

@@ -1,7 +1,8 @@
-"""Keypoints through every exporter: no format writes them, so every report drops them.
+"""Keypoints through every exporter: COCO writes them, every other report drops them.
 
 The keypoints are written through the annotation service, promoted and frozen into a
-release before any export, so this is also the store and release round trip.
+release before any export, so this is also the store and release round trip. What the
+COCO writer puts on disk is ``test_coco_keypoints.py``'s.
 """
 
 from __future__ import annotations
@@ -18,6 +19,7 @@ from visionset.kernel.domain import (
     KEYPOINTS_MANIFEST_VERSION,
     Annotation,
     ClassExportStatus,
+    ExportCompatibility,
     GeometryType,
     KeypointsGeometry,
     KeypointSpec,
@@ -42,6 +44,9 @@ SHIPPED = sorted(
     for name, plugin in exporters().items()
     if type(plugin).__module__.startswith("visionset.formats.")
 )
+
+#: The exporters that write keypoints whole: COCO keypoints.
+WRITING_KEYPOINTS = frozenset({"coco"})
 
 
 def _face() -> Annotation:
@@ -74,13 +79,35 @@ def test_keypoints_and_the_spec_survive_the_store_and_the_release_unchanged(
     assert held.count(KEYPOINTS) == 2
 
 
-@pytest.mark.parametrize("format_name", SHIPPED)
-def test_no_exporter_declares_keypoints(format_name: str) -> None:
+@pytest.mark.parametrize("format_name", sorted(WRITING_KEYPOINTS))
+def test_the_keypoint_writers_declare_keypoints_written_whole(format_name: str) -> None:
+    plugin = exporters()[format_name]
+    assert GeometryType.KEYPOINTS in plugin.supported_geometries
+    assert GeometryType.KEYPOINTS not in plugin.degraded_geometries
+
+
+@pytest.mark.parametrize("format_name", sorted(set(SHIPPED) - WRITING_KEYPOINTS))
+def test_no_other_exporter_declares_keypoints(format_name: str) -> None:
     plugin = exporters()[format_name]
     assert GeometryType.KEYPOINTS not in plugin.supported_geometries | plugin.degraded_geometries
 
 
-@pytest.mark.parametrize("format_name", sorted(COUNTERS))
+def test_coco_writes_every_keypoints_label_and_reports_the_class_supported(
+    tmp_path: Path, labelled: Fixture
+) -> None:
+    release_id = labelled.publish()
+    dest = tmp_path / "out"
+    report = labelled.releases.export(release_id, exporters()["coco"], dest).compatibility
+    written = COUNTERS["coco"](dest)
+    labelled.close()
+
+    (face,) = [one for one in report.classes if one.label_class == "face"]
+    assert face.status is ClassExportStatus.SUPPORTED
+    assert written["face"] == 2
+    assert report.compatible
+
+
+@pytest.mark.parametrize("format_name", sorted(set(COUNTERS) - WRITING_KEYPOINTS))
 def test_every_writing_exporter_drops_the_keypoints_and_says_so(
     tmp_path: Path, labelled: Fixture, format_name: str
 ) -> None:
@@ -100,7 +127,7 @@ def test_every_writing_exporter_drops_the_keypoints_and_says_so(
     assert report.excluded_annotations >= 2
 
 
-@pytest.mark.parametrize("format_name", sorted(set(SHIPPED) - set(COUNTERS)))
+@pytest.mark.parametrize("format_name", sorted(set(SHIPPED) - set(COUNTERS) - WRITING_KEYPOINTS))
 def test_every_other_exporter_reports_the_keypoints_dropped(
     labelled: Fixture, format_name: str
 ) -> None:
@@ -118,8 +145,12 @@ def test_an_export_dropping_keypoints_is_refused_without_consent(
     release_id = labelled.publish()
     dest = tmp_path / "out"
 
-    with pytest.raises(LossyExportNotConsented):
-        labelled.releases.export(release_id, exporters()["coco"], dest)
+    with pytest.raises(LossyExportNotConsented) as refused:
+        labelled.releases.export(release_id, exporters()["voc"], dest)
     labelled.close()
 
     assert not dest.exists()
+    compatibility = refused.value.compatibility
+    assert isinstance(compatibility, ExportCompatibility)
+    (face,) = [one for one in compatibility.classes if one.label_class == "face"]
+    assert face.status is ClassExportStatus.DROPPED

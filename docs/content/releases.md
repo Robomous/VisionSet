@@ -575,7 +575,7 @@ The catalog this build ships, generated from the declarations by
 | `bdd100k-lane` | bdd100k-lane | `other` | `bdd100k-lane` | — | polyline | — | — |
 | `classification` | classification | `other` | `classification` | — | classification_tag | — | — |
 | `classification-dir` | classification-dir | `other` | `classification-dir` | — | classification_tag | — | — |
-| `coco` | coco | `other` | `coco` | — | bbox, mask, polygon | — | — |
+| `coco` | coco | `other` | `coco` | — | bbox, keypoints, mask, polygon | — | — |
 | `coco-panoptic` | coco-panoptic | `other` | `coco-panoptic` | — | mask, polygon | — | — |
 | `createml` | createml | `other` | `createml` | — | bbox | — | — |
 | `culane` | culane | `other` | `culane` | — | polyline | — | — |
