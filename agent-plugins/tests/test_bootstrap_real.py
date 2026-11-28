@@ -354,6 +354,26 @@ class RealProcessTest(unittest.TestCase):
             self.assertNotIn(token, str(raised.exception))
             self.assertNotIn(token, log)
 
+    def test_interrupted_setups_leave_nothing_behind(self) -> None:
+        self.go.touch()
+        for _ in range(5):
+            doomed = self.start()
+            time.sleep(1.0)
+            os.kill(doomed.pid, signal.SIGINT)
+            stdout, _ = doomed.communicate(timeout=60)
+            self.assertEqual(stdout, b"")
+            self.assertEqual(processes_using(self.ws.data), [])
+            runtimes = self.ws.data / "runtimes"
+            left = sorted(p.name for p in runtimes.iterdir()) if runtimes.exists() else []
+            self.assertEqual(left, [])
+        result = self.finish(self.start())
+        self.assertFalse(result["reused"])
+        self.assertTrue(str(result["prefix"]).endswith("-r1/venv"))
+        self.assertEqual(
+            [p.name for p in (self.ws.data / "runtimes").iterdir()],
+            [Path(str(result["prefix"])).parent.name],
+        )
+
     def test_a_bootstrap_killed_during_a_live_pip_cannot_be_rebuilt_under_it(self) -> None:
         if not Path("/proc/self/cmdline").exists():
             self.skipTest("needs /proc")
@@ -492,6 +512,32 @@ class RealSafetyTest(unittest.TestCase):
             self.assertNotIn(token, str(raised.exception))
             self.assertNotIn(token, log)
 
+    def test_a_runtime_on_a_long_path_without_spaces_is_reused(self) -> None:
+        self.ws.env[DATA_ENV] = str(self.ws.root / ("long" * 34))
+        first, _ = self.ws.bootstrap()
+        header = Path(first.console_script).read_text(encoding="utf-8")
+        self.assertIn("'" * 3 + "exec' /", header, "pip used the unquoted long-path launcher")
+        second, runner = self.ws.bootstrap()
+        self.assertTrue(second.reused)
+        self.assertEqual(runner.installs(), 0)
+
+    def test_proxy_credentials_never_reach_the_log_the_error_or_the_sentinel(self) -> None:
+        secret = "Hunter22pw"
+        self.ws.env["PIP_PROXY"] = f"alice:{secret}@127.0.0.1:9"
+        result, _ = self.ws.bootstrap()
+        ready = (Path(result.prefix).parent / "ready.json").read_text(encoding="utf-8")
+        for name in ("PIP_NO_INDEX", "PIP_FIND_LINKS"):
+            del self.ws.env[name]
+        self.ws.env.update({"PIP_RETRIES": "1", "PIP_TIMEOUT": "1"})
+        self.ws.env[DATA_ENV] = str(self.ws.root / "other data")
+        with self.assertRaises(BootstrapError) as raised:
+            self.ws.bootstrap(clock=NoWaitClock())
+        logs = [self.ws.data / "logs", self.ws.root / "other data" / "logs"]
+        log = "".join(p.read_text(encoding="utf-8") for d in logs for p in d.iterdir())
+        self.assertIn("proxy='<redacted>'", log)
+        for text in (log, str(raised.exception), ready):
+            self.assertNotIn(secret, text)
+
     def test_a_moved_data_directory_gets_a_new_working_generation(self) -> None:
         first, _ = self.ws.bootstrap()
         moved = self.ws.root / "moved data"
@@ -602,6 +648,20 @@ def pip_installing_all(data: Path) -> list[int]:
         except OSError:
             continue
         if b"install" in argv and any(str(data).encode() in part for part in argv):
+            found.append(int(entry.name))
+    return found
+
+
+def processes_using(data: Path) -> list[int]:
+    found = []
+    for entry in Path("/proc").iterdir():
+        if not entry.name.isdigit():
+            continue
+        try:
+            argv = (entry / "cmdline").read_bytes()
+        except OSError:
+            continue
+        if str(data).encode() in argv and alive(int(entry.name)):
             found.append(int(entry.name))
     return found
 

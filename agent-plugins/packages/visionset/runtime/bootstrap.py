@@ -81,6 +81,9 @@ OWNER = "visionset-agent-plugin"
 SENTINEL_SCHEMA = 3
 MAX_GENERATIONS = 5
 OWNER_ENTRIES = frozenset({".owner", ".owner.tmp"})
+# What a generation can hold without its marker: the marker files, and a venv a process that
+# outlived an interrupted setup created after the generation was cleared.
+UNMARKED_ENTRIES = OWNER_ENTRIES | {"venv"}
 # The only pip variables passed through: where packages come from and how to reach it. Every
 # other PIP_* variable, which could add packages or move the install, is dropped.
 PIP_ENV_KEEP = frozenset(
@@ -103,8 +106,11 @@ PIP_ENV_KEEP = frozenset(
         "PIP_USE_FEATURE",
     }
 )
-INDEX_ENV = ("PIP_INDEX_URL", "PIP_EXTRA_INDEX_URL", "PIP_FIND_LINKS")
-_INDEX_KEYS = frozenset({"index-url", "extra-index-url", "find-links"})
+INDEX_ENV = ("PIP_INDEX_URL", "PIP_EXTRA_INDEX_URL", "PIP_FIND_LINKS", "PIP_PROXY")
+PROXY_ENV = ("HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "http_proxy", "https_proxy", "all_proxy")
+_INDEX_KEYS = frozenset({"index-url", "extra-index-url", "find-links", "proxy"})
+# user:password@host, with or without a scheme in front.
+_USERINFO = re.compile(r"(?<![\w@])[^\s/@:'\"<>]+:[^\s/@'\"<>]+@(?=[\w\[.-])")
 # pip configuration that would install somewhere else or install something else.
 _CONFIG_LOCATION_KEYS = frozenset({"target", "prefix", "root", "requirement", "editable", "src"})
 _CONFIG_LOCATION_KEYS |= {"python"}
@@ -455,7 +461,7 @@ def runtime_key(version: str, interpreter: Interpreter) -> str:
 _GENERATION = re.compile(r"(.+)-r([1-9][0-9]*)")
 _TRASH = re.compile(r"\.trash-(.+)-[0-9a-f]{12}")
 # pip's console-script header for an interpreter path that contains spaces.
-_SH_LAUNCHER = re.compile(r"""'''exec' "([^"]+)" "\$0" "\$@\"""")
+_SH_LAUNCHER = re.compile(r"""'''exec' (?:"([^"]+)"|(\S+)) "\$0" "\$@\"""")
 
 
 def layout(root: str, key: str, console_script: str, windows: bool) -> Layout:
@@ -568,6 +574,8 @@ def _index_tokens(value: str) -> list[str]:
         except ValueError:
             continue
         if not parts.netloc:
+            if "@" in item:
+                tokens.append(item.rsplit("@", 1)[0])
             continue
         if "@" in parts.netloc:
             tokens.append(parts.netloc.rsplit("@", 1)[0])
@@ -634,8 +642,8 @@ class _Job:
         }
         self.env["NO_COLOR"] = "1"
         self.sensitive: set[str] = set()
-        for name in INDEX_ENV:
-            value = host.get(name)
+        for name in INDEX_ENV + PROXY_ENV:
+            value = host.env.get(name) if name.islower() else host.get(name)
             if value:
                 self.sensitive.update(_index_tokens(value))
         self.requirement = f"{bundle.distribution}{bundle.compatibility.strip()}"
@@ -649,7 +657,7 @@ class _Job:
         for token in sorted(self.sensitive, key=len, reverse=True):
             if len(token) >= 4:
                 text = text.replace(token, "<redacted>")
-        return redact(text, self.host)
+        return redact(_USERINFO.sub("<redacted>@", text), self.host)
 
     def progress(self, message: str) -> None:
         # A closed stderr must not turn a working setup into a failed one.
@@ -807,7 +815,7 @@ class _Job:
         if marker is not None:
             return marker.get("base") == base and (key is None or marker.get("key") == key)
         # A generation killed before its marker was in place holds nothing else.
-        return set(self.fs.listdir(path)) <= OWNER_ENTRIES and self.fs.is_dir(path)
+        return set(self.fs.listdir(path)) <= UNMARKED_ENTRIES and self.fs.is_dir(path)
 
     def verify(self, lay: Layout) -> str:
         """`ok`, `dead` when the runtime fails twice the same way, or `transient`."""
@@ -835,7 +843,7 @@ class _Job:
             match = _SH_LAUNCHER.search(head)
             if match is None:
                 return False
-            named = match.group(1)
+            named = match.group(1) or match.group(2)
         if not posixpath.isabs(named) or not self.fs.lexists(named):
             return False
         return _inside(posixpath.dirname(named), lay.runtime, self.host, self.fs)
@@ -1113,10 +1121,6 @@ def _inside(path: str, root: str, host: Host, fs: FileSystem) -> bool:
     return child == parent or child.startswith(parent.rstrip(sep) + sep)
 
 
-def _same(one: str, other: str, host: Host, fs: FileSystem) -> bool:
-    return _inside(one, other, host, fs) and _inside(other, one, host, fs)
-
-
 def bootstrap(
     bundle: Bundle,
     *,
@@ -1160,7 +1164,7 @@ def bootstrap(
             job.untrusted = checkout
         # The OS default and a client's data directory live under home, which a project at
         # home also contains; only an operator's choice is refused there.
-        at_home = host.home is not None and _same(checkout, host.home, host, fs)
+        at_home = host.home is not None and _inside(host.home, checkout, host, fs)
         checked = chosen_by == "operator" or (chosen_by == "host" and not at_home)
         for where in {project, checkout} if checked else ():
             if _inside(root, where, host, fs):

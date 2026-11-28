@@ -168,7 +168,9 @@ macOS behaviour is covered by fakes, not by a run on either system.
   Setup refuses a root inside the installed plugin. A root named by `VISIONSET_PLUGIN_DATA`, the
   operator's own choice, is refused inside the project or its checkout. `CLAUDE_PLUGIN_DATA`
   comes from the host and lives under the home directory, so it is refused there only when the
-  checkout is not the home directory itself. The OS default is never refused for that reason.
+  checkout neither is the home directory nor contains it. The OS default is never refused for
+  that reason. A `VISIONSET_PLUGIN_DATA` under a project at the home directory is refused by
+  design: the operator chose it, and it lies inside the project.
   On POSIX it also refuses a root, or its `runtimes`, `locks` or `logs` directory, that
   another user owns, that every user can write, or that a group other than the user's primary
   group can write. Failing to create or write any of them is a `BAD_DATA_DIR` error, never a raw
@@ -196,7 +198,9 @@ macOS behaviour is covered by fakes, not by a run on either system.
   is staged, read back and renamed into place, and only after `pip --version` works and the console script passes
   discovery's two probes. Two processes starting together install once.
 - **Reuse proves the runtime works.** pip writes the venv interpreter's absolute path into the
-  console script, as a `#!` line or, for a path with spaces, as a `/bin/sh` launcher. On POSIX,
+  console script, as a `#!` line or as a `/bin/sh` launcher, which pip uses when the path has
+  spaces (the path is quoted) or would make the `#!` line longer than 127 bytes (it may not be
+  quoted). Both launcher forms are read. On POSIX,
   a generation whose named interpreter is missing or lies outside the generation (its data root
   was moved, or was built through a symlink that is gone) is broken. Otherwise bootstrap runs its
   console script's `--version` (which must be inside the range) and `mcp --help`. A runtime is
@@ -251,8 +255,15 @@ macOS behaviour is covered by fakes, not by a run on either system.
 - **Redaction.** Error text, progress lines and every logged line go through discovery's
   redaction. The full values of `PIP_INDEX_URL`, `PIP_EXTRA_INDEX_URL` and `PIP_FIND_LINKS` are
   removed as well, and so are the index values `pip config list` reports, each line of a
-  multi-line value separately. For a URL this also covers its user information, path, path segments that look like tokens, and query. Text is
+  multi-line value separately. The same holds for `PIP_PROXY`, `HTTP_PROXY`, `HTTPS_PROXY`,
+  `ALL_PROXY` (either case) and the `proxy` setting, and any `user:password@host`, with or
+  without a scheme, is redacted wherever it appears. For a URL this also covers its user information, path, path segments that look like tokens, and query. Text is
   redacted before it is truncated. `ready.json` holds no index setting.
+- **Interrupts.** A Ctrl-C reaches only the bootstrap, because each child runs in its own
+  session. The process runner kills the child's process group before passing the interrupt on,
+  so no `venv` or pip keeps writing into a generation after its clean-up. A generation that holds
+  nothing but `.owner`, `.owner.tmp` or a `venv` directory, without a marker, is cleared like an
+  empty one.
 - **Opt-out and output.** A truthy `VISIONSET_PLUGIN_NO_BOOTSTRAP` refuses before anything is
   created. Progress goes to stderr, and a progress sink that fails (a closed stderr) does not fail
   setup. Child output is captured, and stdout is never written.
@@ -276,8 +287,12 @@ Known limits.
 - A pip that is still writing output when its bootstrap dies is ended by `SIGPIPE`. Its own
   subprocesses do not inherit the lock.
 - pip's output reaches the log when each step ends, not while it runs.
-- Published generations that were superseded are never pruned, so the cap needs a person to
-  remove them.
+- Published generations that were superseded are never pruned. After `GENERATIONS_EXHAUSTED` a
+  person has to remove them.
+- When the project's checkout is the home directory, or contains it, a `CLAUDE_PLUGIN_DATA` root
+  is not checked against the project. `XDG_DATA_HOME` and the other OS defaults never are.
+- Before taking the lock, reuse can run up to four probes for each published generation, two
+  checks each tried twice.
 - A pip configured with zero retries reports an unreachable index without a connection error,
   which surfaces as `INSTALL_FAILED`.
 - A dependency without a wheel may build from source.

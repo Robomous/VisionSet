@@ -66,6 +66,12 @@ SECRETS = (SECRET, PATH_TOKEN, QUERY_TOKEN, "alice")
 GENERATION = r"^0\.0\.1b4-py312-[0-9a-f]{8}-r{n}$"
 
 
+def long_launcher(python: str) -> str:
+    """pip's header for a long interpreter path without spaces: the path is not quoted."""
+    quotes = "'" * 3
+    return "#!/bin/sh\n" + quotes + "exec' " + python + ' "$0" "$@"\n\' ' + quotes + "\n"
+
+
 def sh_launcher(python: str) -> str:
     """pip's console-script header for an interpreter path with spaces."""
     quotes = "'" * 3
@@ -614,7 +620,14 @@ class BuildTest(unittest.TestCase):
     def test_a_generation_killed_before_its_marker_is_recovered(self) -> None:
         self.m.bootstrap()
         old = self.built()
-        for leftover in ({}, {".owner": ""}, {".owner": "{"}, {".owner.tmp": '{"own'}):
+        leftovers: tuple[dict[str, str], ...] = (
+            {},
+            {".owner": ""},
+            {".owner": "{"},
+            {".owner.tmp": '{"own'},
+            {"venv/bin/python": "", "venv/pyvenv.cfg": "home = /usr/bin"},
+        )
+        for leftover in leftovers:
             with self.subTest(leftover=leftover):
                 for name in self.m.runtimes():
                     self.m.disk.remove_tree(self.m.generation(name).runtime)
@@ -631,7 +644,7 @@ class BuildTest(unittest.TestCase):
         self.m.bootstrap()
         old = self.built()
         foreign = [
-            {".owner": "", "venv/x": "data"},
+            {".owner": "", "venv/x": "data", "notes.txt": "mine"},
             {"notes.txt": "mine"},
             {".owner": json.dumps({"owner": "visionset-agent-plugin", "base": "x", "key": "y"})},
         ]
@@ -803,9 +816,12 @@ class BuildTest(unittest.TestCase):
     def test_the_space_safe_launcher_naming_this_generation_is_reused(self) -> None:
         self.m.bootstrap()
         old = self.built()
-        header = sh_launcher(old.python)
-        self.m.disk.files[self.m.disk.k(old.console_script)] = header
-        self.assertTrue(self.m.bootstrap().reused)
+        for header in (sh_launcher(old.python), long_launcher(old.python)):
+            with self.subTest(header=header):
+                self.m.disk.files[self.m.disk.k(old.console_script)] = header
+                self.assertTrue(self.m.bootstrap().reused)
+        self.m.disk.files[self.m.disk.k(old.console_script)] = long_launcher("/gone/venv/bin/py")
+        self.assertFalse(self.m.bootstrap().reused)
 
     def test_an_older_generation_that_still_works_is_reused_before_building(self) -> None:
         first = self.m.bootstrap()
@@ -1130,6 +1146,26 @@ class FailureTest(unittest.TestCase):
         self.assertEqual(self.m.disk.modes[[p for p in self.m.disk.modes][0]], 0o600)
         self.assert_no_secret(str(error), self.log(), *self.m.progress)
 
+    def test_proxy_credentials_never_reach_the_error_or_the_log(self) -> None:
+        # Passwords with a slash, and a token in a path, escape the generic user:pass@ rule, so
+        # only the learned values from the environment and pip's configuration redact them.
+        self.m.run.python(PYTHON, probe_output((3, 12, 1)))
+        self.m.env["PIP_PROXY"] = "alice:Hu/nter22@proxy.example:3128"
+        self.m.env["https_proxy"] = "http://proxy.example:3128/Tk9pathsecret"
+        config = "global.proxy='carol:Pa/ss99@p2.example:1'\n"
+        self.m.run.pip_config = ProbeResult(0, config.encode())
+        output = (
+            "ERROR: 407 Proxy Authentication Required via alice:Hu/nter22@proxy.example, "
+            "http://proxy.example:3128/Tk9pathsecret and carol:Pa/ss99@p2.example:1; "
+            "also dave:Pw0rdzz9@other.example"
+        )
+        self.m.run.installs = [ProbeResult(1, stderr=output.encode())]
+        error = self.m.failure()
+        for text in (str(error), self.log()):
+            for secret in ("nter22", "Tk9pathsecret", "ss99", "Pw0rdzz9", "alice", "carol"):
+                self.assertNotIn(secret, text)
+        self.assertIn("<redacted>@other.example", self.log())
+
     def test_redaction_happens_before_truncation(self) -> None:
         self.m.run.python(PYTHON, probe_output((3, 12, 1)))
         tail = PATH_TOKEN + "y" * (REASON_TAIL - 6)
@@ -1286,6 +1322,14 @@ class DataRootTest(unittest.TestCase):
                 m.bootstrap(project=project)
         m.env[DATA_ENV] = HOME + "/.vs-data"
         self.assertIs(m.failure(project=HOME).code, Code.BAD_DATA_DIR)
+
+    def test_the_client_data_directory_is_allowed_when_the_project_contains_home(self) -> None:
+        m = self.machine()
+        del m.env[DATA_ENV]
+        m.env["CLAUDE_PLUGIN_DATA"] = HOME + "/.claude/plugins/data/visionset"
+        for project in ("/", "/home"):
+            with self.subTest(project=project):
+                m.bootstrap(project=project)
 
     def test_a_client_data_directory_inside_a_checkout_under_home_is_refused(self) -> None:
         m = self.machine()

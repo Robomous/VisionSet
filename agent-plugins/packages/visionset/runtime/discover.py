@@ -386,6 +386,13 @@ def run_bounded(
         _kill(process)
         with contextlib.suppress(subprocess.TimeoutExpired):
             process.wait(5)
+    except BaseException:
+        # The child runs in its own session, so a Ctrl-C reaches only this process.
+        _kill(process)
+        with contextlib.suppress(subprocess.TimeoutExpired):
+            process.wait(5)
+        stop.set()
+        raise
     if not settle(0.5):
         # A descendant still holds a pipe open after the probe itself has exited.
         _kill(process)

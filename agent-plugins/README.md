@@ -65,6 +65,10 @@ Never edit a generated file by hand; change `metadata.json` or the generator and
 | `VISIONSET_PLUGIN_NO_BOOTSTRAP` | Any value except `0`, `false`, `no` or `off` refuses to create a runtime and prints the manual `pipx install` command instead |
 | `PIP_INDEX_URL`, `PIP_EXTRA_INDEX_URL`, `PIP_FIND_LINKS`, `PIP_NO_INDEX`, `PIP_CONFIG_FILE` and the other allow-listed index and network variables, `pip.conf`, netrc | Honoured as pip honours them. Every other `PIP_*` variable is dropped, and a `pip.conf` that sets `target`, `prefix`, `root`, `user` and similar fails setup with `BAD_PIP_CONFIG` |
 
+A `VISIONSET_PLUGIN_DATA` inside the project is refused, even when the project is the home
+directory; `CLAUDE_PLUGIN_DATA` and the OS default under home are accepted there. After
+`GENERATIONS_EXHAUSTED`, remove the superseded `runtimes/<base>-r*` directories by hand.
+
 The rules, and what the tests prove, are in the decision record's "Settled by bootstrap"
 section. The real-install tests run on Linux, and one of them builds this checkout's wheel with
 `uv build`.

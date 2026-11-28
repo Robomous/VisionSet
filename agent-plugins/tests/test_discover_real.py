@@ -226,6 +226,29 @@ class RunBoundedTest(unittest.TestCase):
             if pidfile.exists():
                 os.kill(int(pidfile.read_text(encoding="utf-8")), signal.SIGKILL)
 
+    def test_an_interrupt_kills_the_child_before_propagating(self) -> None:
+        pidfile = self.root / "child.pid"
+        code = (
+            f"import sys; sys.path.insert(0, {str(_support.RUNTIME)!r}); import discover; "
+            f"discover.run_bounded(['/bin/sh', '-c', 'echo $$ > {pidfile}; exec sleep 30'], "
+            "'/', {}, 60, 1024)"
+        )
+        runner = subprocess.Popen(
+            [sys.executable, "-I", "-S", "-c", code],
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )
+        deadline = time.monotonic() + 10
+        while not pidfile.exists() or not pidfile.read_text(encoding="utf-8").strip():
+            self.assertLess(time.monotonic(), deadline)
+            time.sleep(0.05)
+        child = int(pidfile.read_text(encoding="utf-8"))
+        runner.send_signal(signal.SIGINT)
+        _, stderr = runner.communicate(timeout=10)
+        self.assertIn(b"KeyboardInterrupt", stderr)
+        self.assertTrue(gone(child))
+
     def test_output_beyond_the_cap_kills_the_process(self) -> None:
         start = time.monotonic()
         result = self.run_script("yes\n", cap=4096)
