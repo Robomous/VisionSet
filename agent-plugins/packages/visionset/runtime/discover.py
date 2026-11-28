@@ -650,7 +650,7 @@ class _Checker:
             else:
                 _, reason = self._probe(candidate.path, ["mcp", "--help"])
         if reason is not None:
-            return Skipped(candidate, redact(reason, self.host))
+            return Skipped(candidate, reason)
         return Found(candidate, version)
 
     def _refusal(self, candidate: Candidate) -> str | None:
