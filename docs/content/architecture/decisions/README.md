@@ -53,3 +53,9 @@ browser runs. They were written together, and they are easiest to read in this o
 | Page | The rule |
 | --- | --- |
 | [A track observes frame occurrences](a-track-observes-frame-occurrences.md) | An asset is bytes, an occurrence is a position in a source, and a track is a set of observations over existing annotations. |
+
+## Augmenting an export
+
+| Page | The rule |
+| --- | --- |
+| [An augmentation is a registered version](an-augmentation-is-a-registered-version.md) | A recipe step names one registered `(op, version)`, which never changes once registered; fields added later are invisible at their legacy values, so stored hashes hold; a variant's draws are one plan both the geometry and the pixels read. |

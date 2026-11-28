@@ -29,6 +29,17 @@ nothing was being distributed. This is the first version that is.
   and MCP carry them; the annotator draws them read-only and has no tool to place them yet. A release holding a
   keypoints label or a class with a spec is a version-12 manifest; every other release keeps its version, bytes
   and hash (#1158).
+- **A versioned augmentation registry and one sampled plan per variant.** `AUGMENT_OPERATIONS` declares, per
+  `(op, version)`, an augmentation's typed parameters with ranges and defaults, the modalities, geometries (read from
+  `AUGMENT_GEOMETRIES`) and trainer tasks it serves, its semantic effect, its loss policy, the built-in drivers that apply
+  it and whether a preview can show it; `hflip`, `brightness_contrast` and `rot90` are registered as version 1.
+  `AugmentStep` gains `version` and `params`, refused when the version is not registered or a parameter is undeclared,
+  mistyped or out of range, and left out of the serialized step at their legacy values, so every stored recipe keeps its
+  canonical bytes, its `recipe_hash` and its variants. `sample_plan` samples a variant's draws once into a frozen
+  `VariantPlan` that the geometry transform and the Pillow driver both read; the legacy operations keep their seed
+  words, and later operations draw from an independent `StepStream` per step. The `PreprocessingDriver` port's `apply`
+  takes an optional `draw`, and a driver without it is still called. Goldens captured before the change hold the hashes,
+  draws, geometry and pixels of 32 legacy recipes byte-identical (#1238).
 - **TensorFlow Object Detection TFRecord import and export as `tfrecord`.** The Object Detection API's `tf.train.Example`
   dataset schema, not an arbitrary TFRecord, read and written without TensorFlow or protobuf: the record framing with
   its masked CRC32C and the protobuf wire format are implemented in the format package. The exporter writes a

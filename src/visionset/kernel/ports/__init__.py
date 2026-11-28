@@ -36,7 +36,7 @@ from visionset.kernel.ports.point_cloud_processor import (
     PointCloudReading,
 )
 from visionset.kernel.ports.point_segmenter import PointSegmenter
-from visionset.kernel.ports.preprocessing import PreprocessingDriver, driver_for
+from visionset.kernel.ports.preprocessing import PreprocessingDriver, accepts_draw, driver_for
 from visionset.kernel.ports.progress_reporter import ProgressReporter
 from visionset.kernel.ports.provider import Provider, Runner, WeightsSource
 
@@ -61,6 +61,7 @@ __all__ = [
     "PointCloudReading",
     "PointSegmenter",
     "PreprocessingDriver",
+    "accepts_draw",
     "driver_for",
     "ProgressReporter",
     "Provider",

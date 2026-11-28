@@ -7,7 +7,8 @@ bakes the EXIF turn in before it measures, so the manifest's width and height
 already describe the oriented picture, and a driver that skipped the turn
 would resize a picture the kernel's geometry never saw. Where a letterbox,
 fill or centre crop lands and what a variant draws are read from the kernel,
-never recomputed.
+never recomputed: an augmentation applies its step's draw from the variant's
+plan.
 
 Re-encoding keeps the source's format: a JPEG comes back a JPEG at quality 95
 with its chroma subsampling kept, a PNG comes back a lossless PNG, and any
@@ -22,7 +23,7 @@ from __future__ import annotations
 
 import io
 from dataclasses import dataclass
-from typing import Final
+from typing import Final, assert_never
 
 from PIL import Image, ImageEnhance, ImageOps
 from PIL.JpegImagePlugin import get_sampling
@@ -30,12 +31,15 @@ from PIL.JpegImagePlugin import get_sampling
 from visionset.kernel.domain import (
     AugmentOp,
     AugmentStep,
+    BrightnessContrastDraw,
+    HflipDraw,
     ResizeStep,
     ResizeStrategy,
+    Rot90Draw,
     Step,
-    brightness_contrast_factors,
+    StepDraw,
     canvas_fit,
-    rot90_quarter_turns,
+    sample_step,
 )
 from visionset.kernel.errors import UnsupportedMedia
 
@@ -139,7 +143,15 @@ class PillowResizeDriver:
 
     step_kinds: frozenset[str] = frozenset({"resize"})
 
-    def apply(self, step: Step, image: bytes, *, seed: bytes, variant: int) -> bytes:
+    def apply(
+        self,
+        step: Step,
+        image: bytes,
+        *,
+        seed: bytes,
+        variant: int,
+        draw: StepDraw | None = None,
+    ) -> bytes:
         """The image at ``step.width × step.height``, re-encoded in its own format.
 
         Raises:
@@ -196,31 +208,53 @@ def _placed(source: Image.Image, step: ResizeStep) -> Image.Image:
 class PillowAugmentDriver:
     """``augment`` steps: mirror, brightness then contrast, or a quarter turn.
 
-    Every draw comes from the kernel — ``brightness_contrast_factors``,
-    ``rot90_quarter_turns``; a mirror is not drawn, every hflip variant
-    mirrors — over the seed the caller passes, so the pixels land where the
-    geometry transform put the labels. Variant 0 is the base image and is
+    The driver applies the step's ``draw`` from the variant's plan — the value
+    the geometry transform moved the labels by — and samples it with the
+    kernel's ``sample_step`` only when called without one, so the pixels land
+    where the labels are either way. Variant 0 is the base image and is
     returned untouched apart from orientation and re-encoding, which is what a
-    step applied to it means.
+    step applied to it means. ``operations`` is every ``(op, version)`` it
+    applies, which the registry's ``drivers`` column is held to.
     """
 
     step_kinds: frozenset[str] = frozenset({"augment"})
+    operations: frozenset[tuple[AugmentOp, int]] = frozenset(
+        {(AugmentOp.HFLIP, 1), (AugmentOp.BRIGHTNESS_CONTRAST, 1), (AugmentOp.ROT90, 1)}
+    )
 
-    def apply(self, step: Step, image: bytes, *, seed: bytes, variant: int) -> bytes:
-        """The variant this seed draws for one augmentation, in the source's format."""
+    def apply(
+        self,
+        step: Step,
+        image: bytes,
+        *,
+        seed: bytes,
+        variant: int,
+        draw: StepDraw | None = None,
+    ) -> bytes:
+        """The variant this draw describes for one augmentation, in the source's format."""
         if not isinstance(step, AugmentStep):
             raise TypeError(f"{type(self).__name__} applies augment steps, not {step.kind!r}")
+        if variant != 0:
+            draw = sample_step(step, seed) if draw is None else draw
+            if (draw.op, draw.version) != (step.op, step.version):
+                raise ValueError(
+                    f"a {draw.op.value} v{draw.version} draw cannot apply a "
+                    f"{step.op.value} v{step.version} step"
+                )
         decoded = _decode(image)
         with decoded.image as source:
-            result = source if variant == 0 else _augmented(source, step, seed)
+            result = source if draw is None else _augmented(source, draw)
             return _encode(result, decoded)
 
 
-def _augmented(source: Image.Image, step: AugmentStep, seed: bytes) -> Image.Image:
-    if step.op is AugmentOp.HFLIP:
-        return ImageOps.mirror(source)
-    if step.op is AugmentOp.BRIGHTNESS_CONTRAST:
-        brightness, contrast = brightness_contrast_factors(seed, step.amount)
-        brightened = ImageEnhance.Brightness(source).enhance(brightness)
-        return ImageEnhance.Contrast(brightened).enhance(contrast)
-    return source.transpose(_QUARTER_TURNS[rot90_quarter_turns(seed)])
+def _augmented(source: Image.Image, draw: StepDraw) -> Image.Image:
+    match draw:
+        case HflipDraw():
+            return ImageOps.mirror(source)
+        case BrightnessContrastDraw(brightness=brightness, contrast=contrast):
+            brightened = ImageEnhance.Brightness(source).enhance(brightness)
+            return ImageEnhance.Contrast(brightened).enhance(contrast)
+        case Rot90Draw(quarter_turns=turns):
+            return source.transpose(_QUARTER_TURNS[turns])
+        case unreachable:
+            assert_never(unreachable)

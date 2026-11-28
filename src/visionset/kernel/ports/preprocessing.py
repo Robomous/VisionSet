@@ -1,7 +1,8 @@
+import inspect
 from collections.abc import Mapping
 from typing import Protocol, runtime_checkable
 
-from visionset.kernel.domain import Step
+from visionset.kernel.domain import Step, StepDraw
 from visionset.kernel.errors import PreprocessingDriverNotFound
 
 
@@ -19,15 +20,36 @@ class PreprocessingDriver(Protocol):
     ``apply`` turns one image's bytes into the transformed bytes for one step.
     ``seed`` is the variant's digest from ``variant_seed`` and ``variant`` its
     index; a resize, or any step applied to variant 0, is deterministic and
-    reads neither. Everything random must be derived from the seed through the
-    kernel's draw functions — ``brightness_contrast_factors`` and
-    ``rot90_quarter_turns``; ``hflip`` draws nothing and always mirrors — so
-    the pixels land where the geometry transform already put the annotations.
+    reads neither. For an augmentation of variants ``1..n`` the kernel passes
+    ``draw``, the step's entry in the variant's ``VariantPlan`` — the value the
+    geometry transform moved the annotations by — and a driver applies exactly
+    that. A driver whose ``apply`` takes no ``draw`` is still called, without
+    it, and must then derive the same draw with ``sample_step(step, seed)``.
     """
 
     step_kinds: frozenset[str]
 
-    def apply(self, step: Step, image: bytes, *, seed: bytes, variant: int) -> bytes: ...
+    def apply(
+        self,
+        step: Step,
+        image: bytes,
+        *,
+        seed: bytes,
+        variant: int,
+        draw: StepDraw | None = None,
+    ) -> bytes: ...
+
+
+def accepts_draw(driver: PreprocessingDriver) -> bool:
+    """Whether ``driver.apply`` takes ``draw``, the keyword the port gained with plans."""
+    try:
+        parameters = inspect.signature(driver.apply).parameters.values()
+    except (TypeError, ValueError):
+        return False
+    return any(
+        parameter.name == "draw" or parameter.kind is inspect.Parameter.VAR_KEYWORD
+        for parameter in parameters
+    )
 
 
 def driver_for(installed: Mapping[str, PreprocessingDriver], step_kind: str) -> PreprocessingDriver:

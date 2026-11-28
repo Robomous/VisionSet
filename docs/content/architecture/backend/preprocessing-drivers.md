@@ -35,7 +35,7 @@ seed helpers, never from a driver's own random source.
 | Member | What it is |
 | --- | --- |
 | `step_kinds: frozenset[str]` | Which step kinds this driver applies - `{"resize"}`, `{"augment"}`, or both |
-| `apply(step, image, *, seed, variant) -> bytes` | One image's bytes through one step, in the source's encoding |
+| `apply(step, image, *, seed, variant, draw=None) -> bytes` | One image's bytes through one step, in the source's encoding |
 
 `step` is a `ResizeStep` or an `AugmentStep`, the kernel's own models, and a driver reads the
 step's fields for what to do: `strategy`, `width`, `height` and `pad_value` for a resize;
@@ -44,15 +44,18 @@ them. `seed` is the variant's digest from `variant_seed` and `variant` its index
 the base image, so a step applied to it returns the bytes untouched apart from orientation and
 re-encoding, and a resize reads neither argument because it is deterministic.
 
-**Every draw comes from the kernel's seed helpers.** The two that draw are
-`brightness_contrast_factors(seed, amount)` and `rot90_quarter_turns(seed)`, both exported from
-`visionset.kernel.domain`; `hflip` draws nothing and always mirrors. A driver that read the seed
-any other way, or drew from anywhere else, would put its pixels where the geometry transform did
-not put the labels. The built-in `rot90` turns counter-clockwise because the kernel's
-`_rotated_once` does, and a driver applying that op must turn the same way. A preview in
-`showcase` mode passes `SHOWCASE_SEED` where a variant seed goes, and the two helpers answer it
-with the step at its declared strength - which is why a driver reads them rather than the seed's
-bytes, and why the port needs no second argument for it.
+**Every draw comes from the kernel's plan.** For an augmentation of variant 1 or later the kernel
+passes `draw`: the step's entry in the variant's `VariantPlan` - a `HflipDraw`,
+`BrightnessContrastDraw` or `Rot90Draw` - which is the value the geometry transform moved the
+labels by, and a driver applies exactly that. A driver whose `apply` takes no `draw` keyword is
+still called, without it, and must then derive the same value with `sample_step(step, seed)`,
+exported from `visionset.kernel.domain`; the kernel checks the signature the way it checks an
+exporter's for `assignment`. A driver that read the seed any other way, or drew from anywhere
+else, would put its pixels where the geometry transform did not put the labels. The built-in
+`rot90` turns counter-clockwise because the kernel's `_rotated_once` does, and a driver applying
+that op must turn the same way. A preview in `showcase` mode samples its plan from
+`SHOWCASE_SEED`, so the draws a driver is handed are the steps at their declared strength, and
+the port needs no second argument for it.
 
 The step grammar is closed. Which kinds exist, and which augmentation ops, is decided by the
 kernel's `Step` union, so a driver applies one of the kinds the kernel already names and cannot
@@ -116,7 +119,7 @@ wrong thing, which is a limit of the report's shape in this release rather than 
 ```python
 from typing import Final
 
-from visionset.kernel.domain import ResizeStep, ResizeStrategy, Step, canvas_fit
+from visionset.kernel.domain import ResizeStep, ResizeStrategy, Step, StepDraw, canvas_fit
 
 
 class MyResizeDriver:
@@ -124,7 +127,9 @@ class MyResizeDriver:
 
     step_kinds: Final = frozenset({"resize"})
 
-    def apply(self, step: Step, image: bytes, *, seed: bytes, variant: int) -> bytes:
+    def apply(
+        self, step: Step, image: bytes, *, seed: bytes, variant: int, draw: StepDraw | None = None
+    ) -> bytes:
         if not isinstance(step, ResizeStep):
             raise TypeError(f"{type(self).__name__} applies resize steps, not {step.kind!r}")
         import my_image_library  # the driver's own, loaded on first use
@@ -151,8 +156,11 @@ the content lands exactly where the geometry transform placed the annotations - 
 crop worked out in the driver would be a second spelling that could be half a pixel off. A
 negative offset puts part of the content off the canvas: pasting there is the `fill` and
 `center_crop` crop, and a library whose paste does not clip must crop the content first. An
-augmentation driver reads the seed the same way: `brightness_contrast_factors(seed, step.amount)`
-and `rot90_quarter_turns(seed)`, and mirrors on every `hflip` variant.
+augmentation driver applies the `draw` it is handed the same way - `brightness` then `contrast`,
+`quarter_turns` counter-clockwise, a mirror for every `hflip` - and samples one with
+`sample_step(step, seed)` only when called without it. Which `(op, version)` pairs the built-in
+driver applies is its `operations` attribute, held equal to the registry's `drivers` column by a
+test.
 
 Every refusal a driver raises derives from `VisionSetError` in
 [`kernel/errors.py`](../../../../src/visionset/kernel/errors.py); bytes that do not decode are

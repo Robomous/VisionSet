@@ -62,7 +62,6 @@ from visionset.kernel.domain import (
     Annotation,
     AnnotationSchema,
     Asset,
-    AugmentStep,
     ClassCompatibility,
     ClassCount,
     ClassExportStatus,
@@ -103,6 +102,7 @@ from visionset.kernel.domain import (
     recipe_hash,
     require_calibration,
     require_scan_frame,
+    sample_plan,
     sha256_hex,
     sha256_hex_of_stream,
     single_tag,
@@ -133,6 +133,7 @@ from visionset.kernel.ports import (
     Exporter,
     PreprocessingDriver,
     UnitOfWork,
+    accepts_draw,
     driver_for,
     supported_modalities_of,
 )
@@ -1289,21 +1290,40 @@ def transformed_bytes(
     """One image through the recipe's steps, for one variant.
 
     The resize step runs for every variant; augmentation steps run for
-    variants ``1..n`` only, each seeded from the recipe, the source and the
-    variant index so the pixels land where ``transform_manifest`` put the
-    labels. Shared by the export seam and the preview, which is what makes a
-    preview show what an export will write. ``showcase`` hands the drivers
-    ``SHOWCASE_SEED`` instead, the preview's way of showing each step at its
-    declared strength; an export never sets it.
+    variants ``1..n`` only, each applying its draw from the variant's
+    :func:`sample_plan` — the plan ``transform_manifest`` moved the labels by,
+    so the pixels land where the labels are. Shared by the export seam and the
+    preview, which is what makes a preview show what an export will write.
+    ``showcase`` samples the plan from ``SHOWCASE_SEED`` instead, the preview's
+    way of showing each step at its declared strength; an export never sets it.
 
     Raises:
         PreprocessingDriverNotFound: no driver in ``drivers`` applies a step.
     """
-    seed = SHOWCASE_SEED if showcase else variant_seed(recipe_hash(spec), content_hash, variant)
+    spec_hash = recipe_hash(spec)
+    seed = SHOWCASE_SEED if showcase else variant_seed(spec_hash, content_hash, variant)
+    plan = (
+        sample_plan(
+            spec,
+            content_hash=content_hash,
+            variant=variant,
+            showcase=showcase,
+            spec_hash=spec_hash,
+        )
+        if variant > 0
+        else None
+    )
     image = source
     for step in spec.steps:
-        if isinstance(step, ResizeStep) or (isinstance(step, AugmentStep) and variant > 0):
+        if isinstance(step, ResizeStep):
             image = driver_for(drivers, step.kind).apply(step, image, seed=seed, variant=variant)
+        elif plan is not None:
+            driver = driver_for(drivers, step.kind)
+            if accepts_draw(driver):
+                draw = plan.draw_for(step)
+                image = driver.apply(step, image, seed=seed, variant=variant, draw=draw)
+            else:
+                image = driver.apply(step, image, seed=seed, variant=variant)
     return image
 
 
