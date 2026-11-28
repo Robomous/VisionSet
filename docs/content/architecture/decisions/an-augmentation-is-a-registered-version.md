@@ -33,7 +33,8 @@ one sampled plan that every consumer reads.** Four consequences hold together:
   both read it, so neither draws on its own. The three legacy operations read the fixed words of
   the variant seed they always read (brightness word 1, contrast word 2, `rot90` word 3); an
   operation registered after them reads a `StepStream` derived from the seed and its own
-  `(op, version)` under a domain tag, by word index rather than by cursor.
+  `(op, version)` under a domain tag, by word index rather than by cursor, so under one variant
+  seed its draw never depends on which other steps the recipe holds.
 
 ## What it rules out
 
@@ -45,8 +46,7 @@ one sampled plan that every consumer reads.** Four consequences hold together:
   value, or the change is a migration with its own decision.
 - A draw from `random`, `secrets`, `numpy`, a clock or any other global source anywhere in the
   kernel domain; a test scans its imports. A draw read from a word another step already reads; a
-  new operation's words come from its own stream, so adding, removing or reordering a step never
-  re-rolls another.
+  new operation's words come from its own stream.
 - A pixel driver drawing its own parameters when the kernel handed it a draw.
 - An imaging library in the kernel. The registry describes operations; drivers implement them.
 
@@ -73,6 +73,8 @@ still called without it and must derive the same draw with `sample_step(step, se
 compatibility is held by a test. The registry declares `tasks`, `semantics` and `loss` as data
 only - deciding whether a recipe fits an export target from them is the compatibility resolver's
 job ([#1239](https://github.com/Robomous/VisionSet/issues/1239)), and exposing them on the wire
-is [#1240](https://github.com/Robomous/VisionSet/issues/1240). The REST, CLI and MCP bodies still
-carry no `version` or `params`; every recipe they accept is version 1 with no params, which is
-every recipe the registry can describe today.
+is [#1240](https://github.com/Robomous/VisionSet/issues/1240). MCP's recipe tools and the CLI's
+`--spec FILE` take the spec itself and so accept and validate `version` and `params`; the REST
+body and every read-back shape carry neither yet. Before a second version or a declared parameter
+is registered, #1240 must carry both on every surface, or a recipe written with them would read
+back as version 1.

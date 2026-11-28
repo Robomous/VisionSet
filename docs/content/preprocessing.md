@@ -71,7 +71,7 @@ identifies it. Three consequences follow, and all three are by design:
 | Step | Fields | What it does |
 | --- | --- | --- |
 | `resize` | `strategy` (`letterbox`, `stretch`, `fill` or `center_crop`), `width`, `height` (32 to 8192), `pad_value` (0 to 255, default 114) | Every exported image, base and variant, lands at `width × height`. `stretch` scales each axis on its own; `letterbox` keeps the aspect, scales to fit, and pads the rest with `pad_value` - the grey YOLO trainers letterbox with themselves. `fill` keeps the aspect, scales by `max(W'/W, H'/H)` so the image covers the canvas, and crops the overflow, centred. `center_crop` does not scale: it cuts a centred `width × height` window out of the source, and pads with `pad_value` along an axis where the source is smaller than the window. The two cropping strategies can cut labels down or away - see [Cropping](#cropping-what-survives-the-cut). |
-| `augment` | `op` (`hflip`, `brightness_contrast`, `rot90`), `amount` (above 0 and at most 0.5, default 0.2), `version` (default 1), `params` (default none) | One augmentation applied when generating variants. `amount` bounds the brightness and contrast factors and means nothing to the other two. `version` names which [registered version](#the-augmentation-registry) of the op runs, and `params` holds the parameters that version declares beyond `amount` - none, for every op today. Both are SDK-only for now; the REST, CLI and MCP bodies carry neither. |
+| `augment` | `op` (`hflip`, `brightness_contrast`, `rot90`), `amount` (above 0 and at most 0.5, default 0.2), `version` (default 1), `params` (default none) | One augmentation applied when generating variants. `amount` bounds the brightness and contrast factors and means nothing to the other two. `version` names which [registered version](#the-augmentation-registry) of the op runs, and `params` holds the parameters that version declares beyond `amount` - none, for every op today. The SDK, MCP's recipe tools and the CLI's `--spec FILE` accept and validate both, since they take the spec itself; the REST body, the CLI flag form and every surface's read-back carry neither yet, so only their legacy values are usable end to end - which is every value the registry holds today. |
 
 Cross-field rules, refused with the rule named: at most one `resize` step, and it comes first;
 each `op` at most once; an `augment` step needs `variants_per_asset` of at least 1; and
@@ -225,8 +225,9 @@ sampled once into a **plan**, `sample_plan(spec, content_hash=, variant=k)`: a f
 recipe, the image and `k` alone, and both the geometry transform and the pixel driver read it, so
 neither draws for itself. An operation registered after these three will read its own
 `StepStream` instead - an index-addressed sequence of words derived from the variant seed and the
-step's `(op, version)` under a domain tag - so adding, removing or reordering a step never
-re-rolls another. Nothing draws from a global random source. `hflip` draws nothing and always mirrors, for the reason `rot90` never
+step's `(op, version)` under a domain tag - so under one variant seed a step's draw never depends
+on which other steps the recipe holds. The seed digests the recipe hash, so changing the steps
+still changes every variant, as it always has. Nothing draws from a global random source. `hflip` draws nothing and always mirrors, for the reason `rot90` never
 draws zero turns: a variant that came out identical to its source would be the base image under a
 variant's name. The same recipe over the same bytes
 therefore draws the same variant on any machine, and the geometry arithmetic is exact

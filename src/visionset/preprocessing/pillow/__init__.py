@@ -234,7 +234,7 @@ class PillowAugmentDriver:
         """The variant this draw describes for one augmentation, in the source's format."""
         if not isinstance(step, AugmentStep):
             raise TypeError(f"{type(self).__name__} applies augment steps, not {step.kind!r}")
-        if variant > 0:
+        if variant != 0:
             draw = sample_step(step, seed) if draw is None else draw
             if (draw.op, draw.version) != (step.op, step.version):
                 raise ValueError(
@@ -243,7 +243,7 @@ class PillowAugmentDriver:
                 )
         decoded = _decode(image)
         with decoded.image as source:
-            result = source if draw is None or variant == 0 else _augmented(source, draw)
+            result = source if draw is None else _augmented(source, draw)
             return _encode(result, decoded)
 
 

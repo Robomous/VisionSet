@@ -458,7 +458,7 @@ class AugmentStep(BaseModel):
     kind: Literal["augment"] = "augment"
     op: AugmentOp
     amount: float = Field(default=AMOUNT.default, gt=AMOUNT.minimum, le=AMOUNT.maximum)
-    version: int = Field(default=1, ge=1, exclude_if=lambda value: value == 1)
+    version: int = Field(default=1, ge=1, strict=True, exclude_if=lambda value: value == 1)
     params: dict[str, StrictBool | StrictInt | StrictFloat] = Field(
         default_factory=dict, exclude_if=lambda value: not value
     )

@@ -263,3 +263,24 @@ def test_a_step_stays_hashable_and_equal_steps_hash_alike() -> None:
     one = AugmentStep(op=AugmentOp.HFLIP)
     assert hash(one) == hash(AugmentStep.model_validate({"op": "hflip", "version": 1}))
     assert len({one, AugmentStep(op=AugmentOp.HFLIP), AugmentStep(op=AugmentOp.ROT90)}) == 2
+
+
+def test_a_step_validates_params_against_its_registered_version(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setitem(AUGMENT_OPERATIONS, (AugmentOp.BRIGHTNESS_CONTRAST, 1), WITH_PARAMS)  # type: ignore[index]
+    step = AugmentStep.model_validate(
+        {"op": "brightness_contrast", "params": {"sigma": 2, "count": 2}}
+    )
+    assert step.params == {"count": 2, "sigma": 2.0}
+    assert list(step.model_dump(mode="json")["params"]) == ["count", "sigma"]
+    with pytest.raises(ValidationError, match=r"must lie in \(0.0, 3.0\]"):
+        AugmentStep.model_validate({"op": "brightness_contrast", "params": {"sigma": 4.0}})
+    with pytest.raises(ValidationError, match="valid boolean"):
+        AugmentStep.model_validate({"op": "brightness_contrast", "params": {"flag": "1"}})
+
+
+@pytest.mark.parametrize("version", [True, "1", 1.0])
+def test_a_version_is_a_strict_integer(version: object) -> None:
+    with pytest.raises(ValidationError):
+        AugmentStep.model_validate({"op": "hflip", "version": version})

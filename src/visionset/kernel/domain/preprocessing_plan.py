@@ -15,7 +15,9 @@ plan draws exactly what the seed-reading functions in
 :mod:`~visionset.kernel.domain.preprocessing` drew before plans existed. An
 operation registered after them reads its own :class:`StepStream` instead,
 derived from the seed and the step's ``(op, version)`` under a domain tag, so
-adding, removing or reordering a step never re-rolls another one's draws.
+under one variant seed a step's draw never depends on which other steps the
+recipe holds. (The seed itself digests the recipe hash, so changing the steps
+changes every seed, as it always has.)
 Nothing here keeps state, reads a clock or touches a global random source.
 """
 

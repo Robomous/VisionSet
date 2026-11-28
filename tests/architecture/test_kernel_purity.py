@@ -47,7 +47,7 @@ _DOMAIN_FORBIDDEN_IMPORTS = frozenset({"random", "secrets", "numpy", "PIL"})
 
 #: The one domain module that draws from the operating system's CSPRNG, on
 #: purpose: an access token must be unguessable, never reproducible.
-_DOMAIN_CSPRNG_EXCEPTIONS = {"token.py": frozenset({"secrets"})}
+_DOMAIN_CSPRNG_EXCEPTIONS = {Path("token.py"): frozenset({"secrets"})}
 
 
 def _imported_roots(source: str) -> set[str]:
@@ -63,11 +63,11 @@ def _imported_roots(source: str) -> set[str]:
 def test_the_kernel_domain_imports_no_random_source_and_no_imaging_library() -> None:
     domain = Path(visionset.kernel.domain.__file__).parent
     offenders = {
-        path.name: sorted(found)
+        str(path.relative_to(domain)): sorted(found)
         for path in sorted(domain.rglob("*.py"))
         if (
             found := (_imported_roots(path.read_text(encoding="utf-8")) & _DOMAIN_FORBIDDEN_IMPORTS)
-            - _DOMAIN_CSPRNG_EXCEPTIONS.get(path.name, frozenset())
+            - _DOMAIN_CSPRNG_EXCEPTIONS.get(path.relative_to(domain), frozenset())
         )
     }
     assert not offenders, f"kernel domain modules import a random source or pixels: {offenders}"
