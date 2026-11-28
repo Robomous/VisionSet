@@ -223,6 +223,13 @@ export {
 } from "./screens/SchemaEditor.js";
 export { AddImagesDialog, type AddImagesDialogProps } from "./screens/addImages/AddImagesDialog.js";
 export { HomeScreen, type HomeScreenProps } from "./screens/HomeScreen";
+export { SettingsScreen, type SettingsScreenProps } from "./screens/SettingsScreen.js";
+export {
+  DEFAULT_SETTINGS_SECTION,
+  isSettingsSection,
+  SETTINGS_SECTIONS,
+  type SettingsSection,
+} from "./screens/settingsSections.js";
 export { ApproveDialog, BatchProgressBar } from "./screens/BatchLifecycle.js";
 export { PromoteButton, type PromoteButtonProps } from "./screens/PromoteButton.js";
 export { defaultCorrectionName, promotionSummary } from "./screens/batchWords.js";
