@@ -103,9 +103,19 @@ describe("ShapeGlyph", () => {
 
   it("gives each geometry a drawing of its own", () => {
     // Without the mask ids, which differ between any two glyphs.
-    const offered = ["bbox", "obb", "polygon", "polyline", "classification_tag"].map((geometry) => drawn(geometry).innerHTML.replace(/shape-glyph-[\w-]+/g, ""));
+    const offered = ["bbox", "obb", "polygon", "polyline", "keypoints", "classification_tag"].map((geometry) => drawn(geometry).innerHTML.replace(/shape-glyph-[\w-]+/g, ""));
 
     expect(new Set(offered).size).toBe(offered.length);
+  });
+
+  it("draws keypoints as filled points on a skeleton, with nothing cut away", () => {
+    const svg = drawn("keypoints");
+
+    const marks = [...svg.querySelectorAll("[data-part='keypoint']")];
+    expect(marks).toHaveLength(5);
+    expect(marks.every((mark) => mark.getAttribute("fill") === COLOR)).toBe(true);
+    expect(outline(svg)?.getAttribute("fill")).toBe("none");
+    expect(svg.querySelector("mask")).toBeNull();
   });
 
   it("is drawn on the 28×20 grid a row renders it at", () => {

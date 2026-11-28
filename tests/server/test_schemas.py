@@ -14,6 +14,9 @@ import pytest
 from fastapi.testclient import TestClient
 from tests.server._api import api_client
 
+from visionset.kernel.domain import GeometryType
+from visionset.kernel.services import schema_service
+
 
 @pytest.fixture()
 def client(tmp_path: Path) -> Iterator[TestClient]:
@@ -186,17 +189,30 @@ def test_versions_are_listed_oldest_first(client: TestClient, project: str) -> N
 
 
 def test_a_class_with_an_unimplemented_geometry_is_422_unsupported_geometry(
-    client: TestClient, project: str
+    client: TestClient, project: str, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """`keypoints` is in the enum and has no implementation — a precise refusal.
+    """A member in the enum with no implementation gets a precise refusal.
 
-    The wire model keeps all eight members deliberately, so naming one gets this
-    rather than "not a valid enumeration member".
+    The wire model keeps every member deliberately, so naming one gets this
+    rather than "not a valid enumeration member". Every member is implemented
+    today, so the set is narrowed to keep the guard reachable.
     """
+    monkeypatch.setattr(
+        schema_service,
+        "IMPLEMENTED_GEOMETRIES",
+        frozenset(GeometryType) - {GeometryType.KEYPOINTS},
+    )
     response = post_version(client, project, a_class(geometries=("keypoints",)))
 
     assert response.status_code == 422
     assert response.json()["code"] == "UNSUPPORTED_GEOMETRY"
+
+
+def test_a_keypoints_class_is_accepted(client: TestClient, project: str) -> None:
+    response = post_version(client, project, a_class("face", geometries=("keypoints",)))
+
+    assert response.status_code == 201, response.text
+    assert version_of(response)["classes"][0]["geometries"] == ["keypoints"]
 
 
 def test_a_geometry_outside_the_enum_is_422_validation_error(
@@ -275,7 +291,13 @@ def test_attributes_and_colors_survive_the_round_trip(client: TestClient, projec
     body = client.get(f"/projects/{project}/schema").json()
 
     assert body["classes"] == [
-        {"name": "sign", "geometries": ["bbox"], "color": "#ff0000", "attributes": [attribute]}
+        {
+            "name": "sign",
+            "geometries": ["bbox"],
+            "color": "#ff0000",
+            "attributes": [attribute],
+            "keypoints": None,
+        }
     ]
 
 

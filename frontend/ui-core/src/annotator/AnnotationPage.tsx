@@ -213,6 +213,7 @@ import { AssetImage } from "./AssetImage";
 import { PointCloudStage } from "./PointCloudStage";
 import { useScanWorkspace } from "./scanWorkspace";
 import { carries3DLabels, labels3D, overlay3DFor, overlay3DNotice, type Overlay3DWithheld } from "./overlay3d";
+import { NO_KEYPOINTS, keypointOverlayFor } from "./keypointOverlay";
 import type { AssetProgress, WireAnnotation } from "./jobQueries";
 import type { BatchAsset } from "../screens/queries";
 import { FrameSession } from "./frameSession";
@@ -960,6 +961,11 @@ function Workspace({
   const overlay3dNotice = overlay3DNotice(carries3d, calibration, overlay3d);
 
   const snapshot = useAnnotatorSnapshot(store);
+  const schemaClasses = snapshot.document.schema.classes;
+  const keypoints = useMemo(
+    () => (isScan ? NO_KEYPOINTS : keypointOverlayFor(loaded, schemaClasses)),
+    [isScan, loaded, schemaClasses],
+  );
   const [hiddenIds, setHiddenIds] = useState<ReadonlySet<string>>(() => new Set());
   const [view, setView] = useState<Viewport | null>(null);
   const [helpOpen, setHelpOpen] = useState(false);
@@ -1914,8 +1920,9 @@ function Workspace({
     (annotation) => !isTagAnnotation(annotation),
   );
   const drawn = objects.length;
-  /** "All" for the rail's hide-all — the one there is: drawn objects only, never a tag. */
-  const allObjectsHidden = drawn > 0 && objects.every((one) => hiddenIds.has(one.id));
+  /** What the rail's hide-all hides: the drawn objects and the read-only keypoints, never a tag. */
+  const hideable = [...objects.map((one) => one.id), ...keypoints.map((one) => one.id)];
+  const allObjectsHidden = hideable.length > 0 && hideable.every((id) => hiddenIds.has(id));
   /** How many of the frame's labels a model wrote — what the status tag says beside a pre-label. */
   const fromModel = [...snapshot.document.annotations.values()].filter(
     (annotation) => annotation.provenance === "model",
@@ -1926,8 +1933,9 @@ function Workspace({
     () => (isScan && !scanEditor ? labels3D(loaded) : []),
     [isScan, loaded, scanEditor],
   );
-  // Every object on the frame: the drawn shapes, a scan's cuboids, and its 3D labels listed read-only.
-  const objectCount = drawn + (scan?.snapshot.document.annotations.size ?? 0) + scanLabels.length;
+  // Every object on the frame: the drawn shapes, a scan's cuboids, its 3D labels and the keypoints listed read-only.
+  const objectCount =
+    drawn + (scan?.snapshot.document.annotations.size ?? 0) + scanLabels.length + keypoints.length;
 
 
   /**
@@ -2705,9 +2713,8 @@ function Workspace({
           hand={{ active: handTool, onToggle: () => setHandTool((on) => !on) }}
           visibility={{
             allHidden: allObjectsHidden,
-            empty: objects.length === 0,
-            onToggle: () =>
-              setHiddenIds(allObjectsHidden ? new Set() : new Set(objects.map((one) => one.id))),
+            empty: hideable.length === 0,
+            onToggle: () => setHiddenIds(allObjectsHidden ? new Set() : new Set(hideable)),
           }}
           schema={store.document.schema}
           tool={toolFor(store.document, activeClass, activeTool)}
@@ -2916,6 +2923,7 @@ function Workspace({
                   onViewChange={setView}
                   hiddenIds={hiddenIds}
                   overlay3d={overlay3d.labels}
+                  keypoints={keypoints}
                   viewRef={viewRef}
                   // One per job, from `JobScreen` — the canvas would otherwise make
                   // its own and lose it on every navigation.
@@ -3404,6 +3412,7 @@ function Workspace({
           store={store}
           readOnly={readOnly}
           labels3D={scanLabels}
+          keypoints={keypoints}
           scan={
             scan === null
               ? null

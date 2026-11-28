@@ -43,6 +43,7 @@ from visionset.kernel.domain import (
     ClassificationGeometry,
     Cuboid3DGeometry,
     Geometry,
+    KeypointsGeometry,
     MaskGeometry,
     ObbGeometry,
     PolygonGeometry,
@@ -86,7 +87,8 @@ def intersection_over_union(one: BboxGeometry, other: BboxGeometry) -> float:
 def extent_of(geometry: Geometry) -> BboxGeometry | None:
     """The axis-aligned box a shape occupies, or ``None`` for a shape with no area.
 
-    A box is its own extent; a polygon or polyline is the box around its points.
+    A box is its own extent; a polygon, polyline or keypoints set is the box around
+    its points.
     A zero-width or zero-height path — a vertical polyline — has no box
     ``BboxGeometry`` will construct and answers ``None``, as does an empty mask, a
     classification tag, which occupies nothing, and a 3D label, which has no
@@ -101,7 +103,7 @@ def extent_of(geometry: Geometry) -> BboxGeometry | None:
             return mask_enclosing_box(geometry)
         case ClassificationGeometry() | Polyline3DGeometry() | Cuboid3DGeometry():
             return None
-        case PolygonGeometry() | PolylineGeometry():
+        case PolygonGeometry() | PolylineGeometry() | KeypointsGeometry():
             xs = [x for x, _ in geometry.points]
             ys = [y for _, y in geometry.points]
             width = max(xs) - min(xs)

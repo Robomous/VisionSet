@@ -67,7 +67,10 @@ class AnnotationInput(BaseModel):
             "2 visible); omit it when unknown. An obb is 'cx', 'cy' (its centre), "
             "'width', 'height' and 'angle' in radians, and is stored canonical. "
             "A mask is 'size' [height, width], equal to the asset's, and 'counts', "
-            "the COCO compressed RLE string (column-major), stored canonical."
+            "the COCO compressed RLE string (column-major), stored canonical. "
+            "Keypoints are 'points' in order with the polyline's optional "
+            "'visibility'; when the class declares a keypoint spec, send exactly one "
+            "point per name, in the spec's order."
         )
     )
     attributes: dict[str, AttributeValue] = Field(

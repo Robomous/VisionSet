@@ -10,6 +10,7 @@ from tests.kernel.test_point_cloud_modality import BOX, SCAN
 from tests.kernel.test_release_tracks import _asset, _observing
 
 from visionset.kernel.domain import (
+    KEYPOINTS_MANIFEST_VERSION,
     MANIFEST_VERSION,
     MASK_MANIFEST_VERSION,
     OBB_MANIFEST_VERSION,
@@ -64,7 +65,8 @@ def test_a_version_7_document_reads_and_hashes_as_it_was_published() -> None:
     assert manifest_version_for(manifest.assets, manifest.tracks) == TRACKED_MANIFEST_VERSION
     assert SEQUENCED_MANIFEST_VERSION == OBB_MANIFEST_VERSION + 1 == 9
     assert MASK_MANIFEST_VERSION == SEQUENCED_MANIFEST_VERSION + 1
-    assert MANIFEST_VERSION == SCAN_SEQUENCE_MANIFEST_VERSION == MASK_MANIFEST_VERSION + 1
+    assert SCAN_SEQUENCE_MANIFEST_VERSION == MASK_MANIFEST_VERSION + 1
+    assert MANIFEST_VERSION == KEYPOINTS_MANIFEST_VERSION == SCAN_SEQUENCE_MANIFEST_VERSION + 1
 
 
 def test_sources_and_unknown_timing_need_version_9() -> None:

@@ -1063,14 +1063,14 @@ as this section's worked example of declared-but-not-drawable - #223 shipped the
 geometry end to end and stopped short of the tool - and it is a live button now.
 
 The rule that example demonstrated is kept as a mechanism, and `PENDING_TOOLS` holds it
-with `mask` in it: **a geometry listed there that a schema declares gets a disabled
+with `mask` and `keypoints` in it: **a geometry listed there that a schema declares gets a disabled
 button carrying the reason**, placed after every usable tool, never a gap. A missing
 control would say "this schema has no lanes", which is false, and it is exactly the
 ambiguity `ui-capabilities` forbids: absent and not-yet-available look identical and
-only one of them is true. The record holds `mask`, so a schema declaring one gets that
-button, with the reason that masks cannot be drawn or edited here yet and stored masks are
-kept as they are. `keypoints` is still refused when a schema version is written, so no
-schema declares it and it gets no button. A class declaring `polyline_3d` or `cuboid_3d` gets **no** button on
+only one of them is true. A schema declaring `mask` gets that button, with the reason that
+masks cannot be drawn or edited here yet and stored masks are kept as they are. A schema
+declaring `keypoints` gets one too: there is no tool to place or move keypoints yet, and
+stored keypoints are drawn read-only and kept as they are. A class declaring `polyline_3d` or `cuboid_3d` gets **no** button on
 an image - those two are drawn on a scan, in its own
 [editor](ui/annotator.md#editing-cuboids-and-polylines-on-a-scan), and drawn read-only
 on an image (see [below](#3d-labels-are-drawn-not-edited)).
@@ -1914,11 +1914,14 @@ once it is a whole six-digit colour - and **Use the name's colour** goes back to
 **Shortcut**, the class's place in the list, picked as a number, each naming the class whose place it
 takes; the first nine places are the annotator's hotkeys 1 to 9, and the row says which key picks
 the class or whose place it would take. A class's position is part of the published version, so
-moving it is an unsaved change like any other. **Drawn as**, a segmented row of the seven shapes as
-the annotator draws them - box, rotated box, polygon, polyline and tag for images, 3D box and 3D polyline for
-point-cloud scans - their names said under it; a class may accept several, image and scan shapes
-together (each label is checked against its own asset when it is written), and the last one
-that is on cannot be switched off, and says why. When editing, **In use** says what an edit costs. A
+moving it is an unsaved change like any other. **Drawn as**, a segmented row of the shapes the
+server offers, as the annotator draws them - box, rotated box, polygon, mask, keypoints, polyline and
+tag for images, 3D box and 3D polyline for point-cloud scans - their names said under it; a class may
+accept several, image and scan shapes together (each label is checked against its own asset when it
+is written), and the last one that is on cannot be switched off, and says why. A class with a
+keypoint spec shows it read-only under **Drawn as**: **Keypoints**, its point names in order, and
+**Skeleton**, each edge as a pair of names; a keypoints class without one says so. The spec is
+written over the API, and every edit here carries it through unchanged. When editing, **In use** says what an edit costs. A
 class that is not used yet changes freely (*Not used yet, so any change here is free.*). A class in
 use, counted as its labels on its frames, cannot be removed, and cannot lose a shape its labels are
 drawn as, until those labels are cleared.

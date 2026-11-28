@@ -412,9 +412,9 @@ def test_a_ring_dipping_out_and_back_in_splits_into_its_pieces() -> None:
 # --- what a cropping resize carries -------------------------------------------
 
 
-def test_the_cropping_strategies_declare_every_pixel_geometry_but_polyline_obb_and_mask() -> None:
+def test_the_cropping_strategies_declare_every_pixel_geometry_but_paths_points_and_masks() -> None:
     resizable = PIXEL_GEOMETRIES - {GeometryType.MASK}
-    expected = resizable - {GeometryType.POLYLINE, GeometryType.OBB}
+    expected = resizable - {GeometryType.POLYLINE, GeometryType.OBB, GeometryType.KEYPOINTS}
     assert RESIZE_GEOMETRIES[ResizeStrategy.FILL] == expected
     assert RESIZE_GEOMETRIES[ResizeStrategy.CENTER_CROP] == expected
     assert RESIZE_GEOMETRIES[ResizeStrategy.STRETCH] == resizable - {GeometryType.OBB}

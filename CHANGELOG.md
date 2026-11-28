@@ -13,6 +13,22 @@ nothing was being distributed. This is the first version that is.
 
 ### Added
 
+- **2D keypoints: the `keypoints` geometry and the class keypoint spec.** A class may declare `keypoints`, an ordered
+  list of at least one finite `[x, y]` point in asset pixels, with the polyline's optional per-point `visibility`
+  (`0` unlabeled, `1` occluded, `2` visible, strict integers, absent when unknown). Position is the keypoint's
+  identity: nothing sorts, deduplicates, pads or truncates, and two keypoints may share a pixel. A label needs at
+  least one point inside the asset's frame (`ANNOTATION_GEOMETRY_OUT_OF_BOUNDS` otherwise) and is refused on a
+  point-cloud scan. A class declaring `keypoints` may carry a spec, `{names, skeleton}`: ordered, stripped,
+  case-insensitively unique names and undirected skeleton edges as index pairs, validated at publish and pinned
+  with the schema version. With a spec an annotation must carry exactly `len(names)` points, else 422
+  `KEYPOINT_COUNT_MISMATCH`; without one any count of at least one is accepted. Adding a spec or changing the names
+  is destructive for the class's keypoints annotations; removing it or changing only the skeleton is additive.
+  `stretch`, `letterbox`, `hflip` and `rot90` move keypoints and the preview's size cap scales them, keeping order
+  and visibility; `fill` and `center_crop` refuse them. `hflip` mirrors coordinates only and does not swap
+  left- and right-named keypoints. No exporter writes keypoints: every export reports them dropped. The SDK, REST
+  and MCP carry them; the annotator draws them read-only and has no tool to place them yet. A release holding a
+  keypoints label or a class with a spec is a version-12 manifest; every other release keeps its version, bytes
+  and hash (#1158).
 - **TensorFlow Object Detection TFRecord import and export as `tfrecord`.** The Object Detection API's `tf.train.Example`
   dataset schema, not an arbitrary TFRecord, read and written without TensorFlow or protobuf: the record framing with
   its masked CRC32C and the protobuf wire format are implemented in the format package. The exporter writes a

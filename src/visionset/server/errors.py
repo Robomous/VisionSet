@@ -113,6 +113,7 @@ from visionset.kernel import (
     JobFinished,
     JobNotComplete,
     JobNotFound,
+    KeypointCountMismatch,
     LabelClassNotInSchema,
     LocalInferenceUnavailable,
     LossyExportNotConsented,
@@ -463,6 +464,7 @@ _HTTP: Final[dict[type[VisionSetError], _Http]] = {
     InvalidAnnotation: _Http(422),
     LabelClassNotInSchema: _Http(422),
     DisallowedGeometry: _Http(422),
+    KeypointCountMismatch: _Http(422),
     AnnotationGeometryOutOfBounds: _Http(422),
     # 422 like its five siblings, not 409, and the split is the one this table is
     # built on. A 409 says "the resource's state refuses this; change the state

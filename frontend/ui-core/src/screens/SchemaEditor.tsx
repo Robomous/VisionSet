@@ -117,6 +117,7 @@ import { classBlockers, describeClassCount, refusalProse } from "../data/refusal
 import { Alert, AlertDescription, AlertTitle, Button, Dialog, DialogContent, DialogDescription, DialogFooter, DialogTitle, Kbd, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, Tooltip, TooltipContent, TooltipTrigger, cn } from "@robomous/ui-core";
 import { ClassFields, ClassReadout } from "../patterns/ClassFields";
 import { swatchOf } from "../patterns/classFieldsRules";
+import { keypointSpecProblems } from "../patterns/keypointSpecRules";
 import { PAGE_INSET } from "../patterns/ListPage";
 import { PageStatus } from "../patterns/PageStatus";
 import { ViewSwitch } from "../patterns/project/ViewSwitch";
@@ -438,6 +439,7 @@ export function SchemaEditor({
   });
 
   const classes = showing.classes;
+  const specProblems = useMemo(() => keypointSpecProblems(classes), [classes]);
   const failure = publish.isError ? asApiError(publish.error) : null;
   const publishBlockers = failure?.code === WOULD_ORPHAN ? classBlockers(failure.detail) : null;
   const shownBlockers = flow.kind === "blockers" ? flow.blockers : publishBlockers;
@@ -873,6 +875,15 @@ export function SchemaEditor({
       toast("Every class needs a name");
       return;
     }
+    // A draft may hold a keypoint spec publish refuses; said before the press
+    // rather than as the 422 it would otherwise come back as.
+    const unpublishable = specProblems[0];
+    if (unpublishable !== undefined) {
+      setFilter("");
+      openClass({ kind: "edit", index: unpublishable.index });
+      toast("A keypoint spec would not publish");
+      return;
+    }
     saveInFlight.current = true;
     setSaving(true);
     // Publishing is now publishing the *draft*, and the draft on the server has
@@ -1209,6 +1220,16 @@ export function SchemaEditor({
             </Notice>
           )}
 
+          {specProblems.length > 0 && (
+            <Notice tone="error" testId="schema-keypoint-spec-error" title="This draft's keypoint specs would not publish.">
+              {specProblems.map(({ name, index, problem }) => (
+                <span key={index} className="block" data-testid={`schema-keypoint-spec-error-${index}`}>
+                  {name === "" ? "An unnamed class" : `“${name}”`}: {problem}
+                </span>
+              ))}
+              <span className="block">Untick Keypoints on a class to drop its spec, or correct the spec through the API.</span>
+            </Notice>
+          )}
           {flow.kind === "preview-error" && (
             <Notice tone="error" testId="schema-preview-error" title="Could not preview this change.">
               {refusalProse(flow.error)}

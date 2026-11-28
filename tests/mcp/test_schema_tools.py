@@ -23,6 +23,9 @@ from tests.mcp._flow import (
     tool_schemas,
 )
 
+from visionset.kernel.domain import GeometryType
+from visionset.kernel.services import schema_service
+
 CAR_ONLY: list[dict[str, Any]] = [{"name": "car", "geometries": ["bbox"]}]
 BOTH: list[dict[str, Any]] = [*SCHEMA_CLASSES, {"name": "car", "geometries": ["bbox"]}]
 
@@ -146,6 +149,13 @@ def test_a_change_that_would_orphan_annotations_offers_no_flag_at_all(
 def test_a_class_bound_to_an_unimplemented_geometry_is_refused(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
+    # Every member is implemented today, so the set is narrowed to keep the guard
+    # reachable.
+    monkeypatch.setattr(
+        schema_service,
+        "IMPLEMENTED_GEOMETRIES",
+        frozenset(GeometryType) - {GeometryType.KEYPOINTS},
+    )
     named = project(monkeypatch, tmp_path)
     refusal = error(
         call(
@@ -154,7 +164,24 @@ def test_a_class_bound_to_an_unimplemented_geometry_is_refused(
             classes=[{"name": "face", "geometries": ["keypoints"]}],
         )
     )
+    assert refusal["code"] == "UNSUPPORTED_GEOMETRY"
     assert "keypoints" in refusal["message"]
+
+
+def test_a_class_bound_to_keypoints_is_accepted(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    named = project(monkeypatch, tmp_path)
+    published = payload(
+        call(
+            "create_schema_version",
+            project=named,
+            classes=[{"name": "face", "geometries": ["keypoints"]}],
+        )
+    )
+    (face,) = published["published"]["classes"]
+    assert face["geometries"] == ["keypoints"]
+    assert face["keypoints"] is None
 
 
 def test_the_domain_refuses_a_malformed_class_before_the_body_runs(

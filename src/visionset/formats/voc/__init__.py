@@ -52,6 +52,7 @@ from visionset.kernel.domain import (
     ClassificationGeometry,
     Cuboid3DGeometry,
     GeometryType,
+    KeypointsGeometry,
     Manifest,
     ManifestAnnotation,
     ManifestAsset,
@@ -286,6 +287,7 @@ def _as_box(
         case (
             ClassificationGeometry()
             | PolylineGeometry()
+            | KeypointsGeometry()
             | Polyline3DGeometry()
             | Cuboid3DGeometry()
             | MaskGeometry()

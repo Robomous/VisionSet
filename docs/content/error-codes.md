@@ -16,7 +16,7 @@ tables the surfaces use, so it cannot drift from what they answer.
 The framework's own codes - `VALIDATION_ERROR`, `NOT_FOUND`, `METHOD_NOT_ALLOWED`, `UNAUTHORIZED`
 and `INTERNAL_ERROR` - are not raised by the kernel and are described in [api.md](api.md).
 
-126 codes, alphabetical.
+127 codes, alphabetical.
 
 | Code | Status | Meaning | Remedy | Retry with |
 | --- | --- | --- | --- | --- |
@@ -89,6 +89,7 @@ and `INTERNAL_ERROR` - are not raised by the kernel and are described in [api.md
 | `JOB_FINISHED` | 409 | Work was attempted on a job that has already been completed. |  |  |
 | `JOB_NOT_COMPLETE` | 409 | A job was told to complete while one of its assets is still unsettled. | Every asset of the job must be annotated or skipped first: list what is left with `next_pending_assets`, settle each with `add_annotations` or `set_asset_progress`, then call `complete_job` again. |  |
 | `JOB_NOT_FOUND` | 404 | No annotation job with that id lives in this workspace. |  |  |
+| `KEYPOINT_COUNT_MISMATCH` | 422 | A keypoints annotation does not carry one point per keypoint its class names. |  |  |
 | `LABEL_CLASS_NOT_IN_SCHEMA` | 422 | The annotation names a class the pinned version does not declare. |  |  |
 | `LOCAL_INFERENCE_UNAVAILABLE` | 500 | Running a model locally needs the optional runtime, and it is absent. |  |  |
 | `LOSSY_EXPORT_NOT_CONSENTED` | 409 | The chosen format cannot carry everything this release holds. | Call `check_export` with the same release and format to see exactly which classes would be dropped and how many annotations that is, then re-run `export_release` with `allow_lossy=true` to accept the loss. | `allow_lossy` |

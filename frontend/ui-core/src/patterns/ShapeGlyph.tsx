@@ -88,6 +88,23 @@ const LINE_3D: readonly Point[] = [
   [23.75, 4.25],
 ];
 
+/** A figure's named points: a head, two shoulders and two hips. */
+const KEYPOINTS: readonly Point[] = [
+  [14, 4.25],
+  [8.75, 9.75],
+  [19.25, 9.75],
+  [10.75, 15.75],
+  [17.25, 15.75],
+];
+
+/** The skeleton joining `KEYPOINTS`, as index pairs. */
+const SKELETON: readonly (readonly [number, number])[] = [
+  [0, 1],
+  [0, 2],
+  [1, 3],
+  [2, 4],
+];
+
 /** What a geometry is drawn from: its outline's corners, and how each is held. */
 const NODES: Partial<Record<GeometryType, { readonly at: readonly Point[]; readonly kind: "grip" | "vertex" }>> = {
   bbox: { at: BOX, kind: "grip" },
@@ -142,6 +159,23 @@ export function ShapeGlyph({ geometry, color, className }: ShapeGlyphProps): JSX
           <line key={`stalk-${x}`} x1={x} y1={y + 2.5} x2={x} y2={18.25} {...stroke} strokeWidth={1} strokeDasharray="1.25 1.5" strokeOpacity={0.6} />
         ))}
         <polyline data-part="outline" points={points(LINE_3D)} fill="none" {...stroke} />
+      </>
+    );
+  } else if (geometry === "keypoints") {
+    // Filled points on a faint skeleton, as the canvas draws visible keypoints:
+    // nothing is held, so nothing is cut away.
+    outline = (
+      <>
+        <path
+          data-part="outline"
+          d={SKELETON.map(([from, to]) => `M${points([KEYPOINTS[from]])} L${points([KEYPOINTS[to]])}`).join(" ")}
+          fill="none"
+          {...stroke}
+          strokeOpacity={0.7}
+        />
+        {KEYPOINTS.map(([x, y]) => (
+          <circle key={`${x},${y}`} data-part="keypoint" cx={x} cy={y} r={NODE + 0.5} fill={color} />
+        ))}
       </>
     );
   } else if (geometry === "classification_tag") {

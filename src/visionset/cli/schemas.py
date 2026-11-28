@@ -10,6 +10,15 @@ the same document ``POST /projects/{id}/schema/versions`` takes::
                                   "required": true, "options": null,
                                   "default": false}]}]}
 
+A class accepting ``keypoints`` may also carry a keypoint spec, naming its points
+in order and joining them with skeleton edges given as index pairs::
+
+    {"name": "face", "geometries": ["keypoints"],
+     "keypoints": {"names": ["left_eye", "right_eye", "nose"],
+                   "skeleton": [[0, 1], [0, 2], [1, 2]]}}
+
+Every keypoints annotation of that class then carries exactly one point per name.
+
 ``geometries`` is a set: a class labeled as a box on some frames and as a polygon
 on others is one class. A document written before that was plural may still spell
 it ``"geometry": "bbox"``, and ``LabelClass`` reads one — so an old schema file
@@ -307,7 +316,9 @@ def schema_apply(
     """Add the next schema version from a JSON file.
 
     The smallest file is {"classes": [{"name": "sign", "geometries": ["bbox"]}]}.
-    It is the same document REST takes as the body of a new schema version.
+    It is the same document REST takes as the body of a new schema version, so a
+    keypoints class may carry "keypoints": {"names": [...], "skeleton": [[0, 1]]}
+    to fix how many points each of its annotations has and how they connect.
 
     Versions are 1..N and none of them ever changes, so this *adds* one — there
     is no edit and no rollback. Applying the document already in force adds

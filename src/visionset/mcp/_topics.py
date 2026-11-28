@@ -238,6 +238,11 @@ attributes or another geometry to a class is additive and needs no flag. Matchin
 against the current version is by exact class name, so a rename reads as one removal
 plus one addition.
 
+A keypoint spec counts too. Adding one to a class that already accepts keypoints, or
+renaming, adding, removing or reordering its `names`, is destructive for that class's
+keypoints annotations, and refused outright while any exist. Removing the spec, or
+changing only its `skeleton`, is additive.
+
 ## `is_refused` is the answer no flag changes
 
 True means annotations already exist under a class the proposal drops, so
@@ -287,6 +292,12 @@ asset's own pixels, never normalized. `type` selects the shape:
   background. The runs must sum to `height * width`; uncompressed run lists are not
   accepted. Stored canonical, so a read may spell `counts` differently from the write.
   One mask is one annotation of one class: a class-id map becomes one mask per class.
+- `keypoints`: `points`, at least one `[x, y]` pair in order. The position is the
+  point's identity: points are never reordered, deduplicated, padded or truncated, and
+  two may share a pixel. When the class declares a keypoint spec (`get_schema`), send
+  exactly one point per name in the spec's order, or the write is refused with
+  `KEYPOINT_COUNT_MISMATCH`; without a spec, any count of at least one is accepted.
+  Optional `visibility` as for a polyline, below. The skeleton constrains no point.
 - `classification_tag`: no coordinates.
 
 The 3D frame depends on the asset's modality; see the next two sections.
@@ -313,12 +324,14 @@ heading is `(-sin yaw, 0, cos yaw)`: +z at `0`, not the +x an image uses on the 
 
 A scan needs no calibration, and `set_calibration` on one is refused with
 `CALIBRATION_NOT_APPLICABLE`. A 3D label on a scan whose source declares no frame is
-`CALIBRATION_MISSING`. A scan has no pixels: `bbox`, `obb`, `polygon`, `polyline` and
-`mask` on one are refused with `INVALID_ANNOTATION`; `classification_tag` is accepted.
+`CALIBRATION_MISSING`. A scan has no pixels: `bbox`, `obb`, `polygon`, `polyline`,
+`keypoints` and `mask` on one are refused with `INVALID_ANNOTATION`;
+`classification_tag` is accepted.
 
-## Polyline vertex visibility
+## Vertex visibility
 
-A polyline or a `polyline_3d` may carry `visibility`, one state per point and in the same order:
+A polyline, a `polyline_3d` or a `keypoints` may carry `visibility`, one state per point and
+in the same order:
 `0` unlabeled (nobody judged the vertex), `1` occluded (judged, and hidden), `2`
 visible (judged, and seen). Only those integers are accepted; `true`, `"2"` and
 `2.0` are refused, and so is `null`.

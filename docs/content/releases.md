@@ -75,8 +75,9 @@ express the release**: **3** for a release of images with no 3D label, **4** for
 any, **5** for one that holds a point-cloud asset, **6** for one that holds an asset with a
 group label, **7** for one that holds an annotation a track observes, **8** for one that
 holds a rotated box (`obb`), **9** for one that holds an asset of an image-sequence source or
-an observation whose timing is unknown, **10** for one that holds a `mask`, and **11** for one
-that holds an asset of a point-cloud sequence or a track observing a scan.
+an observation whose timing is unknown, **10** for one that holds a `mask`, **11** for one
+that holds an asset of a point-cloud sequence or a track observing a scan, and **12** for one
+that holds a `keypoints` label or whose classes carry a keypoint spec.
 
 | Version | Since | What changed |
 | --- | --- | --- |
@@ -91,6 +92,7 @@ that holds an asset of a point-cloud sequence or a track observing a scan.
 | 9 | #1199 | `sources`, each image-sequence source with the occurrences the release holds; a `timestamp` may be `null` |
 | 10 | #1162 | the `mask` geometry, a run-length encoded raster |
 | 11 | #1189 | a source's `kind`, `point_cloud_sequence` for a point-cloud sequence, and tracks over its scans |
+| 12 | #1158 | the `keypoints` geometry and the class keypoint spec |
 
 An older document keeps the version it was written with, so its bytes and its hash never move and
 `verify` still passes. Version 3 changes no existing bytes: a polyline with unknown visibility
@@ -174,6 +176,15 @@ manifest listing a point-cloud sequence, or a track observing a scan, under a ve
 not load, and neither does a source listing an asset of the other modality. The formats that write
 tracks, [`mot`](#the-motchallenge-format) and [`cvat-video`](#the-cvat-xml-formats), open images
 only: they report the scans **dropped** by modality and write nothing for them.
+
+Version 12 changes no existing bytes either. A release holding no `keypoints` label, and none of
+whose classes carries a keypoint spec, keeps the version, bytes and hash it had; a manifest using
+either under a version below 12 does not load, and a build that predates them refuses a version-12
+manifest. The spec is part of each class in the manifest, omitted when unset, and the release gate
+re-checks every keypoints label's count against the active schema (see
+[schemas](schemas.md#a-keypoints-class-may-name-its-points-and-join-them)). No exporter writes
+keypoints: every export reports each such class **dropped**, never degraded, and needs lossy consent
+for it.
 
 Publishing content that needs a newer version than an older build wrote still produces a
 different manifest hash, because the version number is part of the document.
@@ -1608,7 +1619,7 @@ carries the identical body under `detail.compatibility`.
 | `LossyExportNotConsented` | The chosen format cannot carry everything the release holds, and the caller has not passed `allow_lossy`. Raised when the format declares itself lossy **or** when this release's own report is not clean, and it carries that report. Retryable with the flag, which is why a client must branch on the code and never on the 409. |
 | `PreprocessingRecipeNotFound` | The release's project has no recipe under the name the export was given. Resolved through the project the release's dataset hangs off. |
 | `AugmentationRequiresSplit` | The recipe asks for augmented variants and the release was published without a split recipe, so there is no train fold to augment. Raised at pre-flight and again at export. |
-| `PreprocessingStepUnsupportedGeometry` | A recipe step cannot transform a geometry the export would carry - `rot90` over a polyline, or a resize, flip or quarter turn over a 3D label. A refusal, never a consent: a label that cannot follow its image is not something to consent to. Carries the step, the geometry and the first asset. |
+| `PreprocessingStepUnsupportedGeometry` | A recipe step cannot transform a geometry the export would carry - `rot90` over a polyline, a `fill` or `center_crop` resize over a polyline, a rotated box or keypoints, or a resize, flip or quarter turn over a 3D label. A refusal, never a consent: a label that cannot follow its image is not something to consent to. Carries the step, the geometry and the first asset. |
 | `PreprocessingDriverNotFound` | No installed driver applies a step kind the recipe holds. A fact about the installation rather than the request, 500 over HTTP; the message lists the kinds that are installed. |
 
 

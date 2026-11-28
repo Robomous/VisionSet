@@ -45,6 +45,12 @@ export const checkClassificationBody: Check<Schemas["ClassificationBody"]> =
 export const checkCuboid3DBody: Check<Schemas["Cuboid3DBody"]> =
   /*#__PURE__*/ object({ "center": [true, tuple([isNumber, isNumber, isNumber] as const)], "size": [true, tuple([isNumber, isNumber, isNumber] as const)], "type": [true, lit("cuboid_3d")], "yaw": [true, isNumber] } as const);
 
+export const checkVertexVisibility: Check<Schemas["VertexVisibility"]> =
+  /*#__PURE__*/ oneOf([0, 1, 2] as const);
+
+export const checkKeypointsBody: Check<Schemas["KeypointsBody"]> =
+  /*#__PURE__*/ object({ "points": [true, arrayOf(tuple([isNumber, isNumber] as const))], "type": [true, lit("keypoints")], "visibility": [false, arrayOf(checkVertexVisibility)] } as const);
+
 export const checkMaskBody: Check<Schemas["MaskBody"]> =
   /*#__PURE__*/ object({ "counts": [true, isString], "size": [true, tuple([isInteger, isInteger] as const)], "type": [true, lit("mask")] } as const);
 
@@ -54,9 +60,6 @@ export const checkObbBody: Check<Schemas["ObbBody"]> =
 export const checkPolygonBody: Check<Schemas["PolygonBody"]> =
   /*#__PURE__*/ object({ "points": [true, arrayOf(tuple([isNumber, isNumber] as const))], "type": [true, lit("polygon")] } as const);
 
-export const checkVertexVisibility: Check<Schemas["VertexVisibility"]> =
-  /*#__PURE__*/ oneOf([0, 1, 2] as const);
-
 export const checkPolyline3DBody: Check<Schemas["Polyline3DBody"]> =
   /*#__PURE__*/ object({ "points": [true, arrayOf(tuple([isNumber, isNumber, isNumber] as const))], "type": [true, lit("polyline_3d")], "visibility": [false, arrayOf(checkVertexVisibility)] } as const);
 
@@ -64,7 +67,7 @@ export const checkPolylineBody: Check<Schemas["PolylineBody"]> =
   /*#__PURE__*/ object({ "points": [true, arrayOf(tuple([isNumber, isNumber] as const))], "type": [true, lit("polyline")], "visibility": [false, arrayOf(checkVertexVisibility)] } as const);
 
 export const checkAnnotationOut: Check<Schemas["AnnotationOut"]> =
-  /*#__PURE__*/ object({ "asset_id": [true, isString], "attributes": [true, mapOf(either([isBoolean, isNumber, isString] as const))], "confidence": [true, either([isNumber, isNull] as const)], "geometry": [true, tagged("type", { "bbox": checkBboxBody, "classification_tag": checkClassificationBody, "cuboid_3d": checkCuboid3DBody, "mask": checkMaskBody, "obb": checkObbBody, "polygon": checkPolygonBody, "polyline": checkPolylineBody, "polyline_3d": checkPolyline3DBody })], "id": [true, isString], "job_id": [true, either([isString, isNull] as const)], "label_class": [true, isString], "model_ref": [true, either([isString, isNull] as const)], "provenance": [true, oneOf(["human", "model", "import"] as const)], "schema_version": [true, isInteger] } as const);
+  /*#__PURE__*/ object({ "asset_id": [true, isString], "attributes": [true, mapOf(either([isBoolean, isNumber, isString] as const))], "confidence": [true, either([isNumber, isNull] as const)], "geometry": [true, tagged("type", { "bbox": checkBboxBody, "classification_tag": checkClassificationBody, "cuboid_3d": checkCuboid3DBody, "keypoints": checkKeypointsBody, "mask": checkMaskBody, "obb": checkObbBody, "polygon": checkPolygonBody, "polyline": checkPolylineBody, "polyline_3d": checkPolyline3DBody })], "id": [true, isString], "job_id": [true, either([isString, isNull] as const)], "label_class": [true, isString], "model_ref": [true, either([isString, isNull] as const)], "provenance": [true, oneOf(["human", "model", "import"] as const)], "schema_version": [true, isInteger] } as const);
 
 export const checkAnnotationPage: Check<Schemas["AnnotationPage"]> =
   /*#__PURE__*/ object({ "items": [true, arrayOf(checkAnnotationOut)], "total": [true, isInteger] } as const);
@@ -234,6 +237,9 @@ export const checkClassificationGeometry: Check<Schemas["ClassificationGeometry"
 export const checkCuboid3DGeometry: Check<Schemas["Cuboid3DGeometry"]> =
   /*#__PURE__*/ object({ "center": [true, tuple([isNumber, isNumber, isNumber] as const)], "size": [true, tuple([isNumber, isNumber, isNumber] as const)], "type": [true, lit("cuboid_3d")], "yaw": [true, isNumber] } as const);
 
+export const checkKeypointsGeometry: Check<Schemas["KeypointsGeometry"]> =
+  /*#__PURE__*/ object({ "points": [true, arrayOf(tuple([isNumber, isNumber] as const))], "type": [true, lit("keypoints")], "visibility": [false, arrayOf(checkVertexVisibility)] } as const);
+
 export const checkMaskGeometry: Check<Schemas["MaskGeometry"]> =
   /*#__PURE__*/ object({ "counts": [true, isString], "size": [true, tuple([isInteger, isInteger] as const)], "type": [true, lit("mask")] } as const);
 
@@ -250,7 +256,7 @@ export const checkPolylineGeometry: Check<Schemas["PolylineGeometry"]> =
   /*#__PURE__*/ object({ "points": [true, arrayOf(tuple([isNumber, isNumber] as const))], "type": [true, lit("polyline")], "visibility": [false, arrayOf(checkVertexVisibility)] } as const);
 
 export const checkDetectedCandidate: Check<Schemas["DetectedCandidate"]> =
-  /*#__PURE__*/ object({ "confidence": [true, isNumber], "geometry": [true, tagged("type", { "bbox": checkBboxGeometry, "classification_tag": checkClassificationGeometry, "cuboid_3d": checkCuboid3DGeometry, "mask": checkMaskGeometry, "obb": checkObbGeometry, "polygon": checkPolygonGeometry, "polyline": checkPolylineGeometry, "polyline_3d": checkPolyline3DGeometry })], "id": [true, isString], "label": [true, isString], "label_class": [true, isString] } as const);
+  /*#__PURE__*/ object({ "confidence": [true, isNumber], "geometry": [true, tagged("type", { "bbox": checkBboxGeometry, "classification_tag": checkClassificationGeometry, "cuboid_3d": checkCuboid3DGeometry, "keypoints": checkKeypointsGeometry, "mask": checkMaskGeometry, "obb": checkObbGeometry, "polygon": checkPolygonGeometry, "polyline": checkPolylineGeometry, "polyline_3d": checkPolyline3DGeometry })], "id": [true, isString], "label": [true, isString], "label_class": [true, isString] } as const);
 
 export const checkDetectionDiscardsOut: Check<Schemas["DetectionDiscardsOut"]> =
   /*#__PURE__*/ object({ "below_minimum_confidence": [true, isInteger], "incompatible_geometry": [true, isInteger], "out_of_bounds": [true, isInteger], "over_limit": [true, isInteger], "unmapped_label": [true, isInteger] } as const);
@@ -385,7 +391,7 @@ export const checkPreLabelPlanOut: Check<Schemas["PreLabelPlanOut"]> =
   /*#__PURE__*/ object({ "asked_classes": [true, arrayOf(isString)], "excluded_classes": [true, arrayOf(checkPreLabelExclusionOut)], "produces": [true, arrayOf(checkGeometryType)], "schema_version": [true, isInteger] } as const);
 
 export const checkPreviewAnnotationOut: Check<Schemas["PreviewAnnotationOut"]> =
-  /*#__PURE__*/ object({ "attributes": [true, mapOf(either([isBoolean, isNumber, isString] as const))], "confidence": [true, either([isNumber, isNull] as const)], "geometry": [true, tagged("type", { "bbox": checkBboxBody, "classification_tag": checkClassificationBody, "cuboid_3d": checkCuboid3DBody, "mask": checkMaskBody, "obb": checkObbBody, "polygon": checkPolygonBody, "polyline": checkPolylineBody, "polyline_3d": checkPolyline3DBody })], "id": [true, isString], "label_class": [true, isString], "model_ref": [true, either([isString, isNull] as const)], "provenance": [true, oneOf(["human", "model", "import"] as const)], "schema_version": [true, isInteger] } as const);
+  /*#__PURE__*/ object({ "attributes": [true, mapOf(either([isBoolean, isNumber, isString] as const))], "confidence": [true, either([isNumber, isNull] as const)], "geometry": [true, tagged("type", { "bbox": checkBboxBody, "classification_tag": checkClassificationBody, "cuboid_3d": checkCuboid3DBody, "keypoints": checkKeypointsBody, "mask": checkMaskBody, "obb": checkObbBody, "polygon": checkPolygonBody, "polyline": checkPolylineBody, "polyline_3d": checkPolyline3DBody })], "id": [true, isString], "label_class": [true, isString], "model_ref": [true, either([isString, isNull] as const)], "provenance": [true, oneOf(["human", "model", "import"] as const)], "schema_version": [true, isInteger] } as const);
 
 export const checkPreprocessingPreviewOut: Check<Schemas["PreprocessingPreviewOut"]> =
   /*#__PURE__*/ object({ "annotations": [true, arrayOf(checkPreviewAnnotationOut)], "asset_id": [true, isString], "frame_index": [true, either([isInteger, isNull] as const)], "height": [true, either([isInteger, isNull] as const)], "image_base64": [true, isString], "media_type": [true, isString], "original_height": [true, either([isInteger, isNull] as const)], "original_width": [true, either([isInteger, isNull] as const)], "source_name": [true, either([isString, isNull] as const)], "variant": [true, isInteger], "width": [true, either([isInteger, isNull] as const)] } as const);
@@ -471,8 +477,11 @@ export const checkSchemaChangePreviewOut: Check<Schemas["SchemaChangePreviewOut"
 export const checkDraftAttributeBody: Check<Schemas["DraftAttributeBody"]> =
   /*#__PURE__*/ object({ "default": [false, either([isBoolean, isNumber, isString, isNull] as const)], "kind": [false, either([oneOf(["string", "number", "boolean", "select"] as const), isNull] as const)], "name": [true, isString], "options": [false, either([arrayOf(isString), isNull] as const)], "required": [true, isBoolean] } as const);
 
+export const checkDraftKeypointSpecBody: Check<Schemas["DraftKeypointSpecBody"]> =
+  /*#__PURE__*/ object({ "names": [true, arrayOf(isString)], "skeleton": [true, arrayOf(tuple([isInteger, isInteger] as const))] } as const);
+
 export const checkDraftLabelClassBody: Check<Schemas["DraftLabelClassBody"]> =
-  /*#__PURE__*/ object({ "attributes": [true, arrayOf(checkDraftAttributeBody)], "color": [false, either([isString, isNull] as const)], "geometries": [true, arrayOf(checkGeometryType)], "name": [true, isString] } as const);
+  /*#__PURE__*/ object({ "attributes": [true, arrayOf(checkDraftAttributeBody)], "color": [false, either([isString, isNull] as const)], "geometries": [true, arrayOf(checkGeometryType)], "keypoints": [false, either([checkDraftKeypointSpecBody, isNull] as const)], "name": [true, isString] } as const);
 
 export const checkSchemaProvenance: Check<Schemas["SchemaProvenance"]> =
   /*#__PURE__*/ oneOf(["curated", "annotation"] as const);
@@ -483,8 +492,11 @@ export const checkSchemaDraftOut: Check<Schemas["SchemaDraftOut"]> =
 export const checkAttributeBody: Check<Schemas["AttributeBody"]> =
   /*#__PURE__*/ object({ "default": [false, either([isBoolean, isNumber, isString, isNull] as const)], "kind": [true, oneOf(["string", "number", "boolean", "select"] as const)], "name": [true, isString], "options": [false, either([arrayOf(isString), isNull] as const)], "required": [true, isBoolean] } as const);
 
+export const checkKeypointSpecBody: Check<Schemas["KeypointSpecBody"]> =
+  /*#__PURE__*/ object({ "names": [true, arrayOf(isString)], "skeleton": [true, arrayOf(tuple([isInteger, isInteger] as const))] } as const);
+
 export const checkLabelClassBody: Check<Schemas["LabelClassBody"]> =
-  /*#__PURE__*/ object({ "attributes": [true, arrayOf(checkAttributeBody)], "color": [false, either([isString, isNull] as const)], "geometries": [true, arrayOf(checkGeometryType)], "name": [true, isString] } as const);
+  /*#__PURE__*/ object({ "attributes": [true, arrayOf(checkAttributeBody)], "color": [false, either([isString, isNull] as const)], "geometries": [true, arrayOf(checkGeometryType)], "keypoints": [false, either([checkKeypointSpecBody, isNull] as const)], "name": [true, isString] } as const);
 
 export const checkSchemaVersionOut: Check<Schemas["SchemaVersionOut"]> =
   /*#__PURE__*/ object({ "classes": [true, arrayOf(checkLabelClassBody)], "created_at": [false, either([isString, isNull] as const)], "description": [false, either([isString, isNull] as const)], "project_id": [true, isString], "provenance": [false, either([checkSchemaProvenance, isNull] as const)], "version": [true, isInteger] } as const);
@@ -526,7 +538,7 @@ export const checkSuggestParameter: Check<Schemas["SuggestParameter"]> =
   /*#__PURE__*/ openOneOf(["tolerance"] as const);
 
 export const checkSuggestedRegion: Check<Schemas["SuggestedRegion"]> =
-  /*#__PURE__*/ object({ "contour": [true, arrayOf(tuple([isNumber, isNumber] as const))], "geometry": [true, tagged("type", { "bbox": checkBboxGeometry, "classification_tag": checkClassificationGeometry, "cuboid_3d": checkCuboid3DGeometry, "mask": checkMaskGeometry, "obb": checkObbGeometry, "polygon": checkPolygonGeometry, "polyline": checkPolylineGeometry, "polyline_3d": checkPolyline3DGeometry })] } as const);
+  /*#__PURE__*/ object({ "contour": [true, arrayOf(tuple([isNumber, isNumber] as const))], "geometry": [true, tagged("type", { "bbox": checkBboxGeometry, "classification_tag": checkClassificationGeometry, "cuboid_3d": checkCuboid3DGeometry, "keypoints": checkKeypointsGeometry, "mask": checkMaskGeometry, "obb": checkObbGeometry, "polygon": checkPolygonGeometry, "polyline": checkPolylineGeometry, "polyline_3d": checkPolyline3DGeometry })] } as const);
 
 export const checkSuggestionOut: Check<Schemas["SuggestionOut"]> =
   /*#__PURE__*/ object({ "applied": [true, checkAppliedParameters], "confidence": [true, isNumber], "model_ref": [true, isString], "parameters": [true, arrayOf(checkSuggestParameter)], "regions": [true, arrayOf(checkSuggestedRegion)] } as const);

@@ -94,6 +94,7 @@ import { classColor } from "../palette";
 import { Alert, AlertDescription, AlertTitle, Badge, Button, Dialog, DialogContent, DialogDescription, DialogFooter, DialogTitle, Input, Label } from "@robomous/ui-core";
 import { formatGeometries } from "../data/geometryCategory";
 import { ClassFields } from "../patterns/ClassFields";
+import { keypointSpecProblems } from "../patterns/keypointSpecRules";
 import type {
   DraftLabelClassBody,
   LabelClassBody,
@@ -298,6 +299,8 @@ export function AddClassDialog({
   const readyForm = name !== "" && !taken;
   const publishing: readonly LabelClassBody[] = readyForm ? [...session, formEntry] : session;
   const description = touched ? note : defaultNote(publishing.map((entry) => entry.name));
+  /** A resumed draft's spec the publish would refuse, said here rather than as its 422. */
+  const specProblems = keypointSpecProblems(publishing);
 
   function reset(): void {
     setDeclared(blank());
@@ -632,6 +635,20 @@ export function AddClassDialog({
             </Alert>
           )}
 
+          {specProblems.length > 0 && (
+            <Alert variant="destructive" data-testid="add-class-keypoint-spec-error">
+              <AlertTitle>A pending keypoint spec would not publish</AlertTitle>
+              <AlertDescription>
+                {specProblems.map(({ name: named, index, problem }) => (
+                  <span key={index} className="block">
+                    {named === "" ? "An unnamed class" : `“${named}”`}: {problem}
+                  </span>
+                ))}
+                <span className="block">Take the class back out, or correct its spec through the API.</span>
+              </AlertDescription>
+            </Alert>
+          )}
+
           {failure !== null && (
             <Alert variant="destructive" data-testid="add-class-error">
               <AlertTitle>Could not add this class</AlertTitle>
@@ -758,7 +775,7 @@ export function AddClassDialog({
                 // classes banked the form is *meant* to be empty, and gating on
                 // it would make a session unpublishable at exactly the moment it
                 // is ready.
-                disabled={pending || publishing.length === 0 || taken || active === null}
+                disabled={pending || publishing.length === 0 || taken || active === null || specProblems.length > 0}
                 onClick={() => onSubmit(publishing, description)}
               >
                 {/*

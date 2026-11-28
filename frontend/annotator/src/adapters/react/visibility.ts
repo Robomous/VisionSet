@@ -27,6 +27,7 @@
 
 import { removeAnnotations } from "../../core/state/document";
 import type { AnnotationDocument } from "../../core/state/document";
+import type { KeypointLabel } from "../../core/geometry/keypoints";
 
 /**
  * `document` without the hidden annotations, or `document` itself when none are.
@@ -46,4 +47,14 @@ export function withoutHidden(
   // deleted while hidden, which is reachable in one keystroke.
   if (present.length === 0) return document;
   return removeAnnotations(document, present);
+}
+
+/** `labels` without the hidden ones, or `labels` itself when none of them is hidden. */
+export function keypointsWithoutHidden(
+  labels: readonly KeypointLabel[],
+  hidden: ReadonlySet<string> | undefined,
+): readonly KeypointLabel[] {
+  if (hidden === undefined || hidden.size === 0) return labels;
+  const shown = labels.filter((label) => !hidden.has(label.id));
+  return shown.length === labels.length ? labels : shown;
 }

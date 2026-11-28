@@ -224,6 +224,17 @@ describe("built from the wire, and back again", () => {
     }
   });
 
+  it("carries keypoints past the scene, so no edit can reach them", () => {
+    const carried = fixture.annotations.filter((raw) => geometryType(raw) === "keypoints");
+    expect(carried).toHaveLength(1);
+    expect(documentFromWire(wire).annotations.has((carried[0] as { id: string }).id)).toBe(false);
+  });
+
+  it("still refuses malformed keypoints rather than skipping them unread", () => {
+    const bad = { ...(fixture.annotations.find((raw) => geometryType(raw) === "keypoints") as object), geometry: { type: "keypoints", points: [[1, 2]], visibility: [3] } };
+    expect(() => documentFromWire({ ...wire, annotations: [bad] })).toThrow(/is not one of 0, 1, 2/);
+  });
+
   it("still refuses a malformed 3D label rather than skipping it unread", () => {
     const bad = { ...(carried3D() as object), geometry: { type: "polyline_3d", points: [[1, 2]] } };
     expect(() => documentFromWire({ ...wire, annotations: [bad] })).toThrow(

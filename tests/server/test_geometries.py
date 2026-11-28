@@ -27,7 +27,19 @@ def test_the_listing_is_the_kernel_set_sorted_by_name(client: TestClient) -> Non
     assert body == {"items": [{"name": name} for name in expected], "total": len(expected)}
 
 
-def test_the_roadmap_members_are_not_offered(client: TestClient) -> None:
+def test_every_member_is_offered_now_that_each_is_implemented(client: TestClient) -> None:
+    names = {row["name"] for row in client.get("/geometries").json()["items"]}
+
+    assert names == {geometry.value for geometry in GeometryType}
+
+
+def test_a_member_without_an_implementation_is_not_offered(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(
+        geometries, "IMPLEMENTED_GEOMETRIES", IMPLEMENTED_GEOMETRIES - {GeometryType.KEYPOINTS}
+    )
+
     names = {row["name"] for row in client.get("/geometries").json()["items"]}
 
     assert GeometryType.MASK.value in names

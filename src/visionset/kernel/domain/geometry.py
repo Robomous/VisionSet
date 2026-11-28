@@ -11,9 +11,7 @@ Adding a geometry (keypoints, mask, the 3D variants) means defining a model whos
 ``type`` is the matching ``GeometryType`` member and appending it to the
 ``Geometry`` union. Nothing about the discriminator changes shape and no existing
 payload stops parsing, because geometry rides in the annotation's JSON column and
-needs no migration. ``GeometryType`` names nine geometries; eight are implemented
-here — ``keypoints`` is roadmap, and a payload naming it is rejected until its model
-exists.
+needs no migration. ``GeometryType`` names nine geometries, and every one is implemented here.
 """
 
 from __future__ import annotations
@@ -119,8 +117,8 @@ def check_vertex_visibility(
 ) -> None:
     """Refuse a per-vertex visibility that does not name exactly one state per point.
 
-    Shared rather than inlined, so the next geometry with ordered vertices
-    (keypoints, a 3D polyline) holds the same rule instead of a second spelling of it.
+    Shared rather than inlined, so every geometry with ordered vertices (a
+    polyline, a 3D polyline, keypoints) holds the same rule.
     """
     if visibility is not None and len(visibility) != len(points):
         message = (
@@ -420,6 +418,38 @@ class Polyline3DGeometry(BaseModel):
         return self
 
 
+class KeypointsGeometry(BaseModel):
+    """An ordered set of at least one ``(x, y)`` keypoint in pixels.
+
+    **The position in the list is the keypoint's identity.** When the class
+    declares a :class:`~visionset.kernel.domain.schema.KeypointSpec`, point ``i``
+    is the keypoint the spec names at ``i`` and the count must equal the spec's;
+    that rule needs the schema, so the annotation writer checks it. Nothing ever
+    sorts, deduplicates or truncates the list: two keypoints may share a pixel.
+
+    Coordinates are finite. ``visibility`` is the polyline's optional
+    :class:`VertexVisibility` field under the same validator, one state per
+    point, so an unlabeled keypoint keeps its slot and says so with ``0``.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid", allow_inf_nan=False)
+
+    type: Literal[GeometryType.KEYPOINTS] = GeometryType.KEYPOINTS
+    points: list[tuple[float, float]] = Field(min_length=1)
+    visibility: VertexVisibilities = optional_visibility_field()
+
+    @model_validator(mode="after")
+    def _aligned(self) -> KeypointsGeometry:
+        check_vertex_visibility(self.visibility, self.points)
+        return self
+
+    def through(self, points: list[tuple[float, float]]) -> KeypointsGeometry:
+        """The same keypoints moved onto ``points``, their visibility carried in order."""
+        if self.visibility is None:
+            return KeypointsGeometry(points=points)
+        return KeypointsGeometry(points=points, visibility=self.visibility)
+
+
 class Cuboid3DGeometry(BaseModel):
     """A box in its asset's sensor frame: a center, a size and a yaw, in metres.
 
@@ -569,6 +599,7 @@ Geometry = Annotated[
     | ObbGeometry
     | PolygonGeometry
     | PolylineGeometry
+    | KeypointsGeometry
     | Polyline3DGeometry
     | Cuboid3DGeometry
     | MaskGeometry
@@ -620,6 +651,8 @@ def geometry_intersects_asset(geometry: Geometry, *, width: int | None, height: 
             return _path_intersects_frame(list(obb_corners(geometry)), frame, closed=True)
         case PolylineGeometry():
             return _path_intersects_frame(geometry.points, frame, closed=False)
+        case KeypointsGeometry():
+            return any(_point_is_in_frame(point, frame) for point in geometry.points)
         case PolygonGeometry():
             return _path_intersects_frame(geometry.points, frame, closed=True)
         case _:
@@ -646,7 +679,7 @@ def _coordinates_are_finite(geometry: Geometry) -> bool:
                     geometry.angle,
                 )
             )
-        case PolygonGeometry() | PolylineGeometry() | Polyline3DGeometry():
+        case PolygonGeometry() | PolylineGeometry() | KeypointsGeometry() | Polyline3DGeometry():
             return all(isfinite(value) for point in geometry.points for value in point)
         case Cuboid3DGeometry():
             return all(
