@@ -547,8 +547,10 @@ version - so editing or deleting the stored recipe afterwards changes nothing he
 above runs first and the recipe runs over what is left, so a geometry the target drops can never
 make a step refuse; consent is asked before any transform. `check_export(..., recipe=)` refuses
 now what the export would refuse: `AugmentationRequiresSplit` for an augmenting recipe over a
-release published without a split, and `PreprocessingStepUnsupportedGeometry` for a step that
-cannot move a geometry the export would carry. A recipe reads and writes images, so an export that
+release published without a split, `PreprocessingStepUnsupportedGeometry` for a step that
+cannot move a geometry the export would carry, and `AugmentationIncompatible` for any other step the
+[compatibility resolver](preprocessing.md#which-step-serves-which-label) refuses - the target
+training a label for a task the op does not serve, among others. A recipe reads and writes images, so an export that
 would hand the format a scan refuses one, at the check and at the export, with
 `ExportSourceUnreadable`. `ExportResult` separates `source_file_count` from
 `augmented_file_count`, and `preprocessing` on the report maps every written image to the asset
@@ -1677,6 +1679,7 @@ carries the identical body under `detail.compatibility`.
 | `PreprocessingRecipeNotFound` | The release's project has no recipe under the name the export was given. Resolved through the project the release's dataset hangs off. |
 | `AugmentationRequiresSplit` | The recipe asks for augmented variants and the release was published without a split recipe, so there is no train fold to augment. Raised at pre-flight and again at export. |
 | `PreprocessingStepUnsupportedGeometry` | A recipe step cannot transform a geometry the export would carry - `rot90` over a polyline, a `fill` or `center_crop` resize over a polyline, a rotated box or keypoints, or a resize, flip or quarter turn over a 3D label. A refusal, never a consent: a label that cannot follow its image is not something to consent to. Carries the step, the geometry and the first asset. |
+| `AugmentationIncompatible` | The [compatibility resolver](preprocessing.md#which-step-serves-which-label) refuses a recipe step for a label the export would carry, for a reason other than a missing split, a geometry the step cannot move, a scan or a missing driver - today, the export's target training the label for a task the op does not serve. Carries every refused entry, never just the first. Raised at pre-flight and again at export. |
 | `PreprocessingDriverNotFound` | No installed driver applies a step kind the recipe holds. A fact about the installation rather than the request, 500 over HTTP; the message lists the kinds that are installed. |
 
 

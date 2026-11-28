@@ -217,7 +217,11 @@ def check_export(
             else PreprocessingRecipeService(workspace).for_release(release.id, recipe).spec
         )
         report = ReleaseService(workspace).check_export(
-            release.id, plugin, target=addressed, recipe=spec
+            release.id,
+            plugin,
+            target=addressed,
+            recipe=spec,
+            drivers=None if spec is None else preprocessing_registry.drivers(),
         )
     return wire.export_compatibility(report)
 

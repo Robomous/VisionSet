@@ -138,6 +138,7 @@ EXPECTED: dict[str, tuple[int, str]] = {
     "LossyExportNotConsented": (409, "LOSSY_EXPORT_NOT_CONSENTED"),
     "AugmentationRequiresSplit": (409, "AUGMENTATION_REQUIRES_SPLIT"),
     "PreprocessingStepUnsupportedGeometry": (409, "PREPROCESSING_STEP_UNSUPPORTED_GEOMETRY"),
+    "AugmentationIncompatible": (409, "AUGMENTATION_INCOMPATIBLE"),
     "CalibrationInUse": (409, "CALIBRATION_IN_USE"),
     "TrackNotFound": (404, "TRACK_NOT_FOUND"),
     "FrameOccurrenceNotFound": (404, "FRAME_OCCURRENCE_NOT_FOUND"),

@@ -40,6 +40,7 @@ from visionset.kernel.domain import BackgroundJobSpec, ExportTarget, RecipeSpec
 from visionset.kernel.ports import Exporter, resolve_target
 from visionset.kernel.services import PreprocessingRecipeService, ReleaseService, WorkspaceService
 from visionset.server.dependencies import (
+    DriversDep,
     ExportersDep,
     RunnerDep,
     WorkspaceDep,
@@ -290,6 +291,7 @@ def get_release_assignment(workspace: WorkspaceDep, release_id: UUID) -> SplitAs
 def check_export(
     workspace: WorkspaceDep,
     exporters: ExportersDep,
+    drivers: DriversDep,
     release_id: UUID,
     address: AddressQuery,
     recipe: RecipeQuery = None,
@@ -305,11 +307,14 @@ def check_export(
     answer then includes whether that recipe can run over this release: a
     recipe that augments against a release published without a split is 409
     `AUGMENTATION_REQUIRES_SPLIT`, a step that cannot move a geometry the
-    export would carry is 409 `PREPROCESSING_STEP_UNSUPPORTED_GEOMETRY`, and a
-    step needing a source size the manifest never recorded, or any recipe on
-    an export that writes scans, is 409 `EXPORT_SOURCE_UNREADABLE`. An unknown
-    recipe is 404
-    `PREPROCESSING_RECIPE_NOT_FOUND`. A `fill` or `center_crop` resize is the
+    export would carry is 409 `PREPROCESSING_STEP_UNSUPPORTED_GEOMETRY`, a step
+    the target's task or the registry cannot vouch for over a label the export
+    would carry is 409 `AUGMENTATION_INCOMPATIBLE` with every offending step,
+    class and geometry in `detail.offenders`, and a step needing a source size
+    the manifest never recorded, or any recipe on an export that writes scans,
+    is 409 `EXPORT_SOURCE_UNREADABLE`. An unknown recipe is 404
+    `PREPROCESSING_RECIPE_NOT_FOUND`, and a step kind no installed driver
+    applies is 500 `PREPROCESSING_DRIVER_NOT_FOUND`. A `fill` or `center_crop` resize is the
     one step that loses labels, and the report counts it: a label it cuts away
     is dropped and one it cuts down is degraded, and either needs
     `allow_lossy`.
@@ -336,7 +341,9 @@ def check_export(
     exporter, target = _addressed(exporters, address)
     spec = _recipe_spec(workspace, release_id, recipe)
     return ExportCompatibilityOut.of(
-        ReleaseService(workspace).check_export(release_id, exporter, target=target, recipe=spec)
+        ReleaseService(workspace).check_export(
+            release_id, exporter, target=target, recipe=spec, drivers=drivers
+        )
     )
 
 
@@ -383,6 +390,7 @@ def _addressed(
 def export_release(
     workspace: WorkspaceDep,
     exporters: ExportersDep,
+    drivers: DriversDep,
     runner: RunnerDep,
     response: Response,
     release_id: UUID,
@@ -426,9 +434,13 @@ def export_release(
     `AUGMENTATION_REQUIRES_SPLIT` for an augmenting recipe over a release
     published without a split, 409 `PREPROCESSING_STEP_UNSUPPORTED_GEOMETRY`
     for a step that cannot move a geometry the export would carry, 409
+    `AUGMENTATION_INCOMPATIBLE` for a step the target's task or the registry
+    cannot vouch for over a label the export would carry, 409
     `EXPORT_SOURCE_UNREADABLE` for a step needing a source size the manifest
-    never recorded or for any recipe on an export that writes scans, and 404
-    `PREPROCESSING_RECIPE_NOT_FOUND` for a name the project does not have. The
+    never recorded or for any recipe on an export that writes scans, 404
+    `PREPROCESSING_RECIPE_NOT_FOUND` for a name the project does not have, and
+    500 `PREPROCESSING_DRIVER_NOT_FOUND` for a step kind no installed driver
+    applies. The
     report written into the output records the recipe, its hash, and which
     written file came from which asset.
 
@@ -443,7 +455,12 @@ def export_release(
     # worker would put a 409 on a row somebody has to go and read. The worker
     # checks again; that one is the guarantee, this one is the answer.
     ReleaseService(workspace).require_export_consent(
-        release_id, exporter, allow_lossy=allow_lossy, target=target, recipe=spec
+        release_id,
+        exporter,
+        allow_lossy=allow_lossy,
+        target=target,
+        recipe=spec,
+        drivers=None if spec is None else drivers,
     )
     job = workspace.job_queue.enqueue(
         BackgroundJobSpec(

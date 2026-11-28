@@ -24,7 +24,7 @@ from typing import Any, Final
 from pydantic import ValidationError
 
 from visionset.kernel import errors
-from visionset.kernel.domain import ClassCount, ExportCompatibility, ImportLoss
+from visionset.kernel.domain import ClassCount, ExportCompatibility, ImportLoss, StepCompatibility
 
 ERROR_CODES: Final[Mapping[type[errors.VisionSetError], str]] = {
     errors.AnnotationGeometryOutOfBounds: "ANNOTATION_GEOMETRY_OUT_OF_BOUNDS",
@@ -35,6 +35,7 @@ ERROR_CODES: Final[Mapping[type[errors.VisionSetError], str]] = {
     errors.AssetNotInDataset: "ASSET_NOT_IN_DATASET",
     errors.AssetNotInJob: "ASSET_NOT_IN_JOB",
     errors.AssetNotWritable: "ASSET_NOT_WRITABLE",
+    errors.AugmentationIncompatible: "AUGMENTATION_INCOMPATIBLE",
     errors.AugmentationRequiresSplit: "AUGMENTATION_REQUIRES_SPLIT",
     errors.BackgroundJobNotFound: "BACKGROUND_JOB_NOT_FOUND",
     errors.BatchImmutable: "BATCH_IMMUTABLE",
@@ -230,6 +231,14 @@ def error_detail(exc: BaseException) -> dict[str, Any] | None:
         # ``by_alias`` makes it key-for-key the document the export endpoint
         # returns and the export writes into its own output.
         return {"compatibility": exc.compatibility.model_dump(mode="json", by_alias=True)}
+    if isinstance(exc, errors.AugmentationIncompatible) and isinstance(exc.offenders, tuple):
+        return {
+            "offenders": [
+                one.model_dump(mode="json")
+                for one in exc.offenders
+                if isinstance(one, StepCompatibility)
+            ]
+        }
     if isinstance(exc, errors.ImportNotConsented) and isinstance(exc.losses, tuple):
         return {
             "losses": [
