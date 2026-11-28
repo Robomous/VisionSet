@@ -163,6 +163,8 @@ GET    /background-jobs/{job_id}                          poll
 GET    /background-jobs/{job_id}/artifact                 bytes
 POST   /background-jobs/{job_id}/cancel
 
+GET    /settings                                          version, tracking status, executor values; read-only
+
 GET    /health                                            the one route needing no token
 ```
 

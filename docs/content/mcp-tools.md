@@ -11,13 +11,14 @@ error envelope, and the three gate words.
 
 ## Always offered
 
-80 tools, in the order an agent meets them: make a project, give it a schema, put images in it, work through them, promote, publish, export.
+82 tools, in the order an agent meets them: make a project, give it a schema, put images in it, work through them, promote, publish, export.
 
 | Tool | Takes | What it does |
 | --- | --- | --- |
 | `create_project` | `name`, `description`? | Create a project, together with the empty dataset that is its trunk. |
 | `list_projects` | — | List every project in this workspace, in creation order. |
 | `get_project` | `project` | Read a project, its dataset id, and how far its annotation work has got. |
+| `update_project` | `project`, `description` | Change a project's description. Returns the updated project. |
 | `get_schema` | `project`, `version`? | Read a project's annotation schema — which classes exist and what each may carry. |
 | `compare_schema_versions` | `project`, `from_version`, `to_version` | Say what one schema version did to another. Writes nothing. |
 | `preview_schema_change` | `project`, `classes` | Say what applying these classes would change, without applying anything. |
@@ -95,6 +96,7 @@ error envelope, and the three gate words.
 | `check_connection_integrity` | `connection` | Re-read a local connection's weights and prove they are undamaged. |
 | `test_inference_connection` | `connection` | Ask an http connection's endpoint what it answers, and record the answer. |
 | `update_inference_connection` | `connection`, `name`?, `model_id`?, `model_revision`?, `device`?, `precision`?, `endpoint_url`?, `provider_id`?, `credential_env`? | Edit a connection. Parameters you omit are left alone; the type cannot change. |
+| `get_workspace_settings` | — | Read the version, MLflow tracking status and job executor values. No secrets. |
 
 ## Offered only with `--allow-destructive`
 

@@ -1,5 +1,5 @@
 # usage: from visionset.mcp import projects
-"""Project tools: create, list, read, delete.
+"""Project tools: create, list, read, describe, delete.
 
 ``get_project`` folds three parity candidates into one call. ``get_project``,
 ``get_project_dataset`` and ``get_dataset`` are three round trips for facts an
@@ -10,7 +10,8 @@ reason: "what is in this project and how far along is it" is one question.
 
 ``rename_project`` is **not** here. It is the only project write that changes
 nothing an agent can observe going wrong, and a tool that exists only so a model
-can fix a typo in a name it chose is list-padding.
+can fix a typo in a name it chose is list-padding. That is why ``update_project``
+takes the description and leaves the name out.
 
 ``delete_project`` **is** here, and it is the widest of the two tools in this
 surface that destroy data (``delete_batch`` is the other). It carries ``confirm``,
@@ -110,6 +111,27 @@ def get_project(project: ProjectRef) -> ProjectDetail:
         "dataset": wire.dataset(dataset),
         "progress": wire.progress_counts(counts),
     }
+
+
+def update_project(
+    project: ProjectRef,
+    description: Annotated[
+        str,
+        Field(description="The new free-text description. An empty string clears it."),
+    ],
+) -> shapes.Project:
+    """Change a project's description. Returns the updated project.
+
+    The description is free text for people; the name and everything under the
+    project are left alone. An empty or blank string clears it. An unknown
+    project is reported as missing.
+    """
+    with opened_workspace() as workspace:
+        projects = ProjectService(workspace)
+        resolved = projects.resolve(project)
+        updated = projects.update(resolved.id, description=description)
+        preview = projects.preview(updated.id)
+    return wire.project(updated, preview)
 
 
 def delete_project(

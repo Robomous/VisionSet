@@ -564,6 +564,24 @@ export const checkVideoImportState: Check<Schemas["VideoImportState"]> =
 export const checkVideoImportOut: Check<Schemas["VideoImportOut"]> =
   /*#__PURE__*/ object({ "batch_id": [true, either([isString, isNull] as const)], "expected_frame_count": [true, isInteger], "id": [true, isString], "project_id": [true, isString], "received_frame_count": [true, isInteger], "source_id": [true, isString], "started_at": [true, isString], "state": [true, checkVideoImportState], "updated_at": [true, isString] } as const);
 
+export const checkExecutorVariableOut: Check<Schemas["ExecutorVariableOut"]> =
+  /*#__PURE__*/ object({ "default": [true, either([isInteger, isNumber] as const)], "name": [true, isString], "value": [true, either([isInteger, isNumber, isNull] as const)] } as const);
+
+export const checkExecutorStatusOut: Check<Schemas["ExecutorStatusOut"]> =
+  /*#__PURE__*/ object({ "problem": [true, either([isString, isNull] as const)], "variables": [true, arrayOf(checkExecutorVariableOut)] } as const);
+
+export const checkTrackingAuth: Check<Schemas["TrackingAuth"]> =
+  /*#__PURE__*/ oneOf(["none", "basic", "token", "client_certificate"] as const);
+
+export const checkTrackingServerOut: Check<Schemas["TrackingServerOut"]> =
+  /*#__PURE__*/ object({ "host": [true, either([isString, isNull] as const)], "port": [true, either([isInteger, isNull] as const)], "scheme": [true, isString] } as const);
+
+export const checkTrackingStatusOut: Check<Schemas["TrackingStatusOut"]> =
+  /*#__PURE__*/ object({ "auth": [true, either([checkTrackingAuth, isNull] as const)], "ca_bundle_configured": [true, isBoolean], "client_certificate_configured": [true, isBoolean], "client_installed": [true, isBoolean], "enabled": [true, isBoolean], "experiment": [true, either([isString, isNull] as const)], "problem": [true, either([isString, isNull] as const)], "server": [true, either([checkTrackingServerOut, isNull] as const)] } as const);
+
+export const checkWorkspaceSettingsOut: Check<Schemas["WorkspaceSettingsOut"]> =
+  /*#__PURE__*/ object({ "executor": [true, checkExecutorStatusOut], "tracking": [true, checkTrackingStatusOut], "version": [true, isString] } as const);
+
 // One alias per operation. `unwrap` takes these, never a schema check directly, so that
 // `tests/scripts/checks_wiring.test.mjs` can pair every call with its own operationId.
 
@@ -632,6 +650,7 @@ export const checkGetSourceCalibration = checkSourceCalibrationOut;
 export const checkGetTrack = checkTrackOut;
 export const checkGetTrackStatus = checkTrackStatusOut;
 export const checkGetVideoImport = checkVideoImportOut;
+export const checkGetWorkspaceSettings = checkWorkspaceSettingsOut;
 export const checkHealth: Check<operations["health"]["responses"][200]["content"]["application/json"]> =
   /*#__PURE__*/ mapOf(isString);
 export const checkInferenceDownloadSize = checkDownloadSizeOut;
@@ -677,7 +696,6 @@ export const checkRegisterImageSource = checkSourceOut;
 export const checkRegisterPointCloudSource = checkSourceOut;
 export const checkRemoveBatchAssets = checkBatchMembershipOut;
 export const checkRemoveDatasetAsset = checkNoContent;
-export const checkRenameProject = checkProjectOut;
 export const checkRepinBatch = checkBatchOut;
 export const checkResumeIngest = checkIngestJobOut;
 export const checkSaveSchemaDraft = checkSchemaDraftOut;
@@ -697,4 +715,5 @@ export const checkUnobserveTrack = checkNoContent;
 export const checkUpdateAnnotations = checkAnnotationPage;
 export const checkUpdateInferenceConnection = checkConnectionOut;
 export const checkUpdatePreprocessingRecipe = checkPreprocessingRecipeOut;
+export const checkUpdateProject = checkProjectOut;
 export const checkVerifyRelease = checkReleaseVerificationOut;

@@ -94,7 +94,7 @@ import {
   checkRegisterImageSource,
   checkRegisterPointCloudSource,
   checkRemoveDatasetAsset,
-  checkRenameProject,
+  checkUpdateProject,
   checkResumeIngest,
   checkRemoveBatchAssets,
   checkSaveSchemaDraft,
@@ -399,7 +399,7 @@ export function useRenameProject(projectId: string) {
           params: { path: { project_id: projectId } },
           body: { name },
         }),
-        checkRenameProject,
+        checkUpdateProject,
       ),
     onSuccess: () => queries.invalidateQueries({ queryKey: queryKeys.projects() }),
   });

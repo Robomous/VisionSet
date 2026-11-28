@@ -144,13 +144,38 @@ A configuration VisionSet cannot use is refused with `TRACKING_UNAVAILABLE`
 
 - `VISIONSET_MLFLOW_ENABLED` is set to something that is neither blank nor true or false;
 - with tracking on, the experiment name is empty or longer than 500 characters;
-- with tracking on, `MLFLOW_TRACKING_URI` is not set, carries credentials, carries a query string or
-  fragment (put a token in `MLFLOW_TRACKING_TOKEN`), or names a store MLflow cannot open;
+- with tracking on, `MLFLOW_TRACKING_URI` is not set, carries credentials (any `@` before a query
+  or fragment, wherever it falls), carries a query string or fragment (put a token in
+  `MLFLOW_TRACKING_TOKEN`), or names a store MLflow cannot open;
 - with tracking on, the MLflow client is not installed. The message carries
   `pip install "visionset[mlflow]"`.
 
 With tracking off, nothing but the flag is read, so nothing else can be refused. The message never
 repeats the URI.
+
+## Reading the status
+
+The tracking configuration can be read without starting a run, on every surface, as part of one
+read-only settings document: `GET /settings`, `visionset settings --json` and the MCP tool
+`get_workspace_settings` publish the same object, built once below the surfaces. Each describes the
+process answering - the server, the command or the MCP server - and reads the environment that
+process started with, so a change takes a restart. Nothing on any surface edits it.
+
+| Field | What it says |
+| --- | --- |
+| `enabled` | Whether `VISIONSET_MLFLOW_ENABLED` turns tracking on. False when the flag cannot be read. |
+| `experiment` | The experiment runs are recorded under. Null with tracking off, or when the name is refused. |
+| `server` | The tracking server's `scheme`, `host` and `port`. Null with tracking off, or when the URI is unset, malformed, carries credentials, or has no scheme followed by `//`. `host` is null for a local store, and `port` unless the URI names one. |
+| `auth` | `none`, `basic`, `token` or `client_certificate`: which authentication MLflow would send, in its own precedence. `basic` needs both a username and a password, and wins over a token. Null with tracking off. |
+| `ca_bundle_configured`, `client_certificate_configured` | Whether `MLFLOW_TRACKING_SERVER_CERT_PATH` and `MLFLOW_TRACKING_CLIENT_CERT_PATH` are set. |
+| `client_installed` | Whether the `mlflow` extra is importable here. Reported with tracking off too. |
+| `problem` | The `TRACKING_UNAVAILABLE` message a run would meet ([above](#when-it-is-misconfigured)), or null. A store MLflow itself refuses is found only when a run starts. |
+
+**No secret is returned.** The status never carries a username, password, token, certificate path,
+or the URI's userinfo, path, query or fragment - only the scheme, host and port, and booleans and
+an enumeration for the rest. With tracking off, `MLFLOW_TRACKING_URI` and the other `MLFLOW_*`
+variables are not read at all, the same rule a run follows. A test asserts that a configured
+token, password and URI credentials appear in none of the three outputs.
 
 ## When the server is down
 

@@ -27,6 +27,7 @@ visionset init [PATH] [--name NAME]                      # neither --json nor --
 
 visionset project create NAME [--description TEXT]
 visionset project list
+visionset project update PROJECT --description TEXT      # "" clears it
 visionset schema apply FILE --project P [--allow-destructive]
 visionset schema list --project P
 visionset schema blocking-assets FILE --project P [--limit N] [--offset N]
@@ -91,6 +92,7 @@ visionset inference providers                            # no --workspace: it op
 visionset inference download NAME_OR_ID
 visionset inference check-integrity NAME_OR_ID
 visionset inference test-endpoint NAME_OR_ID             # http only: what it answers
+visionset settings                                       # no --workspace: version, tracking, executor
 visionset server [--host] [--port 1-65535] [--reload]    # no --json; exit 1 if it cannot bind
 visionset mcp                                            # stdio; no --json
 ```
@@ -358,7 +360,8 @@ One command, one SDK call, with the rationale in the topic doc rather than here.
 ### `visionset project`
 
 `create NAME [--description TEXT]` → `ProjectService.create`, which writes the project and its one
-dataset in a single transaction. `list` → `ProjectService.list`.
+dataset in a single transaction. `list` → `ProjectService.list`. `update PROJECT --description
+TEXT` → `ProjectService.update`, changing the description alone; an empty string clears it.
 
 Everything downstream takes `--project` / `-p`, which accepts **a name or an id**. A name matches
 case-insensitively, the way the unique index compares. There is no `rename` and no `delete`: both
@@ -684,6 +687,15 @@ connection names — and records the declared capability on the row. It prints t
 
 Covered in full, including the two kinds, where the weights land and why deleting a connection
 never touches an annotation's provenance, in [inference.md](inference.md#at-a-terminal).
+
+## `visionset settings`
+
+What this process is configured with: the VisionSet version, the MLflow tracking status and the job
+executor's values beside their defaults. Read-only, it opens no workspace, and `--json` prints the
+same document as `GET /settings` and the `get_workspace_settings` MCP tool. It reports the
+environment the command runs in: tracking is what this command's own runs would use, and the
+executor values are what `visionset server` would start with from the same environment. No secret
+is printed - see [experiment tracking](tracking.md#reading-the-status).
 
 ## `visionset mcp`
 

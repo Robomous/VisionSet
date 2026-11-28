@@ -168,7 +168,7 @@ def test_a_malformed_uuid_in_the_path_is_422_not_404(client: TestClient) -> None
     assert response.json()["code"] == "VALIDATION_ERROR"
 
 
-# --- renaming ----------------------------------------------------------------
+# --- renaming and describing -------------------------------------------------
 
 
 def test_renaming_a_project_returns_it_under_the_new_name(client: TestClient) -> None:
@@ -200,21 +200,47 @@ def test_renaming_a_project_to_its_own_name_is_allowed(client: TestClient) -> No
     assert response.json()["name"] == "Road-Signs"
 
 
-def test_the_patch_body_cannot_carry_a_description(client: TestClient) -> None:
-    """The one mutable field, because the SDK has no way to update the other.
-
-    The API does not grow a field the kernel cannot honour; a request that tried
-    is refused rather than half-applied.
-    """
+def test_the_patch_body_changes_the_description_and_leaves_the_name(client: TestClient) -> None:
     made = created(client, "road-signs", "day shots")
 
+    response = client.patch(f"/projects/{made['id']}", json={"description": "night shots"})
+
+    assert response.status_code == 200
+    assert response.json() == {**made, "description": "night shots"}
+    assert client.get(f"/projects/{made['id']}").json()["description"] == "night shots"
+
+
+def test_a_blank_description_clears_it_and_null_leaves_it(client: TestClient) -> None:
+    made = created(client, "road-signs", "day shots")
+
+    kept = client.patch(f"/projects/{made['id']}", json={"description": None})
+    cleared = client.patch(f"/projects/{made['id']}", json={"description": "  "})
+
+    assert kept.json()["description"] == "day shots"
+    assert cleared.json()["description"] is None
+
+
+def test_a_refused_rename_leaves_the_description_alone(client: TestClient) -> None:
+    """Both fields move in one unit of work, so a refusal applies neither."""
+    created(client, "road-signs")
+    other = created(client, "traffic-lights", "day shots")
+
     response = client.patch(
-        f"/projects/{made['id']}", json={"name": "road-signs", "description": "night shots"}
+        f"/projects/{other['id']}", json={"name": "road-signs", "description": "night shots"}
     )
+
+    assert response.status_code == 409
+    assert response.json()["code"] == "PROJECT_NAME_TAKEN"
+    assert client.get(f"/projects/{other['id']}").json()["description"] == "day shots"
+
+
+def test_the_patch_body_refuses_a_field_it_does_not_know(client: TestClient) -> None:
+    made = created(client, "road-signs")
+
+    response = client.patch(f"/projects/{made['id']}", json={"workspace_id": str(uuid4())})
 
     assert response.status_code == 422
     assert response.json()["code"] == "VALIDATION_ERROR"
-    assert client.get(f"/projects/{made['id']}").json()["description"] == "day shots"
 
 
 def test_renaming_an_unknown_project_is_404(client: TestClient) -> None:

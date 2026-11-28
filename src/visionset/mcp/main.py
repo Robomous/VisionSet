@@ -62,6 +62,7 @@ from visionset.mcp import (
     projects,
     releases,
     schemas,
+    settings,
     sources,
     tracks,
 )
@@ -88,6 +89,7 @@ TOOLS: Final[tuple[tuple[Callable[..., Any], ToolAnnotations], ...]] = (
     (projects.create_project, WRITES),
     (projects.list_projects, READS),
     (projects.get_project, READS),
+    (projects.update_project, WRITES),
     (schemas.get_schema, READS),
     (schemas.compare_schema_versions, READS),
     (schemas.preview_schema_change, READS),
@@ -185,6 +187,7 @@ TOOLS: Final[tuple[tuple[Callable[..., Any], ToolAnnotations], ...]] = (
     (inference.check_connection_integrity, WRITES),
     (inference.test_inference_connection, WRITES),
     (inference.update_inference_connection, WRITES),
+    (settings.get_workspace_settings, READS),
 )
 """Every tool this server always offers, with what it does to the workspace.
 

@@ -92,6 +92,7 @@ page groups them by what they are for.
 | `create_project` | Make a project and the empty dataset that is its trunk. |
 | `list_projects` | Everything in this workspace. |
 | `get_project` | The project, its dataset id, and how far its work has got. |
+| `update_project` | Change the description. An empty string clears it. |
 | `get_schema` | The classes, the active version, and every version that exists. |
 | `compare_schema_versions` | What one version did to another. Writes nothing. |
 | `preview_schema_change` | What a proposed change would do. Writes nothing. |
@@ -275,6 +276,15 @@ came back — the capability the endpoint declared becomes the connection's `cap
 driver that asked becomes its `provider_id`; see [Asking an endpoint what it
 answers](inference.md#asking-an-endpoint-what-it-answers). A local connection has no endpoint to
 ask and is refused with `INFERENCE_CONNECTION_NOT_TESTABLE`.
+
+### Settings
+
+| | |
+| --- | --- |
+| `get_workspace_settings` | The version, the MLflow tracking status and the job executor's values. Read-only, no secrets. |
+
+The same document as `GET /settings` and `visionset settings --json`, describing the MCP server's
+own process. See [experiment tracking](tracking.md#reading-the-status).
 
 ### Offered only with `--allow-destructive`
 

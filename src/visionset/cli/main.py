@@ -25,6 +25,7 @@ from visionset.cli.projects import project_app
 from visionset.cli.releases import release_app
 from visionset.cli.schemas import schema_app
 from visionset.cli.server import server
+from visionset.cli.settings import settings
 from visionset.cli.targets import target_app
 from visionset.cli.tokens import token_app
 from visionset.cli.tracks import track_app
@@ -97,6 +98,7 @@ app.add_typer(recipe_app, name="recipe")
 app.command("backfill-thumbnails")(backfill_thumbnails)
 app.add_typer(token_app, name="token")
 app.add_typer(inference_app, name="inference")
+app.command("settings")(settings)
 app.command()(server)
 app.command()(mcp)
 

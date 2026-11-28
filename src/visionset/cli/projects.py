@@ -1,8 +1,8 @@
 # usage: from visionset.cli.projects import project_app
 """``visionset project`` — the container everything else hangs off.
 
-Three commands. ``create`` and ``list`` are each one ``ProjectService`` call, and
-the rules behind them — a name unique per workspace case-insensitively, a
+Four commands. ``create``, ``list`` and ``update`` are each one ``ProjectService``
+call, and the rules behind them — a name unique per workspace case-insensitively, a
 dataset created in the same transaction, a blank name refused — are the
 kernel's and not one of them is restated here. ``pre-label`` hangs off
 ``project`` rather than off a group of its own because its subject is the
@@ -18,6 +18,7 @@ also takes the name, which is usually what a person types.
 There is deliberately no ``rename`` and no ``delete``. Both are administration
 rather than flow, and both want a confirmation prompt and the cascade explained;
 landing them together is how that gets documented once instead of twice.
+``update`` changes the description alone, which cascades to nothing.
 """
 
 from __future__ import annotations
@@ -47,7 +48,7 @@ from visionset.kernel.services import (
     ProjectService,
 )
 
-project_app = typer.Typer(help="Create and list projects.", no_args_is_help=True)
+project_app = typer.Typer(help="Create, list and describe projects.", no_args_is_help=True)
 
 _COLUMNS: Final = ("ID", "NAME", "DESCRIPTION")
 
@@ -92,6 +93,29 @@ def project_list(
     table(_COLUMNS, [(str(p.id), p.name, p.description or _NONE) for p in projects])
     if not projects:
         note(f"No projects in {root}.")
+
+
+@project_app.command("update")
+def project_update(
+    project: Annotated[str, typer.Argument(help="The project, by name or by id.")],
+    description: Annotated[
+        str,
+        typer.Option("--description", help="Free text, for people. An empty string clears it."),
+    ],
+    json_out: JsonOption = False,
+    workspace: WorkspaceOption = None,
+) -> None:
+    """Change a project's description."""
+    with opened_workspace(workspace) as service:
+        projects = ProjectService(service)
+        resolved = projects.resolve(project)
+        updated = projects.update(resolved.id, description=description)
+        preview = projects.preview(updated.id) if json_out else None
+    if json_out:
+        document(wire.project(updated, preview))
+        return
+    note(f"Updated project {updated.name!r}.")
+    typer.echo(str(updated.id))
 
 
 @project_app.command("pre-label")

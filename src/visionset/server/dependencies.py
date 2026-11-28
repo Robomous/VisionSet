@@ -33,6 +33,7 @@ from starlette.requests import Request
 from visionset.formats.registry import exporters, importers
 from visionset.inference.registry import registered
 from visionset.jobs import JobRunner
+from visionset.jobs.settings import job_settings
 from visionset.kernel.errors import TrackingUnavailable, VisionSetError
 from visionset.kernel.ports import (
     AuthProvider,
@@ -53,7 +54,6 @@ from visionset.kernel.services import (
 from visionset.preprocessing.registry import drivers
 from visionset.server import session
 from visionset.server.errors import ERROR_RESPONSES, code_for
-from visionset.server.settings import job_settings
 from visionset.tracking import TrackingSettings, tracking_settings
 
 # ``WORKSPACE_ENV_VAR`` and ``resolve_workspace_root`` are re-exported above

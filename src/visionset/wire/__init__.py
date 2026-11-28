@@ -147,6 +147,7 @@ from visionset.kernel.domain import (
     VertexVisibility,
     VideoProvenance,
     WeightDownload,
+    WorkspaceSettings,
     asset_actions,
     asset_withheld,
     batch_actions,
@@ -1435,4 +1436,36 @@ def download_size(value: DownloadSize) -> shapes.DownloadSize:
         "model_revision": value.model_revision,
         "total_bytes": value.total_bytes,
         "file_count": value.file_count,
+    }
+
+
+def workspace_settings(value: WorkspaceSettings) -> shapes.WorkspaceSettings:
+    """The read-only settings of this process: version, tracking status, executor values.
+
+    Built once by ``visionset.jobs.settings.workspace_settings``; nothing here can
+    add a secret, because the object holds none.
+    """
+    tracking = value.tracking
+    server = tracking.server
+    return {
+        "version": value.version,
+        "tracking": {
+            "enabled": tracking.enabled,
+            "experiment": tracking.experiment,
+            "server": None
+            if server is None
+            else {"scheme": server.scheme, "host": server.host, "port": server.port},
+            "auth": None if tracking.auth is None else tracking.auth.value,
+            "ca_bundle_configured": tracking.ca_bundle_configured,
+            "client_certificate_configured": tracking.client_certificate_configured,
+            "client_installed": tracking.client_installed,
+            "problem": tracking.problem,
+        },
+        "executor": {
+            "variables": [
+                {"name": variable.name, "value": variable.value, "default": variable.default}
+                for variable in value.executor.variables
+            ],
+            "problem": value.executor.problem,
+        },
     }

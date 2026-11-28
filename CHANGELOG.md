@@ -13,6 +13,18 @@ nothing was being distributed. This is the first version that is.
 
 ### Added
 
+- **Workspace settings, read-only, on every surface.** `GET /settings`, `visionset settings --json` and the MCP tool
+  `get_workspace_settings` publish one object built below the surfaces: the VisionSet version, the MLflow tracking
+  status (enabled, experiment, the tracking server's scheme, host and port, which authentication mode is configured,
+  whether a CA bundle or client certificate is set, whether the client extra is installed, and the refusal a run would
+  meet) and the job executor's values beside their defaults. It never carries a username, password, token, certificate
+  path, or the tracking URI's userinfo, path or query, and with tracking off no `MLFLOW_*` variable is read. The
+  executor's settings object moved from `visionset.server.settings` to `visionset.jobs.settings` so the CLI and MCP can
+  report it (#1280).
+- **A project's description can be edited.** `ProjectService.update` changes the name, the description or both in one
+  unit of work; a blank description clears it. `PATCH /projects/{project_id}` now takes `description` beside `name`
+  (both optional; null leaves a field alone), and `visionset project update PROJECT --description TEXT` and the MCP
+  tool `update_project` change the description (#1280).
 - **Agent-plugin discovery finds an installed `visionset`.** `agent-plugins/packages/visionset/runtime/discover.py`
   resolves the `VISIONSET_PLUGIN_EXECUTABLE` override, then user installs (`PATH` outside the project, pipx, uv tool,
   `pip --user`), then project installs (an active virtual or conda environment, `UV_PROJECT_ENVIRONMENT`, `.venv` and

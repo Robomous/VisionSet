@@ -17,12 +17,13 @@ with WorkspaceService.open("./road-signs") as workspace:
     project = projects.create("Speed limits", "urban, 30-50 km/h")
     projects.get_dataset(project.id)  # created with it, empty, same name
     projects.rename(project.id, "Speed signs")
+    projects.update(project.id, description="urban and rural")  # "" clears it
     projects.list()
     projects.delete(project.id, confirm=True)
 ```
 
 **Over HTTP:** `POST`/`GET /projects`, `GET`/`PATCH`/`DELETE /projects/{project_id}`, where
-`PATCH` renames and `DELETE` needs `?confirm=true`. The semantics below are the same ones - the
+`PATCH` takes `name`, `description` or both and `DELETE` needs `?confirm=true`. The semantics below are the same ones - the
 REST surface is a thin client of this service. See [api.md](api.md) for the conventions and
 `openapi.json` for the exact shapes.
 
@@ -94,11 +95,25 @@ whitespace, NFC-normalized on the way in. See
 in two places. `rename` passes `exclude=project_id`, so correcting only the capitalization
 of a name is not a collision with itself.
 
+## Editing a project
+
+`update(project_id, name=..., description=...)` changes either field or both in one unit of work,
+so a refused rename applies no description either. `None` leaves a field alone. A description that
+is blank once stripped clears it; any other is stored as written. A new name renames the dataset
+with it, as `rename` does, and the dataset's own description is never touched. `rename` is
+`update` with a name only.
+
+Every surface reaches the same method: `PATCH /projects/{project_id}` with `name`, `description`
+or both, where an omitted or null field is left alone; `visionset project update PROJECT
+--description TEXT`; and the MCP tool `update_project`. The CLI and MCP change the description
+only, for the reason the next section gives for renaming.
+
 ## At a terminal
 
 ```bash
 visionset project create road-signs --description "Motorway signage"
 visionset project list
+visionset project update road-signs --description "Motorway and trunk-road signage"
 ```
 
 `create` writes the project and its dataset in one transaction, and prints the new id on stdout

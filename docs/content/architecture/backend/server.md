@@ -41,12 +41,11 @@ cannot be invented at a call site and the CLI and MCP publish the same one.
 | Module | Holds |
 | --- | --- |
 | [`main.py`](../../../../src/visionset/server/main.py) | `create_app()`, the static bundle mount, the SPA deep-link fallback |
-| [`routes/`](../../../../src/visionset/server/routes/) | one module per resource - projects, schemas, sources, ingest, video imports, batches, jobs, annotations, assets, datasets, releases, formats and export targets, preprocessing recipes, background jobs, inference, the composed home summary, the provider listing - plus `_prelabel.py`, the shared pre-label launch logic, which carries no router |
+| [`routes/`](../../../../src/visionset/server/routes/) | one module per resource - projects, schemas, sources, ingest, video imports, batches, jobs, annotations, assets, datasets, releases, formats and export targets, preprocessing recipes, background jobs, inference, the composed home summary, the provider listing, the read-only process settings - plus `_prelabel.py`, the shared pre-label launch logic, which carries no router |
 | [`models.py`](../../../../src/visionset/server/models.py) | the pydantic request and response models `openapi.json` is generated from |
 | [`errors.py`](../../../../src/visionset/server/errors.py) | `ERROR_RULES` - every domain error's status, with its code from the kernel |
 | [`dependencies.py`](../../../../src/visionset/server/dependencies.py) | which workspace a request serves, and the bearer-token gate |
 | [`session.py`](../../../../src/visionset/server/session.py) | the cookie the server issues to the page it served |
-| [`settings.py`](../../../../src/visionset/server/settings.py) | the executor's three environment variables, and the only `pydantic-settings` object in the repository |
 | [`uploads.py`](../../../../src/visionset/server/uploads.py) | staging multipart bytes under a digest of the part set, so a path exists for `SourceService` to register |
 
 ## `openapi.json` is a committed artifact

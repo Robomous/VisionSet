@@ -251,6 +251,7 @@ def test_a_project_reads_back_by_id(tmp_path: Path) -> None:
         # what was searched for rather than an id nobody typed.
         pytest.param(lambda ps: ps.get_by_name("signs"), "no project named", id="by-name"),
         pytest.param(lambda ps: ps.rename(uuid4(), "signs"), None, id="renaming"),
+        pytest.param(lambda ps: ps.update(uuid4(), description="x"), None, id="describing"),
         # Both spellings of delete, because nothing destructive is being guarded
         # when the target does not exist and the confirmation must not change that.
         pytest.param(lambda ps: ps.delete(uuid4(), confirm=False), None, id="deleting-unconfirmed"),
@@ -410,6 +411,64 @@ def test_renaming_a_project_to_a_blank_name_is_rejected(tmp_path: Path, blank: s
     with pytest.raises(InvalidName, match="non-blank"):
         projects.rename(project.id, blank)
     assert projects.get(project.id).name == "signs"
+    workspace.close()
+
+
+# --- update ------------------------------------------------------------------
+
+
+def test_a_description_is_stored_and_the_name_and_dataset_are_untouched(tmp_path: Path) -> None:
+    workspace, projects = _service(tmp_path)
+    project = projects.create("signs", "street furniture")
+    dataset = projects.get_dataset(project.id)
+    updated = projects.update(project.id, description="night shots")
+    assert (updated.name, updated.description) == ("signs", "night shots")
+    assert projects.get(project.id) == updated
+    assert projects.get_dataset(project.id) == dataset
+    workspace.close()
+
+
+@pytest.mark.parametrize("blank", ["", "   ", "\t\n"])
+def test_a_blank_description_clears_it(tmp_path: Path, blank: str) -> None:
+    workspace, projects = _service(tmp_path)
+    project = projects.create("signs", "street furniture")
+    assert projects.update(project.id, description=blank).description is None
+    assert projects.get(project.id).description is None
+    workspace.close()
+
+
+def test_a_description_is_kept_as_written(tmp_path: Path) -> None:
+    workspace, projects = _service(tmp_path)
+    project = projects.create("signs")
+    assert projects.update(project.id, description=" night\nshots ").description == (
+        " night\nshots "
+    )
+    workspace.close()
+
+
+def test_an_update_with_nothing_to_change_returns_the_project_unchanged(tmp_path: Path) -> None:
+    workspace, projects = _service(tmp_path)
+    project = projects.create("signs", "street furniture")
+    assert projects.update(project.id) == project
+    workspace.close()
+
+
+def test_an_update_renames_and_describes_together(tmp_path: Path) -> None:
+    workspace, projects = _service(tmp_path)
+    project = projects.create("signs")
+    updated = projects.update(project.id, name="lanes", description="night shots")
+    assert (updated.name, updated.description) == ("lanes", "night shots")
+    assert projects.get_dataset(project.id).name == "lanes"
+    workspace.close()
+
+
+def test_a_refused_rename_applies_no_description(tmp_path: Path) -> None:
+    workspace, projects = _service(tmp_path)
+    projects.create("signs")
+    other = projects.create("lanes", "street furniture")
+    with pytest.raises(ProjectNameTaken):
+        projects.update(other.id, name="SIGNS", description="night shots")
+    assert projects.get(other.id).description == "street furniture"
     workspace.close()
 
 
