@@ -3,7 +3,7 @@
  *
  * ## The default is collapsed, and it is one declaration
  *
- * The rail carries the logo, Projects, Models, the toggle, the theme and sign
+ * The rail carries the logo, Projects, Models, the toggle, the theme, Settings and sign
  * out (the thin-app rule keeps it that way), and every one of them is legible as an icon,
  * with its label as the accessible name and the tooltip when narrow. The screens
  * beside it are the ones that need the width: the Images grid measures its column

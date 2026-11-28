@@ -44,12 +44,16 @@ import {
   AnnotationPage,
   assetParamFor,
   DEFAULT_PROJECT_SECTION,
+  DEFAULT_SETTINGS_SECTION,
   ModelsScreen,
   isProjectSection,
+  isSettingsSection,
   resolveProjectTab,
   ProjectScreen,
   ProjectsScreen,
+  SettingsScreen,
   type ProjectSection,
+  type SettingsSection,
 } from "@visionset/ui-core";
 import { Navigate, Route, Routes, useNavigate, useParams, useSearchParams } from "react-router";
 import type { JSX } from "react";
@@ -93,6 +97,9 @@ export function AppRoutes(): JSX.Element {
                 lights one entry for it. */}
             <Route index element={<Navigate to={PARENT.projects} replace />} />
             <Route path="inference" element={<Navigate to={PARENT.models} replace />} />
+            {/* `replace`, as for a bare project URL: Back should not walk into a bounce. */}
+            <Route path="settings" element={<Navigate to={PARENT.settings} replace />} />
+            <Route path="settings/:section" element={<Settings />} />
             <Route path="*" element={<NotFound />} />
           </Route>
 
@@ -199,6 +206,10 @@ export const PARENT = {
   //: this table is the route map's own index, and an entry point missing from it
   //: is exactly the drift this table exists to prevent. Its own way out is the rail.
   models: "/models",
+  //: A rail destination too. Its sections are path segments, like a project's, and
+  //: `settings` spells the first one outright so a link lands in one hop.
+  settings: `/settings/${DEFAULT_SETTINGS_SECTION}`,
+  settingsSection: (section: SettingsSection) => `/settings/${section}`,
   section: (projectId: string, section: ProjectSection) => `/projects/${projectId}/${section}`,
   project: (projectId: string) => PARENT.section(projectId, DEFAULT_PROJECT_SECTION),
   dataset: (projectId: string) => PARENT.section(projectId, "dataset"),
@@ -345,6 +356,24 @@ function Project(): JSX.Element {
       // A deleted project's own URL is a 404 waiting to happen, so the parent is
       // where to land — and `replace`, because Back should not walk into it.
       onDeleted={() => void navigate(PARENT.projects, { replace: true })}
+    />
+  );
+}
+
+/**
+ * The workspace's Settings page, whose section is the URL's last segment. An
+ * unknown one is a 404, for the project sections' reason: nothing linked to it.
+ * `replace` on the write, because a section is a view of the same page.
+ */
+function Settings(): JSX.Element {
+  const { section } = useParams();
+  const navigate = useNavigate();
+  if (!isSettingsSection(section)) return <NotFound />;
+  return (
+    <SettingsScreen
+      section={section}
+      hrefFor={PARENT.settingsSection}
+      onSectionChange={(next) => void navigate(PARENT.settingsSection(next), { replace: true })}
     />
   );
 }

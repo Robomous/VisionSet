@@ -14,11 +14,12 @@
  * rather than by inverting. The tabs and the status bar sit on the same tokens,
  * so the chrome reads as one frame around the page.
  *
- * What is on the rail: the mark, Projects, Models, and the theme and account
- * controls at the bottom — and nothing else. `Models` is one of them by a settled
- * decision: model connections are workspace infrastructure that every project
- * uses, so they cannot live inside any one project, and the rail is the only
- * workspace-level surface there is. Anything richer growing here is exactly what
+ * What is on the rail: the mark, Projects, Models, and the theme, Settings and
+ * account controls at the bottom — and nothing else. `Models` is one of them by a
+ * settled decision: model connections are workspace infrastructure that every
+ * project uses, so they cannot live inside any one project, and the rail is the
+ * only workspace-level surface there is. Settings is there for the same reason:
+ * what it holds belongs to the workspace or to this browser, never to a project. Anything richer growing here is exactly what
  * the **thin-app audit** exists to catch: this file is composition and identity,
  * and a capability that lands in it is one the future enterprise UI cannot reuse.
  *
@@ -90,6 +91,7 @@ import {
   Moon,
   PanelLeftClose,
   PanelLeftOpen,
+  Settings,
   Sun,
   type LucideIcon,
 } from "lucide-react";
@@ -203,6 +205,13 @@ export function AppShell(): JSX.Element {
 
           <div className={cn("mt-auto flex flex-col", !collapsed && "w-full")}>
             <ThemeMenu collapsed={collapsed} />
+            <RailLink
+              to="/settings"
+              testId="rail-settings"
+              label="Settings"
+              icon={Settings}
+              collapsed={collapsed}
+            />
             <SignOut collapsed={collapsed} />
           </div>
         </nav>

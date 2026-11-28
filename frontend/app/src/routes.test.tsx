@@ -12,7 +12,7 @@
 import { render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { JSX } from "react";
-import { MemoryRouter, useLocation } from "react-router";
+import { MemoryRouter, useLocation, useNavigate } from "react-router";
 
 import { OssSessionProvider } from "./data/OssSession";
 import { writeToken } from "./data/token";
@@ -158,3 +158,83 @@ describe("the project's addresses", () => {
     expect(PARENT.schema(PROJECT)).toBe(`/projects/${PROJECT}/schema`);
   });
 });
+
+describe("the Settings page's addresses", () => {
+  beforeEach(() => {
+    writeToken("a-token");
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) => {
+        const url = input instanceof Request ? input.url : String(input);
+        if (new URL(url).pathname.endsWith("/health")) {
+          return new Response(JSON.stringify({ status: "ok", version: "9.8.7" }), {
+            status: 200,
+            headers: { "content-type": "application/json" },
+          });
+        }
+        return new Response(JSON.stringify({ detail: "stub" }), { status: 404 });
+      }),
+    );
+  });
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("redirects /settings to its first section", async () => {
+    open("/settings");
+    await waitFor(() => expect(screen.getByTestId("location").textContent).toBe("/settings/about"));
+    await screen.findByTestId("settings-screen");
+  });
+
+  it("replaces the bare address rather than leaving a bounce in the history", async () => {
+    render(
+      <MemoryRouter initialEntries={["/projects", "/settings"]} initialIndex={1}>
+        <OssSessionProvider baseUrl="http://localhost/api">
+          <AppRoutes />
+          <Location />
+          <BackButton />
+        </OssSessionProvider>
+      </MemoryRouter>,
+    );
+    await screen.findByTestId("settings-screen");
+    expect(screen.getByTestId("location").textContent).toBe("/settings/about");
+    screen.getByTestId("back").click();
+    await waitFor(() => expect(screen.getByTestId("location").textContent).toBe("/projects"));
+  });
+
+  it("shows the version the server reports", async () => {
+    open("/settings/about");
+    expect((await screen.findByTestId("settings-version")).textContent).toBe("9.8.7");
+  });
+
+  it("says not found for a section that does not exist", async () => {
+    open("/settings/appearance");
+    await screen.findByText("No such page");
+    expect(screen.getByTestId("location").textContent).toBe("/settings/appearance");
+  });
+
+  it("lights the rail's Settings entry on every Settings address, and only there", async () => {
+    open("/settings/about");
+    await screen.findByTestId("settings-screen");
+    const entry = screen.getByTestId("rail-settings");
+    expect(entry.getAttribute("aria-current")).toBe("page");
+    expect(entry.getAttribute("href")).toBe("/settings");
+    expect(entry.getAttribute("aria-label")).toBe("Settings");
+    expect(screen.getByTestId("rail-projects").getAttribute("aria-current")).toBeNull();
+  });
+
+  it("leaves the Settings entry unlit elsewhere", async () => {
+    open("/models");
+    await screen.findByTestId("models-screen");
+    expect(screen.getByTestId("rail-settings").getAttribute("aria-current")).toBeNull();
+    expect(screen.getByTestId("rail-models").getAttribute("aria-current")).toBe("page");
+  });
+
+  it("spells the first section outright and every section as a segment", () => {
+    expect(PARENT.settings).toBe("/settings/about");
+    expect(PARENT.settingsSection("about")).toBe("/settings/about");
+  });
+});
+
+function BackButton(): JSX.Element {
+  const navigate = useNavigate();
+  return <button type="button" data-testid="back" onClick={() => void navigate(-1)} />;
+}

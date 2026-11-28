@@ -1,6 +1,6 @@
 # Visual baselines
 
-Twelve reference images, compared pixel for pixel, produced in one Linux container
+Fourteen reference images, compared pixel for pixel, produced in one Linux container
 and nowhere else — and kept on the machine that produced them, never in git.
 
 They exist to catch what an assertion cannot see: a token resolving to the wrong
@@ -14,6 +14,7 @@ to ask any of those questions.
 | Image | Surface | Captured |
 | --- | --- | --- |
 | `projects-desktop-light.png`, `projects-desktop-dark.png` | the shell and the project list: rail, page header, table, thumbnails | the window |
+| `settings-desktop-light.png`, `settings-desktop-dark.png` | the rail's bottom group with Settings current, the page's section column and its About card | the window |
 | `schema-desktop-dark.png` | the project's Schema section: inputs, labels, the class ledger | the project screen |
 | `schema-narrow-light.png` | the same at 420px, where the action row wraps | the project screen |
 | `models-desktop-light.png`, `models-desktop-dark.png` | the Models table: badges and technical text | the Models screen |
@@ -55,7 +56,7 @@ reports that difference as a product regression.
 ## Where the images live
 
 `frontend/app/e2e/visual.spec.ts-snapshots/` is git-ignored. The first run in the
-container writes the twelve baselines there; every later run compares against them.
+container writes the fourteen baselines there; every later run compares against them.
 A comparison is therefore a statement about *this checkout since its baselines were
 taken*: capture them on the merge-base before starting a visual change, then compare
 after it, and the diff is the change and nothing else. The `visual` project exists only

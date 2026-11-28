@@ -1,7 +1,7 @@
 /**
  * The visual baseline: a small set of reference surfaces, in both themes.
  *
- * ## Why these six and not the route list
+ * ## Why these and not the route list
  *
  * A snapshot is worth keeping when it would catch a change nothing else does — a
  * token resolving to the wrong colour, a font that failed to load, an icon that
@@ -21,9 +21,11 @@
  *   palette, stage, panel, zoom and the highest icon count anywhere.
  * - **A scan** is the one surface drawn in WebGL rather than CSS: its points take
  *   each theme's own ramp, its cuboid the class colour and its surround `stage`.
+ * - **Settings** is the rail's bottom group with an entry current, beside the
+ *   page's section navigation and its cards.
  *
  * Home, Batches, Dataset and Ingest are covered by behavioural specs and
- * add no design-system vocabulary these six do not already hold. A baseline that
+ * add no design-system vocabulary these do not already hold. A baseline that
  * mostly photographs empty space is a baseline that fails for reasons nobody can
  * read.
  *
@@ -54,6 +56,20 @@ test.describe("the shell and a data surface", () => {
       // The window, because the rail beside the content is half of what this
       // reference is for.
       await expect(page).toHaveScreenshot(`projects-desktop-${theme}.png`);
+    });
+  }
+});
+
+test.describe("the Settings page", () => {
+  for (const theme of ["light", "dark"] as const) {
+    test(`Settings, desktop, ${theme}`, async ({ page }) => {
+      await page.setViewportSize(DESKTOP);
+      await openVisual(page, "/settings/about");
+      await expect(page.getByTestId("settings-version")).toBeVisible();
+      if (theme === "dark") await useDark(page);
+      await readyForCapture(page);
+      // The window: the rail's current entry is half of what this reference is for.
+      await expect(page).toHaveScreenshot(`settings-desktop-${theme}.png`);
     });
   }
 });
