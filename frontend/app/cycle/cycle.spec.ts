@@ -1602,10 +1602,10 @@ test("the whole cycle, from opening the app to a downloaded export", async ({ pa
     await expectArchive(download);
   });
 
-  await test.step("write a recipe in its three steps", async () => {
+  await test.step("write a recipe on its one page", async () => {
     /*
      * The stage between a release and the files a trainer reads, driven the
-     * way a person drives it: the export's New recipe, the modal's three steps,
+     * way a person drives it: the export's New recipe, the modal's one page,
      * *Create recipe*. Every hop is real — the target catalog the modal seeds its
      * resize from, and the `POST` that stores the recipe. The modal's own
      * tests stub both, which is right for them and is why they cannot notice
@@ -1617,10 +1617,10 @@ test("the whole cycle, from opening the app to a downloaded export", async ({ pa
     await page.getByTestId("recipe-new").click();
     const modal = page.getByTestId("recipe-dialog");
     await expect(modal.getByTestId("recipe-editor")).toBeVisible();
-    await expect(modal.getByTestId("recipe-step-count")).toHaveText("1/3");
+    await expect(modal.getByTestId("recipe-title")).toHaveText("New recipe");
 
     // The model first, because choosing one applies its hints: YOLO11's say
-    // letterbox to 640, and the Resize step fills in rather than being
+    // letterbox to 640, and the resize fills in rather than being
     // typed. Asserted rather than typed over, since the hints are the
     // catalog's answer and a wrong one would be worth failing on.
     await modal.getByTestId("recipe-target").click();
@@ -1628,19 +1628,20 @@ test("the whole cycle, from opening the app to a downloaded export", async ({ pa
     await modal.getByTestId("recipe-name").fill(RECIPE);
     // Not yet exported, so nothing says it was.
     await expect(modal.getByTestId("recipe-used-by")).toHaveCount(0);
-    await modal.getByTestId("recipe-next").click();
 
-    await expect(modal.getByTestId("recipe-step-count")).toHaveText("2/3");
     await expect(modal.getByTestId("resize-letterbox")).toHaveAttribute("data-state", "on");
     await expect(modal.getByTestId("resize-width")).toHaveValue("640");
     await expect(modal.getByTestId("resize-height")).toHaveValue("640");
-    await modal.getByTestId("recipe-next").click();
 
     // One augmentation; switching the first one on makes one variant, which is
     // the spec's own rule rather than a default.
-    await expect(modal.getByTestId("recipe-step-count")).toHaveText("3/3");
     await modal.getByTestId("augment-hflip").click();
-    await expect(modal.getByTestId("augment-variants")).toHaveText("1");
+    await expect(modal.getByTestId("augment-variants-1")).toHaveAttribute("aria-checked", "true");
+    // The release it was opened from is counted: every asset once, and the
+    // training fold once more for the one variant — two, as the archive below
+    // finds.
+    await expect(modal.getByTestId("recipe-tally-added")).toContainText("+2");
+    await expect(modal.getByTestId("recipe-tally-written")).toContainText("5");
 
     await modal.getByTestId("recipe-save").click();
     await expect(modal.getByTestId("recipe-saved")).toContainText(`${RECIPE} is ready`);

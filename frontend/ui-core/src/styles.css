@@ -410,23 +410,13 @@
 /*
  * The recipe's modal (`screens/dataset/recipe/`).
  *
- * The step that arrives settles in with a short blur-fade, just behind the
- * modal's height following it (a transition, in `steps.tsx`); the step that
- * leaves goes at once, so a quick Next, Next never queues anything up. The
- * opening step plays nothing. Brightness's amount opens under its switch by
- * its height and shuts back into it — Radix measures it
- * (`--radix-collapsible-content-height`) and keeps it mounted until it has
- * shut; the frame follows it. A value that changes swaps with a short
+ * Brightness's amount opens inside its row by its height and shuts back into
+ * it — Radix measures it (`--radix-collapsible-content-height`) and keeps it
+ * mounted until it has shut. A value that changes swaps with a short
  * blur-fade, so the change reads as one thing changing. The saved view
  * settles in and its check arrives after it. Under reduced motion all of it
  * is a plain fade.
  */
-@keyframes vs-recipe-step {
-  from {
-    opacity: 0;
-    filter: blur(2px);
-  }
-}
 @keyframes vs-recipe-reveal-open {
   from {
     height: 0;
@@ -472,9 +462,6 @@
   }
 }
 @media (prefers-reduced-motion: no-preference) {
-  .vs-recipe-step[data-dir] {
-    animation: vs-recipe-step 200ms cubic-bezier(0.23, 1, 0.32, 1) 40ms both;
-  }
   .vs-recipe-reveal[data-state="open"] {
     animation: vs-recipe-reveal-open 220ms cubic-bezier(0.23, 1, 0.32, 1);
   }
@@ -492,7 +479,6 @@
   }
 }
 @media (prefers-reduced-motion: reduce) {
-  .vs-recipe-step[data-dir],
   .vs-recipe-label,
   .vs-recipe-saved {
     animation: vs-recipe-fade 160ms ease-out;
@@ -502,9 +488,8 @@
 /*
  * The inspector's row (`PropertyRow`): a 7rem label column and the value.
  * A surface whose labels are all short narrows the column for every row in
- * it at once by setting `--vs-label-column` (the recipe modal: 6rem); a dense
- * one sets `--vs-row-height` and `--vs-row-pad` (the recipe modal: 36px rows,
- * 4px above and below a 28px control, so two controls stand 8px apart).
+ * it at once by setting `--vs-label-column`; a dense one sets
+ * `--vs-row-height` and `--vs-row-pad`.
  */
 .vs-property-row {
   grid-template-columns: var(--vs-label-column, 7rem) minmax(0, 1fr);

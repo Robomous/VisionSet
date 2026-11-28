@@ -106,7 +106,7 @@ function ReleaseFacts({ projectId, release, parts }: { readonly projectId: strin
           answer={job === null ? "Not exported this session" : <StateChip state={job} testId="export-job-state" />}
           answerAlways
         >
-          <ExportFields projectId={projectId} parts={parts} />
+          <ExportFields projectId={projectId} release={release} parts={parts} />
         </Fold>
       )}
     </div>
@@ -118,7 +118,7 @@ function ReleaseFacts({ projectId, release, parts }: { readonly projectId: strin
  * warning beside it — the recipe, the consent a lossy export asks for, what
  * went wrong, and the button.
  */
-function ExportFields({ projectId, parts }: { readonly projectId: string; readonly parts: ExportParts }): JSX.Element {
+function ExportFields({ projectId, release, parts }: { readonly projectId: string; readonly release: Release; readonly parts: ExportParts }): JSX.Element {
   const warning = parts.warning;
   return (
     <div className="flex flex-col gap-1" data-testid="export-form">
@@ -136,7 +136,7 @@ function ExportFields({ projectId, parts }: { readonly projectId: string; readon
       >
         <div className="w-full min-w-0">{parts.target}</div>
       </Field>
-      <RecipeChoice projectId={projectId} value={parts.recipe} onChange={parts.onRecipe} />
+      <RecipeChoice projectId={projectId} release={release} value={parts.recipe} onChange={parts.onRecipe} />
       {parts.consent}
       {parts.failures}
       <Button className="mt-2 w-full" data-testid="export-submit" disabled={parts.disabled} onClick={parts.submit}>

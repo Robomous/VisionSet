@@ -539,6 +539,16 @@ nothing was being distributed. This is the first version that is.
 
 ### Changed
 
+- **A recipe is written on one page, beside what it makes.** The recipe dialog's three steps (*Name and model*,
+  *Resize*, *Augmentation*) with Previous and Next are now one 47.5 rem page: the name and model in a strip, the
+  controls on the left — the fit as cards that draw what they do, the size, one row per augmentation with its switch
+  at the row's end and brightness's amount inside its row, and the variants as a choice of one to eight — and on the
+  right a preview of the release's first training image through the draft (`POST /preprocessing-preview`) with a tab
+  per variant, and the images the recipe writes for that release: every asset once and each training asset once
+  more per variant, read from its folds (`GET /releases/{id}/assignment`). With no release, no split or no picture,
+  the pane draws the fit and says only what is true. Narrower than 40 rem the right pane drops under the controls.
+  The bar is *Cancel* and the save, and Enter in a field saves. The counts are a stopgap until the server assesses
+  a recipe (#1279). No wire change (#1277).
 - **The browser's lossy-export consent counts the assets left out whole.** The sentence above the "Export anyway"
   tick box was built from the report's `classes` only, so a release whose loss was untagged pictures or a modality
   the format cannot write named no count. It now adds one sentence per dropped modality, naming it with its asset
@@ -633,6 +643,11 @@ nothing was being distributed. This is the first version that is.
   digits, and both `dota` and `yolo-obb` keep a small box whose corners lie within two units of that precision per
   axis, up from one; on DOTA v1.5 that refuses 0.44%. Every kept fit is still a `geometry` loss, and the sixth-of-the-
   shorter-side test is unchanged (#1208).
+- **The recipe dialog fits its controls at every width.** The steps were a fixed 22 rem, so on a phone the
+  *Fit* options *Letterbox* and *Original* were clipped, the common sizes were squeezed into 42 px cells at the
+  small type size, and the *Resize* drawing's card ran 8 px past the dialog's edge. The dialog is never wider than
+  the window less 2 rem, no option is narrower than its label, and nothing runs past the dialog's edge; Crop is
+  drawn clearly larger than Fill, so the two fits read apart (#1277).
 - **A mask is decoded once per write and not again on read.** Writing a `mask` annotation decoded its counts about
   six times, plus once more for every mask already on the asset; reading one back decoded it twice. A write now
   decodes the new mask once, and a mask read back from the workspace store is trusted as the canonical form the

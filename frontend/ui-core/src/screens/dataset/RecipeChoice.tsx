@@ -33,7 +33,7 @@ import {
 } from "@robomous/ui-core";
 import { refusalProse } from "../../data/refusals";
 import { describeRecipeSpec } from "../recipeDraft";
-import { useExportTargets, usePreprocessingRecipes } from "../queries";
+import { useExportTargets, usePreprocessingRecipes, type Release } from "../queries";
 import { NO_RECIPE } from "./ExportForm";
 import { WarnTip } from "../../patterns/WarnTip";
 import { Field } from "./Fold";
@@ -61,7 +61,18 @@ function capital(text: string): string {
 }
 
 /** The recipe field, the line under it, and the dialogs that write, edit and delete. */
-export function RecipeChoice({ projectId, value, onChange }: { readonly projectId: string; readonly value: string; readonly onChange: (name: string) => void }): JSX.Element {
+export function RecipeChoice({
+  projectId,
+  release,
+  value,
+  onChange,
+}: {
+  readonly projectId: string;
+  /** The release whose export this is: the recipe dialog counts and previews against it. */
+  readonly release?: Release | undefined;
+  readonly value: string;
+  readonly onChange: (name: string) => void;
+}): JSX.Element {
   const recipes = usePreprocessingRecipes(projectId);
   const targets = useExportTargets();
   const [open, setOpen] = useState<OpenRecipe | null>(null);
@@ -146,6 +157,7 @@ export function RecipeChoice({ projectId, value, onChange }: { readonly projectI
 
       <RecipeDialog
         projectId={projectId}
+        release={release}
         recipe={open}
         editor={editor}
         onRequestClose={close}

@@ -1,33 +1,25 @@
 /**
- * The recipe's fields, one group per step: the name and the model, then the
- * resize, then the augmentation.
+ * The recipe's fields, on one page: the name and the model in a strip under
+ * the header, then the resize and the augmentation in the controls' column.
  *
- * Every row is the inspector's (`PropertyRow`): the label in a 7rem column,
- * the control at the value edge, at the app's control height — the grid the
- * class and model sheets use, so the eye runs down one edge of labels and one
- * edge of controls, on every step. Controls fill the value column, so their right edges line
- * up too.
+ * Each section is labelled once and its controls sit under it: the fit as
+ * cards that draw what they do, the size as two fields and the common sizes,
+ * then one row per augmentation — its icon, its name, its info button and its
+ * switch at the row's end, so what is on reads down one edge. Brightness's
+ * amount opens inside its row while the switch is on. The variants are a
+ * choice of one to eight, held at none and disabled where they stand while
+ * nothing is switched on.
  *
- * Nothing appears or leaves as choices change: a field that does not apply is
- * dimmed and disabled where it stands — the one exception is brightness's
- * amount, which opens under its switch while the switch is on, drawn as its
- * child. What a choice means beyond its label — the model's tasks and fit,
- * what an augmentation does, what variants are for — is behind an info button
- * beside its label; where the effect is easier seen than read, the card
- * carries a drawing (`ArtTip`, `art.tsx`). The resize is the one step drawn
- * all the time: a stage above its fields shows what the fit does at the size,
- * and the option under the pointer or focus before it is chosen. A problem is said once,
- * between Previous and Next, and the field it is about points at it, so no
- * row is held empty waiting for one.
+ * What a choice means beyond its label is behind an info button beside it
+ * (`InfoTip`, or `ArtTip` where the effect is easier seen than read). A
+ * problem is said once, beside the save, and the field it is about points at
+ * it, so no row is held empty waiting for one.
  */
 
-import { Minus, Plus } from "lucide-react";
+import { Contrast, FlipHorizontal2, RotateCw, type LucideIcon } from "lucide-react";
 import { useState, type JSX, type ReactNode } from "react";
 
 import {
-  Button,
-  ButtonGroup,
-  ButtonGroupText,
   cn,
   Collapsible,
   CollapsibleContent,
@@ -35,6 +27,7 @@ import {
   InputGroupAddon,
   InputGroupInput,
   InputGroupText,
+  Label,
   Slider,
   Switch,
   ToggleGroup,
@@ -43,31 +36,69 @@ import {
 import { ArtTip } from "../../../patterns/ArtTip";
 import { ExportTargetSelect } from "../../../patterns/ExportTargetSelect";
 import { InfoTip } from "../../../patterns/InfoTip";
-import { PropertyRow } from "../../../patterns/PropertyRow";
-import { AMOUNT_MAX, VARIANTS_MAX, type ResizeChoice } from "../../recipeDraft";
-import { ArtStage, FitArt, OpArt, VariantsArt } from "./art";
+import { AMOUNT_MAX, VARIANTS_MAX, type AugmentOp, type ResizeChoice } from "../../recipeDraft";
+import { FitArt, OpArt, VariantsArt } from "./art";
 import type { RecipeFlow } from "./flow";
 import { FITS, hintLine, OPS, PRESS, SIZES, sizeProblem, SPLIT_NOTE, targetLine, wholePx } from "./words";
 
-/** The line between Previous and Next, which says the problem a field is pointed at. */
+/** The line beside the save, which says the problem a field is pointed at. */
 export const STATUS_ID = "recipe-status";
 
 const DIM = "transition-opacity duration-150 ease-out";
 
+const ICONS: Record<AugmentOp, LucideIcon> = { hflip: FlipHorizontal2, brightness_contrast: Contrast, rot90: RotateCw };
+
+const VARIANT_CHOICES = Array.from({ length: VARIANTS_MAX }, (_, index) => String(index + 1));
+
+/** A field's label over its control, with an info button beside the label when it has one. */
+function Stacked({ label, htmlFor, labelId, action, children }: { readonly label: ReactNode; readonly htmlFor?: string; readonly labelId?: string; readonly action?: ReactNode; readonly children: ReactNode }): JSX.Element {
+  return (
+    <div className="flex min-w-0 flex-col gap-1">
+      <div className="flex h-6 min-w-0 items-center gap-0.5">
+        {htmlFor === undefined ? (
+          <span id={labelId} className="truncate text-muted-foreground">
+            {label}
+          </span>
+        ) : (
+          <Label htmlFor={htmlFor} id={labelId} className="truncate text-xs font-normal text-muted-foreground">
+            {label}
+          </Label>
+        )}
+        {action}
+      </div>
+      {children}
+    </div>
+  );
+}
+
+/** A section of the controls: its name, what it applies to, and its fields. */
+function Section({ title, scope, children, testId }: { readonly title: string; readonly scope: string; readonly children: ReactNode; readonly testId: string }): JSX.Element {
+  return (
+    <section className="flex flex-col gap-2" aria-label={title} data-testid={testId}>
+      <header className="flex items-baseline justify-between gap-3">
+        <h3 className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">{title}</h3>
+        <span className="truncate text-muted-foreground">{scope}</span>
+      </header>
+      {children}
+    </section>
+  );
+}
+
 // ---------------------------------------------------------------------------
 
-/** The first step: the name and the model, and — for a recipe that exists — what has used it. */
+/** The strip under the header: the name and the model, and — for a recipe that exists — what has used it. */
 export function Basics({ flow, notice, usage }: { readonly flow: RecipeFlow; readonly notice: ReactNode; readonly usage?: string | undefined }): JSX.Element {
   return (
-    <div className="flex flex-col py-2">
+    <div className="grid shrink-0 gap-3 border-b border-border/70 bg-muted/40 px-5 py-3 @min-[36rem]:grid-cols-2" data-testid="recipe-basics">
       <NameField flow={flow} />
       <ModelField flow={flow} notice={notice} />
       {usage !== undefined && (
-        <PropertyRow label="Used by">
-          <span className="block truncate text-muted-foreground" title={usage} data-testid="recipe-used-by">
+        <p className="flex min-w-0 gap-1.5 @min-[36rem]:col-span-2">
+          <span className="shrink-0 text-muted-foreground">Used by</span>
+          <span className="truncate" title={usage} data-testid="recipe-used-by">
             {usage}
           </span>
-        </PropertyRow>
+        </p>
       )}
     </div>
   );
@@ -76,52 +107,43 @@ export function Basics({ flow, notice, usage }: { readonly flow: RecipeFlow; rea
 function NameField({ flow }: { readonly flow: RecipeFlow }): JSX.Element {
   const problem = flow.problems.name !== null;
   return (
-    <>
-      <PropertyRow label="Name" htmlFor="recipe-name">
-        <InputGroup>
-          <InputGroupInput
-            id="recipe-name"
-            data-testid="recipe-name"
-            value={flow.name}
-            autoComplete="off"
-            spellCheck={false}
-            aria-invalid={problem || undefined}
-            aria-describedby={problem ? STATUS_ID : flow.suggested ? "recipe-name-suggested" : undefined}
-            onChange={(event) => flow.setName(event.target.value)}
-            className="font-mono"
-          />
-          {/* Inside the field, so its arrival takes room from the text, not from the rows. */}
-          {flow.suggested && (
-            <InputGroupAddon align="inline-end">
-              <InputGroupText id="recipe-name-suggested" className="vs-recipe-label text-muted-foreground" data-testid="recipe-name-suggested">
-                Suggested
-              </InputGroupText>
-            </InputGroupAddon>
-          )}
-        </InputGroup>
-      </PropertyRow>
-    </>
+    <Stacked label="Name" htmlFor="recipe-name">
+      <InputGroup className="bg-background">
+        <InputGroupInput
+          id="recipe-name"
+          data-testid="recipe-name"
+          value={flow.name}
+          autoComplete="off"
+          spellCheck={false}
+          aria-invalid={problem || undefined}
+          aria-describedby={problem ? STATUS_ID : flow.suggested ? "recipe-name-suggested" : undefined}
+          onChange={(event) => flow.setName(event.target.value)}
+          className="font-mono"
+        />
+        {/* Inside the field, so its arrival takes room from the text, not from the strip. */}
+        {flow.suggested && (
+          <InputGroupAddon align="inline-end">
+            <InputGroupText id="recipe-name-suggested" className="vs-recipe-label text-muted-foreground" data-testid="recipe-name-suggested">
+              Suggested
+            </InputGroupText>
+          </InputGroupAddon>
+        )}
+      </InputGroup>
+    </Stacked>
   );
 }
 
-// ---------------------------------------------------------------------------
-
 function ModelField({ flow, notice }: { readonly flow: RecipeFlow; readonly notice: ReactNode }): JSX.Element {
   if (notice != null) {
-    return (
-      <PropertyRow label="Model" align="start">
-        <div className="pt-1">{notice}</div>
-      </PropertyRow>
-    );
+    return <Stacked label="Model">{notice}</Stacked>;
   }
   const target = flow.target;
   const hint = target === undefined ? undefined : hintLine(target);
   return (
-    <PropertyRow
+    <Stacked
       label="Model"
       htmlFor="recipe-target"
-      // What the chosen model takes and how it trains, one press away beside its label.
-      labelAction={
+      action={
         // The select already names the model, so the card starts with what it takes.
         <InfoTip label="About this model" title={targetLine(target)} testId="recipe-target-info" contentTestId="recipe-target-meta">
           <span data-testid={hint === undefined ? undefined : "recipe-fit-suggested"}>
@@ -131,18 +153,20 @@ function ModelField({ flow, notice }: { readonly flow: RecipeFlow; readonly noti
       }
     >
       <ExportTargetSelect id="recipe-target" data-testid="recipe-target" compact noneLabel="Any model" targets={flow.targets} value={flow.draft.target} onValueChange={flow.setTarget} />
-    </PropertyRow>
+    </Stacked>
   );
 }
 
 // ---------------------------------------------------------------------------
 
+export type PeekHandlers = Record<"onPointerEnter" | "onPointerLeave" | "onFocus" | "onBlur", () => void>;
+
 /**
  * The fit an option would apply while the pointer or focus is on it: the
- * stage draws it in place of the chosen one, so a fit is seen before it is
- * chosen. Leaving the option hands the stage back to the choice.
+ * preview's drawing shows it in place of the chosen one, so a fit is seen
+ * before it is chosen. Leaving the option hands the drawing back to the choice.
  */
-function usePeek(): { readonly peek: ResizeChoice | null; readonly on: (fit: ResizeChoice) => Record<"onPointerEnter" | "onPointerLeave" | "onFocus" | "onBlur", () => void> } {
+export function usePeek(): { readonly peek: ResizeChoice | null; readonly on: (fit: ResizeChoice) => PeekHandlers } {
   const [peek, setPeek] = useState<ResizeChoice | null>(null);
   const leave = (fit: ResizeChoice) => () => setPeek((current) => (current === fit ? null : current));
   return {
@@ -151,47 +175,57 @@ function usePeek(): { readonly peek: ResizeChoice | null; readonly on: (fit: Res
   };
 }
 
-export function SizeFields({ flow }: { readonly flow: RecipeFlow }): JSX.Element {
+export function SizeFields({ flow, peekOn }: { readonly flow: RecipeFlow; readonly peekOn: (fit: ResizeChoice) => PeekHandlers }): JSX.Element {
   const sized = flow.draft.strategy !== "none";
   const problem = sizeProblem(flow);
   const preset = SIZES.find((size) => flow.draft.width === String(size) && flow.draft.height === String(size));
-  const { peek, on } = usePeek();
-  const drawn = peek ?? flow.draft.strategy;
   const width = wholePx(flow.draft.width);
   const height = wholePx(flow.draft.height);
+  const chosen = FITS.find((one) => one.value === flow.draft.strategy);
   return (
-    <>
-      {/* What the fit does to an image, at the size below: the option pointed at, else the one chosen,
-          with its line as the caption — the fit and the size are the fields under it, not said twice. */}
-      <ArtStage caption={FITS.find((one) => one.value === drawn)?.detail ?? ""}>
-        <FitArt fit={drawn} width={width} height={height} className="h-[5.5rem]" />
-      </ArtStage>
-      <PropertyRow label="Fit" labelId="recipe-fit-label">
+    <Section title="Resize" scope="Every image, every fold" testId="recipe-resize">
+      <Stacked
+        label="Fit"
+        labelId="recipe-fit-label"
+        action={
+          <InfoTip label="About the fit" title={chosen?.label} testId="recipe-fit-info">
+            {chosen?.detail}
+          </InfoTip>
+        }
+      >
         <ToggleGroup
           type="single"
           variant="outline"
-          spacing={0}
+          spacing={1.5}
           value={flow.draft.strategy}
           // A choice of one: pressing the chosen one again keeps it.
           onValueChange={(next) => next !== "" && flow.setStrategy(next as ResizeChoice)}
           aria-labelledby="recipe-fit-label"
           aria-describedby="recipe-fit-detail"
-          className="w-full"
+          className="grid w-full grid-cols-3 @min-[25rem]:grid-cols-5"
+          data-testid="resize-fit"
         >
           {FITS.map((fit) => (
-            <ToggleGroupItem key={fit.value} value={fit.value} className="flex-1" data-testid={`resize-${fit.value}`} {...on(fit.value)}>
-              {fit.label}
+            <ToggleGroupItem
+              key={fit.value}
+              value={fit.value}
+              className={cn("h-auto min-w-0 flex-col gap-1 px-1.5 pt-2 pb-1.5 data-[state=on]:border-primary", PRESS)}
+              data-testid={`resize-${fit.value}`}
+              {...peekOn(fit.value)}
+            >
+              {/* `size-auto` opts out of the toggle's 16px icon rule, so the drawing takes the card's width. */}
+              <FitArt fit={fit.value} width={width} height={height} className="size-auto h-10 w-full" />
+              <span className="truncate">{fit.label}</span>
             </ToggleGroupItem>
           ))}
         </ToggleGroup>
-        {/* The stage says it on screen; this says it to a screen reader, for the fit chosen. */}
         <p id="recipe-fit-detail" className="sr-only">
-          {FITS.find((one) => one.value === flow.draft.strategy)?.detail}
+          {chosen?.detail}
         </p>
-      </PropertyRow>
+      </Stacked>
 
-      <PropertyRow label={<span className={cn(DIM, !sized && "opacity-50")}>Size</span>} labelId="recipe-size-label" align="start">
-        <fieldset disabled={!sized} aria-labelledby="recipe-size-label" className="flex min-w-0 flex-col gap-1.5">
+      <Stacked label={<span className={cn(DIM, !sized && "opacity-50")}>Size</span>} labelId="recipe-size-label">
+        <fieldset disabled={!sized} aria-labelledby="recipe-size-label" className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-2">
           <div className="flex items-center gap-1.5">
             <Px id="recipe-width" label="Width" testId="resize-width" value={flow.draft.width} onChange={flow.setWidth} invalid={problem?.startsWith("Width") === true} disabled={!sized} />
             <span aria-hidden="true" className="text-muted-foreground">
@@ -202,23 +236,23 @@ export function SizeFields({ flow }: { readonly flow: RecipeFlow }): JSX.Element
           <ToggleGroup
             type="single"
             variant="outline"
-            spacing={0}
-            size="sm"
+            spacing={1}
             disabled={!sized}
             value={preset === undefined ? "" : String(preset)}
             onValueChange={(next) => next !== "" && flow.setSize(next, next)}
             aria-label="Common sizes"
-            className="w-full"
+            className="flex-wrap"
+            data-testid="resize-presets"
           >
             {SIZES.map((size) => (
-              <ToggleGroupItem key={size} value={String(size)} aria-label={`${size} × ${size}`} className="flex-1 tabular-nums">
+              <ToggleGroupItem key={size} value={String(size)} aria-label={`${size} × ${size}`} className="tabular-nums">
                 {size}
               </ToggleGroupItem>
             ))}
           </ToggleGroup>
         </fieldset>
-      </PropertyRow>
-    </>
+      </Stacked>
+    </Section>
   );
 }
 
@@ -242,7 +276,7 @@ function Px({
   return (
     // Disabled on the input itself, not only through the fieldset: no browser takes a keystroke into it.
     // The addon's own `cursor-text` is overridden too, so no part of a disabled field shows the text cursor.
-    <InputGroup className={cn("min-w-0 flex-1", disabled && "cursor-not-allowed **:cursor-not-allowed")} data-disabled={disabled || undefined}>
+    <InputGroup className={cn("w-24", disabled && "cursor-not-allowed **:cursor-not-allowed")} data-disabled={disabled || undefined}>
       <InputGroupInput
         id={id}
         disabled={disabled}
@@ -266,88 +300,113 @@ function Px({
 // ---------------------------------------------------------------------------
 
 export function AugmentFields({ flow }: { readonly flow: RecipeFlow }): JSX.Element {
-  const brightness = flow.draft.ops.includes("brightness_contrast");
   return (
-    <>
-      {OPS.map((one) => (
-        <OpRow key={one.op} op={one} flow={flow}>
-          {one.op === "brightness_contrast" && (
-            // Only there while brightness is on: it opens under its switch and shuts back into it.
-            <Collapsible open={brightness}>
-              <CollapsibleContent className="vs-recipe-reveal overflow-hidden" data-testid="recipe-amount">
-                {/* Drawn as Brightness's child: tucked 4px under it, with a branch from under its label. */}
-                <div className="relative -mt-1">
-                  <span aria-hidden="true" className="absolute start-[1.375rem] top-0 bottom-1/2 w-2.5 rounded-es-[5px] border-b border-s border-foreground/20" data-testid="recipe-amount-branch" />
-                  <PropertyRow label="Amount" labelId="recipe-amount-label" nested>
-                    <Amount flow={flow} />
-                  </PropertyRow>
-                </div>
-              </CollapsibleContent>
-            </Collapsible>
-          )}
-        </OpRow>
-      ))}
+    <Section title="Augment" scope="Training images only" testId="recipe-augment">
+      <div className="flex flex-col divide-y divide-border/70">
+        {OPS.map((one) => (
+          <OpRow key={one.op} op={one} flow={flow} />
+        ))}
+      </div>
       <Variants flow={flow} />
-    </>
+    </Section>
   );
 }
 
-function OpRow({ op, flow, children }: { readonly op: (typeof OPS)[number]; readonly flow: RecipeFlow; readonly children?: ReactNode }): JSX.Element {
+function OpRow({ op, flow }: { readonly op: (typeof OPS)[number]; readonly flow: RecipeFlow }): JSX.Element {
+  const on = flow.draft.ops.includes(op.op);
+  const Icon = ICONS[op.op];
   return (
-    <>
-      <PropertyRow
-        label={op.label}
-        htmlFor={`augment-${op.op}`}
-        // What it does to an image, drawn, one press away beside its label.
-        labelAction={
-          <ArtTip label={`About ${op.label.toLowerCase()}`} title={op.title} art={<OpArt op={op.op} amount={Number(flow.draft.amount) || 0} className="w-full" />} testId={`augment-${op.op}-info`}>
-            {op.body}
-          </ArtTip>
-        }
+    <div className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-x-3 py-2" data-testid={`augment-row-${op.op}`}>
+      <span
+        aria-hidden="true"
+        className={cn("grid size-7 place-items-center rounded-md transition-colors duration-150", on ? "bg-primary/10 text-foreground" : "bg-muted text-muted-foreground")}
       >
-        {/* Only the switch: what it does is the info card's, said once. A screen reader hears it with the switch. */}
-        <div className="flex min-w-0 items-center">
-          <Switch
-            id={`augment-${op.op}`}
-            data-testid={`augment-${op.op}`}
-            aria-describedby={`augment-${op.op}-detail`}
-            checked={flow.draft.ops.includes(op.op)}
-            onCheckedChange={(next) => flow.toggleOp(op.op, next)}
-          />
-          <span id={`augment-${op.op}-detail`} className="sr-only">
-            {op.title}. {op.body}
-          </span>
-        </div>
-      </PropertyRow>
-      {children}
-    </>
+        <Icon className="size-4" />
+      </span>
+      <div className="flex min-w-0 items-center gap-0.5">
+        <Label htmlFor={`augment-${op.op}`} className="truncate text-xs font-medium">
+          {op.label}
+        </Label>
+        {/* What it does to an image, drawn, one press away beside its label. */}
+        <ArtTip label={`About ${op.label.toLowerCase()}`} title={op.title} art={<OpArt op={op.op} amount={Number(flow.draft.amount) || 0} className="w-full" />} testId={`augment-${op.op}-info`}>
+          {op.body}
+        </ArtTip>
+      </div>
+      <Switch id={`augment-${op.op}`} data-testid={`augment-${op.op}`} aria-describedby={`augment-${op.op}-detail`} checked={on} onCheckedChange={(next) => flow.toggleOp(op.op, next)} />
+      {/* Said once on screen, in the info card; a screen reader hears it with the switch. */}
+      <span id={`augment-${op.op}-detail`} className="sr-only">
+        {op.title}. {op.body}
+      </span>
+      {op.op === "brightness_contrast" && (
+        // Only there while brightness is on: it opens inside the row and shuts back into it.
+        <Collapsible open={on} className="col-span-2 col-start-2">
+          <CollapsibleContent className="vs-recipe-reveal overflow-hidden" data-testid="recipe-amount">
+            <Amount flow={flow} />
+          </CollapsibleContent>
+        </Collapsible>
+      )}
+    </div>
   );
 }
 
-/** The variants per training image, with what they are for one press away beside the label. */
+/** How far brightness and contrast may move, with its value in a chip at the row's end. */
+function Amount({ flow }: { readonly flow: RecipeFlow }): JSX.Element {
+  const amount = Number(flow.draft.amount) || 0;
+  return (
+    <div className="flex h-8 items-center gap-3 pt-1">
+      <span id="recipe-amount-label" className="shrink-0 text-muted-foreground">
+        Amount
+      </span>
+      <Slider
+        aria-labelledby="recipe-amount-label"
+        data-testid="augment-amount"
+        value={[Math.min(AMOUNT_MAX, Math.max(0.05, amount))]}
+        min={0.05}
+        max={AMOUNT_MAX}
+        step={0.05}
+        onValueChange={(next) => flow.setAmount((next[0] ?? amount).toFixed(2))}
+        className="flex-1"
+      />
+      <span className="min-w-12 shrink-0 rounded-md bg-muted px-1.5 py-0.5 text-center tabular-nums" data-testid="augment-amount-value">
+        ±{Math.round(amount * 100)}%
+      </span>
+    </div>
+  );
+}
+
+/** The variants per training image, one to eight, with what they are for one press away beside the label. */
 function Variants({ flow }: { readonly flow: RecipeFlow }): JSX.Element {
   const any = flow.draft.ops.length > 0;
-  const variants = Number(flow.draft.variants) || 0;
   const problem = flow.problems.augment[0];
   return (
-    <PropertyRow label={<span className={cn(DIM, !any && "opacity-50")}>Variants</span>} labelId="recipe-variants-label" labelAction={<VariantsInfo flow={flow} />}>
-      <div className="flex items-center gap-2.5">
-        <ButtonGroup aria-labelledby="recipe-variants-label">
-          <Button type="button" size="icon" variant="outline" aria-label="Fewer variants" disabled={!any || variants <= 1} onClick={() => flow.setVariants(String(variants - 1))} className={PRESS}>
-            <Minus aria-hidden="true" />
-          </Button>
-          <ButtonGroupText className="h-7 w-9 justify-center px-0 tabular-nums">
-            <output aria-live="polite" aria-invalid={problem !== undefined || undefined} aria-describedby={problem === undefined ? undefined : STATUS_ID} data-testid="augment-variants">
-              {any ? variants : 0}
-            </output>
-          </ButtonGroupText>
-          <Button type="button" size="icon" variant="outline" aria-label="More variants" disabled={!any || variants >= VARIANTS_MAX} onClick={() => flow.setVariants(String(variants + 1))} className={PRESS}>
-            <Plus aria-hidden="true" />
-          </Button>
-        </ButtonGroup>
-        <span className={cn("min-w-0 flex-1 truncate text-muted-foreground", DIM, !any && "opacity-50")}>per training image</span>
+    <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1.5 pt-1">
+      <div className="flex min-w-0 items-center gap-0.5">
+        <span id="recipe-variants-label" className={cn("text-xs font-medium", DIM, !any && "opacity-50")}>
+          Variants
+        </span>
+        <VariantsInfo flow={flow} />
+        <span className={cn("ms-1 truncate text-muted-foreground", DIM, !any && "opacity-50")}>per training image</span>
       </div>
-    </PropertyRow>
+      <ToggleGroup
+        type="single"
+        variant="outline"
+        spacing={0}
+        size="sm"
+        disabled={!any}
+        value={any ? flow.draft.variants : ""}
+        onValueChange={(next) => next !== "" && flow.setVariants(next)}
+        aria-labelledby="recipe-variants-label"
+        aria-invalid={problem !== undefined || undefined}
+        aria-describedby={problem === undefined ? undefined : STATUS_ID}
+        data-testid="augment-variants"
+      >
+        {VARIANT_CHOICES.map((count) => (
+          <ToggleGroupItem key={count} value={count} className="w-7 text-xs tabular-nums" data-testid={`augment-variants-${count}`}>
+            {count}
+          </ToggleGroupItem>
+        ))}
+      </ToggleGroup>
+    </div>
   );
 }
 
@@ -359,25 +418,5 @@ function VariantsInfo({ flow }: { readonly flow: RecipeFlow }): JSX.Element {
       {usual}
       {SPLIT_NOTE}
     </ArtTip>
-  );
-}
-
-/** How far brightness and contrast may move. */
-function Amount({ flow }: { readonly flow: RecipeFlow }): JSX.Element {
-  const amount = Number(flow.draft.amount) || 0;
-  return (
-    <div className="flex h-7 items-center gap-3">
-      <Slider
-        aria-labelledby="recipe-amount-label"
-        data-testid="augment-amount"
-        value={[Math.min(AMOUNT_MAX, Math.max(0.05, amount))]}
-        min={0.05}
-        max={AMOUNT_MAX}
-        step={0.05}
-        onValueChange={(next) => flow.setAmount((next[0] ?? amount).toFixed(2))}
-        className="flex-1"
-      />
-      <span className="w-9 text-end tabular-nums text-muted-foreground">±{Math.round(amount * 100)}%</span>
-    </div>
   );
 }

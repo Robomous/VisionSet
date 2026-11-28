@@ -648,40 +648,33 @@ it, and closing asks the modal whether its draft holds unsaved
 work (`RecipeEditorHandle`, asked at that moment, never mirrored into the page) and, when it
 does, asks *Discard changes to yolo-640?* first — *Keep editing* leaves everything as it was.
 
-**A recipe is written in three steps**: *Name and model*, *Resize*, *Augmentation*. The header
-names the step, counts it on the right (*2/3*, tabular) and draws one bar per step under them,
-each filling from its start edge as it is reached (250 ms, strong ease-out); a screen reader
-hears *New recipe, step 2 of 3* or *Editing yolo-640, step 2 of 3*. The bottom bar holds
-**Previous and Next, nothing else** — Previous keeps its place, hidden, on the first step, and
-on the last step Next is the save: *Create recipe*, or *Save changes*, shut until something
-changed. Enter in a field is Next. The modal **fits each step**, in both directions: it is as
-wide as the view needs — 22 rem for the steps, 24 rem for the saved view, with a 6 rem label
-column since every label is short and 36 px rows, so two controls stand 8 px apart — and its height follows the
-step that arrives (measured, so it is exact). Width and height move together (250 ms, strong
-ease-out) and the step settles in with a short blur-fade just behind them, so no step leaves
-empty room on either axis; the frame's size is the one layout the surface animates, because
-the frame is what changes. While it moves the
-frame clips rather than scrolls, so no scrollbar flashes, and it scrolls only when a step is
-taller than the window allows. Under reduced motion the size changes at once and the step fades. Focus moves to the step that arrived, so a screen
-reader says where it is and Tab starts there.
+**A recipe is written on one page.** The header says *New recipe* or *Edit recipe* (a screen
+reader also hears *Editing yolo-640*); a strip under it holds *Name* and *Model* side by side;
+the body is two panes — **the controls on the left, what they make on the right** — and the
+bottom bar is *Cancel* and the save: *Create recipe*, or *Save changes*, shut until something
+changed. Enter in a field is the save. The modal is 47.5 rem wide, never wider than the window
+less 2 rem, and 24 rem for the saved view; the width follows the view (250 ms, strong ease-out,
+at once under reduced motion). Narrower than 40 rem — judged by the modal's own width, a
+container query, not the window's — the right pane drops under the controls and the two scroll
+as one; side by side, the controls scroll on their own, so the bar is always in view. Escape,
+the close button, *Cancel* or a press outside all close the same way, asking first when the
+draft holds unsaved work.
 
-**A step's own problem holds Next on it, and only its own.** It is said once, between Previous
-and Next — two lines at most, at the buttons' height, so a problem never moves the bar — in
-the destructive colour (*Width is a whole number from 32 to 8192.*); the field it is about is
-`aria-invalid` and points at it (`aria-describedby`). What the last save was refused for is
-said in the same place, until the draft changes. For a recipe an export ran, the first step
-has a *Used by* row — *The v0.5 YOLO11 export and 2 earlier* — read from its `used_by`, with
-the target's catalog label or, for an export that named a format, the format. The export form
-reads the recipes again when an export through one succeeds, so the row is current by the time
-the recipe is reopened. The match is by name, so the row follows the caveats
+**The first problem down the page holds the save.** It is said once, beside the buttons — two
+lines at most, at the buttons' height, so a problem never moves the bar — in the destructive
+colour (*Width is a whole number from 32 to 8192.*); the field it is about is `aria-invalid`
+and points at it (`aria-describedby`). The name comes first, then the size, then the
+augmentation's bounds. What the last save was refused for is said in the same place, until the
+draft changes. For a recipe an export ran, the strip has a *Used by* line — *The v0.5 YOLO11
+export and 2 earlier* — read from its `used_by`, with the target's catalog label or, for an
+export that named a format, the format. The export form reads the recipes again when an export
+through one succeeds, so the line is current by the time the recipe is reopened. The match is
+by name, so the line follows the caveats
 [preprocessing.md](preprocessing.md#which-exports-ran-a-recipe) states.
 
-**The body is the inspector's grid.** Every row is `PropertyRow` — the label in a 7 rem column,
-the control at the value edge — so labels share one edge and controls another, and every
-control fills the value column at the app's control height (28 px), so their right edges line
-up too, on every step. Every control that does not apply — the size under *Original*, the
-variants with nothing switched on — stays where it is, dimmed and disabled on the control
-itself, so no browser takes a keystroke into it.
+**Every control that does not apply stays where it is**, dimmed and disabled on the control
+itself — the size under *Original*, the variants with nothing switched on — so no browser takes
+a keystroke into it.
 
 *Name* is a mono field that says *Suggested* inside it while the name is suggested from the
 choices (`yolo11-640-aug2`), until somebody types. *Model* is the Export section's grouped picker
@@ -694,43 +687,59 @@ is not a flicker of cards; a screen reader hears the tasks with the option, and 
 closes the list, card and all. What the chosen model takes and how it trains — *classify ·
 detect · segment*, then *Letterboxes to 640 on its own.* when `trainer_resizes` is set, else
 *Trains with letterbox at 640.*, or the format it writes — is behind an info button beside the
-*Model* label (outside the `<label>`, through `PropertyRow`'s `labelAction`); the card's title is
-the tasks, not the name, because the select already shows the name. The select keeps the value
-column's full width. A new recipe starts from the model the project last exported a recipe with, when there
+*Model* label; the card's title is the tasks, not the name, because the select already shows
+the name. A new recipe starts from the model the project last exported a recipe with, when there
 is one. Choosing a model preselects the size from its hints — `recommended_strategy` as the fit
 and `recommended_size` in the width and height. The hints are read off the wire; nothing in the
 browser computes a size. **Changing the model rewrites the suggestion only for fields nobody has
 typed in**, so a size chosen on purpose survives a change of model (`recipeDraft.ts`,
-`touched`). *Resize* opens on a drawing of what the fit does (`art.tsx`): a wide photograph meeting
-the frame of the size below — shrunk with the rest hatched as padding for Letterbox, bent to fill
-it for Stretch, grown past the frame for Fill, spilling past it unscaled for Crop, unframed for
-Original — on a stage whose caption is what the drawn fit does (*Keeps the shape and pads the rest.*) — the
-fit and the size are the fields under it, so the caption does not repeat them. It
-draws the chosen fit, and the option under the pointer or focus before it is chosen. It is a
-diagram, never the person's images, and hidden from assistive technology. Under it, the fit as a five-way toggle group — Letterbox, Stretch, Fill, Crop, Original; the two cropping fits' lines say that labels cut mostly away are dropped —
-(its line is the stage's caption, and the toggle group's description for a screen reader); the width and height as numeric fields in
-pixels, with the common sizes under them (320 to 1280) as a second toggle group. The pad is not
-asked: a letterbox or a crop keeps the grey the recipe has (114 for a new one). *Augmentation* is one row
-per step — *Flip*, *Brightness* (brightness and contrast), *Rotate* (quarter turns) — each a
-switch labelled by its row and nothing else beside it. What it does is said once, in the card of
-the info button beside its label (`ArtTip`): it draws it — original → result, brightness as one
-darker and one lighter result as far apart as its amount — titles it with the answer (*Mirrors
-left to right*) and says the rest in a line. A screen reader hears the same words as the switch's
-description. Brightness's amount (±5 to ±50 %) is a
-nested row under its switch, drawn as its child with a branch from under the switch's label, there only while the switch is on: it opens by its height (220 ms,
-strong ease-out) and shuts back into it, and the frame follows it. Last, the variants per
-training image as a stepper, with an info button beside its label whose card draws the three splits,
-the training one's stack growing by a card per variant, and says variants are written for
-the training split only, so an export with augmentation needs a release published with a split. Switching the first augmentation on
-sets one variant and switching the last off clears it, which are the spec's own two cross-field
-rules; every other bound of the request body is said between Previous and Next and holds its step.
-Those are the body's shape, not a kernel rule the client is mirroring: the server still answers
-422 to a body the form did not build. The modal draws no preview;
-`POST /projects/{id}/preprocessing-preview` remains the API's ([preprocessing.md](preprocessing.md)).
+`touched`).
+
+**The controls.** *Resize* (every image, every fold) is the fit as five cards that draw what
+they do (`FitArt`, `art.tsx`) — a wide photograph meeting the frame of the size below, shrunk
+with the rest hatched as padding for Letterbox, bent to fill it for Stretch, grown past the frame
+for Fill, drawn well past it on every side at its own size for Crop, unframed for Original. They
+are one toggle group — radios, arrow keys between them — five to a row, or three where the
+column is narrow. What the chosen fit does is behind the info button beside *Fit* and is the
+group's description for a screen reader; the two cropping fits' lines say that labels cut
+mostly away are dropped. Under it, the width and height as numeric fields in pixels and the
+common sizes (320 to 1280) as a second toggle group. The pad is not asked: a letterbox or a crop
+keeps the grey the recipe has (114 for a new one). *Augment* (training images only) is one row
+per step — *Flip*, *Brightness* (brightness and contrast), *Rotate* (quarter turns) — each its
+lucide icon, its name, an info button and **its switch at the row's end**, so what is on reads
+down one edge. What a step does is said once, in its info card (`ArtTip`): it draws it —
+original → result, brightness as one darker and one lighter result as far apart as its amount —
+titles it with the answer (*Mirrors left to right*) and says the rest in a line; a screen reader
+hears the same words as the switch's description. Brightness's amount (±5 to ±50 %) opens
+inside its row while the switch is on, a slider with its value in a chip at the row's end (it
+opens by its height, 220 ms, strong ease-out, and shuts back). Last, the variants per training
+image, a choice of one to eight, with an info button whose card draws the three splits, the
+training one's stack growing by a card per variant, and says variants are written for the
+training split only. Switching the first augmentation on sets one variant and switching the
+last off clears it, which are the spec's own two cross-field rules; every other bound of the
+request body is said beside the save and holds it. Those are the body's shape, not a kernel rule
+the client is mirroring: the server still answers 422 to a body the form did not build.
+
+**What they make.** The right pane is a preview and, when the dialog was opened from a release's
+export, the counts for that release. The preview is the server's own render
+(`POST /projects/{id}/preprocessing-preview`) of the release's first training image through the
+draft, asked for once the draft has been still for 300 ms, with *Original* and *Variant 1…n* to
+choose between while variants are on. It is optional: with no release, a release without a
+split, a draft that cannot be sent yet, or a render the server refused, the pane draws the fit
+instead — the option under the pointer or focus before it is chosen — on a stage whose caption
+is what the drawn fit does, says a refusal quietly in muted prose, and the save is never held by
+it. The counts — *For v1.0* — are the release's folds (`GET /releases/{id}/assignment`) and
+what the recipe writes: every asset once, and each training asset once more per variant, with
+validation and test said to be unchanged. That arithmetic is one small function
+(`recipe/tally.ts`) and a stopgap until the server's recipe assessment
+([#1279](https://github.com/Robomous/VisionSet/issues/1279)) answers it; it knows nothing of
+what an export drops by modality or by a crop. A release without a split says what is true: its
+assets are written once, and, while an augmentation is on, that variants need a split. Opened
+without a release, the pane shows only the drawing. The recipe stays the project's either way.
 
 Saving is a create for a new recipe and a whole-replace `PUT` at the stored name for one that
 exists; `PREPROCESSING_RECIPE_NAME_TAKEN` and every other refusal render through the
-vocabulary between Previous and Next. Success is a view of its own — *yolo-640 is ready*, or *Changes to yolo-640 are saved*,
+vocabulary beside the save. Success is a view of its own — *yolo-640 is ready*, or *Changes to yolo-640 are saved*,
 with what the recipe does — with *Done* and *Keep editing*. Delete asks first — the recipe
 alone goes, and an export already run keeps its own copy; a refusal such as
 `PREPROCESSING_RECIPE_NOT_FOUND` is prose in the dialog. The export sends the chosen name as

@@ -1,12 +1,12 @@
 /**
  * Recipes: a project resource chosen in a release's Export section and written
- * in a modal dialog over the page, one step at a time: Name and model, Resize,
- * Augmentation.
+ * in a modal dialog over the page, on one page: the name and the model, the
+ * controls (resize, augmentation), and what they make for the release.
  *
  * Three parts. `recipeDraft` is pure and holds the rules a form restates — the
  * hints preselecting only untouched fields, the body's bounds, the cross-field
  * constraints — so those are asserted without a DOM. The editor's own rules
- * (its steps, fields, drawings, info cards, saving and discarding) are driven
+ * (its fields, drawings, info cards, preview, counts, saving and discarding) are driven
  * through `RecipeDialog` in a minimal host. The entry points — where a recipe
  * is chosen, created, edited and deleted — are driven through the real
  * Dataset page and a release's Export section. Both go through a stubbed wire
@@ -21,6 +21,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { DatasetScreen } from "./DatasetScreen";
 import { DiscardRecipeDialog, RecipeDialog, type OpenRecipe, type RecipeEditorHandle } from "./dataset/recipe/RecipeDialog";
 import { suggestName } from "./dataset/recipe/flow";
+import { tallyRelease } from "./dataset/recipe/tally";
 import type { ExportTarget } from "./queries";
 import {
   applyTargetHints,
@@ -237,6 +238,28 @@ describe("recipeDraft", () => {
 
 // --- the screen ------------------------------------------------------------------
 
+describe("what a recipe writes for a release", () => {
+  const split = { train: 0.5, val: 0.25, test: 0.25, seed: 0, group_by: null };
+
+  it("writes every asset once and each training asset once more per variant", () => {
+    expect(tallyRelease({ asset_count: 6, split }, { train: 3, val: 2, test: 1 }, 0)).toEqual({ kind: "folds", train: 3, val: 2, test: 1, added: 0, written: 6 });
+    expect(tallyRelease({ asset_count: 6, split }, { train: 3, val: 2, test: 1 }, 2)).toEqual({ kind: "folds", train: 3, val: 2, test: 1, added: 6, written: 12 });
+    expect(tallyRelease({ asset_count: 10, split }, { train: 7, val: 0, test: 3 }, 8)).toEqual({ kind: "folds", train: 7, val: 0, test: 3, added: 56, written: 66 });
+  });
+
+  it("counts nothing without a release, and waits for the folds of one that has a split", () => {
+    expect(tallyRelease(undefined, { train: 3, val: 2, test: 1 }, 2)).toEqual({ kind: "no-release" });
+    expect(tallyRelease({ asset_count: 6, split }, undefined, 2)).toEqual({ kind: "pending" });
+  });
+
+  it("writes an unsplit release's assets once, and gives no count when variants are asked of it", () => {
+    expect(tallyRelease({ asset_count: 4, split: null }, undefined, 0)).toEqual({ kind: "no-split", written: 4 });
+    expect(tallyRelease({ asset_count: 4, split: null }, undefined, 1)).toEqual({ kind: "no-split", written: null });
+  });
+});
+
+// --- the modal, over a stubbed wire ---------------------------------------------
+
 type Answer = { status: number; body?: unknown };
 let handlers: ((request: Request) => Answer | undefined)[] = [];
 const sent: Request[] = [];
@@ -380,7 +403,7 @@ function Host({ name, onSaved }: { readonly name: string | null; readonly onSave
   );
 }
 
-/** A new recipe's dialog, on its first step. */
+/** A new recipe's dialog. */
 async function openNew(): Promise<HTMLElement> {
   renderWithData(<Host name={null} />);
   const dialog = await screen.findByTestId("recipe-dialog");
@@ -388,7 +411,7 @@ async function openNew(): Promise<HTMLElement> {
   return dialog;
 }
 
-/** A stored recipe's dialog, on its first step. */
+/** A stored recipe's dialog. */
 async function openStored(name: string): Promise<HTMLElement> {
   renderWithData(<Host name={name} />);
   const dialog = await screen.findByTestId("recipe-dialog");
@@ -431,25 +454,13 @@ async function recipeAction(exported: HTMLElement, kind: "edit" | "delete"): Pro
   await userEvent.click(await screen.findByTestId(`recipe-${kind}`));
 }
 
-/** Press Next, which moves one step on. */
-const next = (dialog: HTMLElement): Promise<void> => userEvent.click(within(dialog).getByTestId("recipe-next"));
-/** Press Previous, which moves one step back. */
-const previous = (dialog: HTMLElement): Promise<void> => userEvent.click(within(dialog).getByTestId("recipe-previous"));
-/** The step the dialog is on, by its header. */
-const stepOf = (dialog: HTMLElement): string => `${within(dialog).getByTestId("recipe-step-title").textContent} ${within(dialog).getByTestId("recipe-step-count").textContent}`;
-
-/** Move on to the Resize step. */
-async function toResize(dialog: HTMLElement): Promise<void> {
-  await next(dialog);
-  await within(dialog).findByTestId("recipe-step-size");
+/** The variants chosen, by the radio that is checked; "none" while none is. */
+function variantsOf(dialog: HTMLElement): string {
+  const checked = within(within(dialog).getByTestId("augment-variants")).queryAllByRole("radio").find((one) => one.getAttribute("aria-checked") === "true");
+  return checked?.textContent ?? "none";
 }
 
-/** Move on to the Augmentation step. */
-async function toAugment(dialog: HTMLElement): Promise<void> {
-  await toResize(dialog);
-  await next(dialog);
-  await within(dialog).findByTestId("recipe-step-augment");
-}
+const chooseVariants = (dialog: HTMLElement, count: number): Promise<void> => userEvent.click(within(dialog).getByTestId(`augment-variants-${count}`));
 
 /**
  * The pointer moving off `from` onto `to`. Inside the modal user-event moves
@@ -477,43 +488,32 @@ async function infoNote(button: HTMLElement): Promise<string> {
 }
 
 describe("the editor", () => {
-  it("opens a stored recipe on its first step and fills each step from it", async () => {
+  it("opens a stored recipe on one page, every field filled from it", async () => {
     baseline([recipeRow("yolo-640", LETTERBOX)]);
     const dialog = await openStored("yolo-640");
 
-    expect(stepOf(dialog)).toBe("Name and model 1/3");
+    expect(within(dialog).getByTestId("recipe-title").textContent).toBe("Edit recipe");
     expect(within(dialog).getByTestId("recipe-editor").getAttribute("data-mode")).toBe("edit");
     expect(within(dialog).getByTestId("recipe-name")).toHaveProperty("value", "yolo-640");
     expect(within(dialog).getByTestId("recipe-target").textContent?.trim()).toBe("YOLO11");
-    // The next steps are not drawn until they are reached.
-    expect(within(dialog).queryByTestId("resize-width")).toBeNull();
-
-    await toResize(dialog);
     expect(within(dialog).getByTestId("resize-letterbox").getAttribute("data-state")).toBe("on");
     expect(within(dialog).getByTestId("resize-width")).toHaveProperty("value", "640");
-
-    await next(dialog);
     expect(within(dialog).getByTestId("augment-hflip").getAttribute("aria-checked")).toBe("true");
-    expect(within(dialog).getByTestId("augment-variants").textContent).toBe("2");
+    expect(variantsOf(dialog)).toBe("2");
     // Nothing has changed, so there is nothing to save.
     expect(within(dialog).getByTestId("recipe-save")).toHaveProperty("disabled", true);
   });
 
-  it("walks the steps: the header follows, Previous goes back, and a step's problem holds only its own Next", async () => {
+  it("holds the save on the first problem down the page, says it once beside the save, and points the field at it", async () => {
     baseline();
     const dialog = await openNew();
     await chooseTarget(/YOLO11/);
 
-    expect(stepOf(dialog)).toBe("Name and model 1/3");
-    // Nowhere to go back to from the first step: Previous keeps its place but is hidden.
-    expect(within(dialog).getByTestId("recipe-previous").className).toContain("invisible");
-    expect(within(dialog).getByTestId("recipe-next").textContent).toContain("Next");
+    expect(within(dialog).getByTestId("recipe-title").textContent).toBe("New recipe");
+    expect(within(dialog).getByTestId("recipe-save").textContent).toContain("Create recipe");
+    expect(within(dialog).getByTestId("recipe-save")).toHaveProperty("disabled", false);
 
-    await next(dialog);
-    expect(stepOf(dialog)).toBe("Resize 2/3");
-    expect(within(dialog).getByTestId("recipe-previous").className).not.toContain("invisible");
-
-    // A bad width holds this step's Next, says why, and points the field at the message.
+    // A bad width holds the save, says why, and points the field at the message.
     const width = within(dialog).getByTestId("resize-width");
     await userEvent.clear(width);
     await userEvent.type(width, "16");
@@ -521,30 +521,25 @@ describe("the editor", () => {
     expect(width.getAttribute("aria-invalid")).toBe("true");
     expect(width.getAttribute("aria-describedby")).toBe("recipe-status");
     expect(within(dialog).getByTestId("recipe-problem").id).toBe("recipe-status");
-    expect(within(dialog).getByTestId("recipe-next")).toHaveProperty("disabled", true);
+    expect(within(dialog).getByTestId("recipe-save")).toHaveProperty("disabled", true);
 
-    // Another step's Next is not held by it: Previous still goes back, and the first step moves on.
-    await previous(dialog);
-    expect(stepOf(dialog)).toBe("Name and model 1/3");
-    expect(within(dialog).queryByTestId("recipe-problem")).toBeNull();
-    expect(within(dialog).getByTestId("recipe-next")).toHaveProperty("disabled", false);
+    // The name sits above the size, so a missing name is the problem said first, and only it.
+    const name = within(dialog).getByTestId("recipe-name");
+    await userEvent.clear(name);
+    expect(within(dialog).getByTestId("recipe-problem").textContent).toContain("Enter a name");
+    expect(within(dialog).getAllByTestId("recipe-problem")).toHaveLength(1);
+    await userEvent.type(name, "plain");
+    expect(within(dialog).getByTestId("recipe-problem").textContent).toContain("32 to 8192");
 
-    // The bad width is still there to fix.
-    await next(dialog);
-    expect(within(dialog).getByTestId("resize-width")).toHaveProperty("value", "16");
-    expect(within(dialog).getByTestId("recipe-next")).toHaveProperty("disabled", true);
     await userEvent.clear(within(dialog).getByTestId("resize-width"));
     await userEvent.type(within(dialog).getByTestId("resize-width"), "320");
-    expect(within(dialog).getByTestId("recipe-next")).toHaveProperty("disabled", false);
-
-    await next(dialog);
-    expect(stepOf(dialog)).toBe("Augmentation 3/3");
-    expect(within(dialog).queryByTestId("recipe-next")).toBeNull();
-    expect(within(dialog).getByTestId("recipe-save").textContent).toContain("Create recipe");
+    expect(within(dialog).queryByTestId("recipe-problem")).toBeNull();
+    expect(within(dialog).getByTestId("recipe-save")).toHaveProperty("disabled", false);
   });
 
-  it("holds the first step on a missing name, and Enter in a field moves on like Next", async () => {
+  it("holds the save on a missing name, and Enter in a field saves like Create recipe", async () => {
     baseline();
+    on("POST", /\/preprocessing-recipes$/, { status: 201, body: recipeRow("plain", PLAIN) });
     const dialog = await openNew();
     const name = within(dialog).getByTestId("recipe-name");
 
@@ -552,13 +547,24 @@ describe("the editor", () => {
     expect(within(dialog).getByTestId("recipe-problem").textContent).toContain("Enter a name");
     expect(name.getAttribute("aria-invalid")).toBe("true");
     expect(name.getAttribute("aria-describedby")).toBe("recipe-status");
-    expect(within(dialog).getByTestId("recipe-next")).toHaveProperty("disabled", true);
+    expect(within(dialog).getByTestId("recipe-save")).toHaveProperty("disabled", true);
     await userEvent.type(name, "{Enter}");
-    expect(stepOf(dialog)).toBe("Name and model 1/3");
+    expect(sent.some((r) => r.method === "POST")).toBe(false);
 
     await userEvent.type(name, "plain{Enter}");
-    await within(dialog).findByTestId("recipe-step-size");
-    expect(stepOf(dialog)).toBe("Resize 2/3");
+    await within(dialog).findByTestId("recipe-saved");
+    expect(bodyOf(sent.find((r) => r.method === "POST") as Request)).toEqual({ name: "plain", spec: PLAIN });
+  });
+
+  it("asks before Cancel would throw unsaved work away, like any other close", async () => {
+    baseline();
+    const dialog = await openNew();
+    await userEvent.type(within(dialog).getByTestId("recipe-name"), "-x");
+
+    await userEvent.click(within(dialog).getByTestId("recipe-cancel"));
+    expect((await screen.findByTestId("recipe-discard-dialog")).textContent).toContain("Discard the new recipe?");
+    await userEvent.click(screen.getByTestId("recipe-discard-changes"));
+    await waitFor(() => expect(screen.queryByTestId("recipe-dialog")).toBeNull());
   });
 
   it("asks before a close would throw unsaved work away, and keeps it on Keep editing", async () => {
@@ -699,7 +705,6 @@ describe("the recipe in a release's Export section", () => {
     const dialog = await screen.findByTestId("recipe-dialog");
     await within(dialog).findByTestId("recipe-editor");
     expect(within(dialog).getByTestId("recipe-editor").getAttribute("data-mode")).toBe("create");
-    await toAugment(dialog);
     created = true;
     await userEvent.click(within(dialog).getByTestId("recipe-save"));
     const saved = await within(dialog).findByTestId("recipe-saved");
@@ -724,8 +729,7 @@ describe("the recipe in a release's Export section", () => {
     // The export's section is still on the page beneath it.
     expect(screen.getByTestId("section-export")).not.toBeNull();
 
-    await toAugment(dialog);
-    await userEvent.click(within(dialog).getByRole("button", { name: "More variants" }));
+    await chooseVariants(dialog, 3);
     await userEvent.click(within(dialog).getByTestId("recipe-save"));
     await within(dialog).findByTestId("recipe-saved");
     expect(sent.some((r) => r.method === "PUT")).toBe(true);
@@ -773,7 +777,7 @@ describe("writing a new recipe", () => {
     baseline();
     const dialog = await openNew();
 
-    expect(stepOf(dialog)).toBe("Name and model 1/3");
+    expect(within(dialog).getByTestId("recipe-title").textContent).toBe("New recipe");
     expect(within(dialog).getByTestId("recipe-editor").getAttribute("data-mode")).toBe("create");
     expect(within(dialog).getByTestId("recipe-target").textContent?.trim()).toBe("Any model");
     // The dialog takes focus itself, not its close button.
@@ -788,12 +792,15 @@ describe("writing a new recipe", () => {
     expect(within(dialog).getByTestId("recipe-name")).toHaveProperty("value", "yolo11-640");
     expect(within(dialog).getByTestId("recipe-name-suggested").textContent).toBe("Suggested");
 
-    // The steps after it start from what the model recommends.
-    await next(dialog);
+    // One Escape closes the model's card and leaves the dialog open.
+    await userEvent.keyboard("{Escape}");
+    await waitFor(() => expect(screen.queryByRole("tooltip")).toBeNull());
+    expect(screen.getByTestId("recipe-dialog")).not.toBeNull();
+
+    // The controls under it start from what the model recommends.
     expect(within(dialog).getByTestId("resize-letterbox").getAttribute("data-state")).toBe("on");
     expect(within(dialog).getByTestId("resize-width")).toHaveProperty("value", "640");
     expect(within(dialog).getByTestId("resize-height")).toHaveProperty("value", "640");
-    await next(dialog);
     expect(await variantsNote(dialog)).toContain("Usual when training YOLO11");
     expect(within(dialog).getByTestId("recipe-save").textContent).toContain("Create recipe");
   });
@@ -835,25 +842,21 @@ describe("writing a new recipe", () => {
     baseline();
     const dialog = await openNew();
     await chooseTarget(/YOLO11/);
-    await toResize(dialog);
     await userEvent.clear(within(dialog).getByTestId("resize-width"));
     await userEvent.type(within(dialog).getByTestId("resize-width"), "800");
 
-    // Back on the first step, the model is changed under the typed width.
-    await previous(dialog);
+    // The model is changed under the typed width.
     await chooseTarget(/Wide/);
-    await next(dialog);
 
     expect(within(dialog).getByTestId("resize-width")).toHaveProperty("value", "800");
     expect(within(dialog).getByTestId("resize-height")).toHaveProperty("value", "720");
     expect(within(dialog).getByTestId("resize-stretch").getAttribute("data-state")).toBe("on");
   });
 
-  it("names the rule between Previous and Next, points the field at it, and holds the step until it is met", async () => {
+  it("names the rule beside the save, points the field at it, and Enter does not get past it", async () => {
     baseline();
     const dialog = await openNew();
     await chooseTarget(/YOLO11/);
-    await toResize(dialog);
     const width = within(dialog).getByTestId("resize-width");
     await userEvent.clear(width);
     await userEvent.type(width, "16");
@@ -861,23 +864,30 @@ describe("writing a new recipe", () => {
     expect(within(dialog).getByTestId("recipe-problem").textContent).toContain("32 to 8192");
     expect(width.getAttribute("aria-invalid")).toBe("true");
     expect(width.getAttribute("aria-describedby")).toBe("recipe-status");
-    expect(within(dialog).getByTestId("recipe-next")).toHaveProperty("disabled", true);
-    // Enter in the field is Next, so it does not get past the problem either.
+    expect(within(dialog).getByTestId("recipe-save")).toHaveProperty("disabled", true);
+    // Enter in the field is the save, so it does not get past the problem either.
     await userEvent.type(width, "{Enter}");
-    expect(stepOf(dialog)).toBe("Resize 2/3");
+    expect(sent.some((r) => r.method === "POST")).toBe(false);
+    expect(within(dialog).queryByTestId("recipe-saved")).toBeNull();
 
     await userEvent.clear(within(dialog).getByTestId("resize-width"));
     await userEvent.type(within(dialog).getByTestId("resize-width"), "320");
     expect(within(dialog).queryByTestId("recipe-problem")).toBeNull();
     expect(within(dialog).getByTestId("recipe-status").textContent).toBe("");
-    expect(within(dialog).getByTestId("recipe-next")).toHaveProperty("disabled", false);
+    expect(within(dialog).getByTestId("recipe-save")).toHaveProperty("disabled", false);
   });
 
   it("draws what the fit does at the size, and the option pointed at before it is chosen", async () => {
     baseline();
     const dialog = await openNew();
     await chooseTarget(/YOLO11/);
-    await toResize(dialog);
+
+    // Every fit's card draws its own fit, as decoration: the card's label names it.
+    for (const fit of ["letterbox", "stretch", "fill", "center_crop", "none"]) {
+      const art = within(dialog).getByTestId(`resize-${fit}`).querySelector("svg");
+      expect(art?.getAttribute("data-fit")).toBe(fit);
+      expect(art?.getAttribute("aria-hidden")).toBe("true");
+    }
 
     const stage = within(dialog).getByTestId("recipe-stage");
     expect(stage.getAttribute("aria-hidden")).toBe("true");
@@ -907,10 +917,56 @@ describe("writing a new recipe", () => {
     expect(within(dialog).getByTestId("recipe-stage-caption").textContent).toBe("Keeps each image at its own size.");
   });
 
+  it("keeps the fit a choice of one while it wraps: one radio per option, the chosen one checked, arrows walk them", async () => {
+    baseline();
+    const dialog = await openNew();
+    await chooseTarget(/YOLO11/);
+
+    const fit = within(dialog).getByTestId("resize-fit");
+    const options = within(fit).getAllByRole("radio");
+    expect(options.map((one) => one.getAttribute("data-testid"))).toEqual(["resize-letterbox", "resize-stretch", "resize-fill", "resize-center_crop", "resize-none"]);
+    expect(options.map((one) => one.getAttribute("aria-checked"))).toEqual(["true", "false", "false", "false", "false"]);
+    // Separate options, not a joined strip: a wrapped strip would draw its joins in mid-row.
+    expect(fit.getAttribute("data-spacing")).not.toBe("0");
+
+    options[0]?.focus();
+    await userEvent.keyboard("{ArrowRight}");
+    expect(document.activeElement).toBe(options[1]);
+    await userEvent.keyboard(" ");
+    expect(options[1]?.getAttribute("aria-checked")).toBe("true");
+    expect(options[0]?.getAttribute("aria-checked")).toBe("false");
+  });
+
+  it("draws Crop's photograph clearly larger than Fill's, so the two fits read apart", async () => {
+    baseline();
+    const dialog = await openNew();
+    await chooseTarget(/YOLO11/);
+    const stage = within(dialog).getByTestId("recipe-stage");
+    const photoScale = (): number => {
+      const transform = stage.querySelectorAll<SVGGElement>("svg > g")[1]?.style.transform ?? "";
+      return Number(/scale\(([\d.]+)/.exec(transform)?.[1]);
+    };
+
+    await userEvent.click(within(dialog).getByTestId("resize-fill"));
+    const fill = photoScale();
+    await userEvent.click(within(dialog).getByTestId("resize-center_crop"));
+    const crop = photoScale();
+    expect(fill).toBeGreaterThan(0);
+    expect(crop / fill).toBeGreaterThanOrEqual(1.2);
+  });
+
+  it("draws the common sizes at the control's own size, not the small one", async () => {
+    baseline();
+    const dialog = await openNew();
+    await chooseTarget(/YOLO11/);
+    const presets = within(within(dialog).getByTestId("resize-presets")).getAllByRole("radio");
+    expect(presets.map((one) => one.textContent)).toEqual(["320", "416", "640", "1024", "1280"]);
+    for (const preset of presets) expect(preset.getAttribute("data-size")).not.toBe("sm");
+  });
+
   it("disables the size where it stands when the fit keeps each image's own size, so nothing can be typed into it", async () => {
     baseline();
     const dialog = await openNew();
-    await toResize(dialog);
     // The pad is not asked: a letterbox keeps the grey it has.
     expect(dialog.querySelector("#recipe-pad")).toBeNull();
     await userEvent.click(within(dialog).getByTestId("resize-none"));
@@ -928,17 +984,17 @@ describe("writing a new recipe", () => {
     expect(within(dialog).getByTestId("resize-width")).toHaveProperty("disabled", false);
   });
 
-  it("opens brightness's amount under its switch only while the switch is on", async () => {
+  it("opens brightness's amount inside its row only while the switch is on, its value in a chip", async () => {
     baseline();
     const dialog = await openNew();
-    await toAugment(dialog);
     expect(within(dialog).queryByRole("slider")).toBeNull();
 
     await userEvent.click(within(dialog).getByTestId("augment-brightness_contrast"));
     const slider = await within(dialog).findByRole("slider");
-    // Drawn as Brightness's child: a branch from under its label, hidden from assistive technology.
-    expect(within(dialog).getByTestId("recipe-amount-branch").getAttribute("aria-hidden")).toBe("true");
-    // Its row follows the switch's and comes before Rotate's.
+    // Inside Brightness's own row, with the value it is at beside it.
+    expect(within(dialog).getByTestId("augment-row-brightness_contrast").contains(slider)).toBe(true);
+    expect(within(dialog).getByTestId("augment-amount-value").textContent).toBe("±20%");
+    // It follows the switch and comes before Rotate's.
     const rotate = within(dialog).getByRole("switch", { name: "Rotate" });
     expect(slider.compareDocumentPosition(rotate) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(within(dialog).getByRole("switch", { name: "Brightness" }).compareDocumentPosition(slider) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
@@ -947,16 +1003,24 @@ describe("writing a new recipe", () => {
     await waitFor(() => expect(within(dialog).queryByRole("slider")).toBeNull());
   });
 
-  it("switches the first augmentation on with one variant, and clears the count with the last", async () => {
+  it("offers the variants only while an augmentation is on: the first one makes one, and the last one off clears them", async () => {
     baseline();
     const dialog = await openNew();
-    await toAugment(dialog);
+    const choices = (): HTMLElement[] => within(within(dialog).getByTestId("augment-variants")).getAllByRole("radio");
+    expect(choices().map((one) => one.textContent)).toEqual(["1", "2", "3", "4", "5", "6", "7", "8"]);
+    // Nothing on: none chosen, and none can be.
+    expect(variantsOf(dialog)).toBe("none");
+    for (const one of choices()) expect(one).toHaveProperty("disabled", true);
 
     await userEvent.click(within(dialog).getByTestId("augment-brightness_contrast"));
-    expect(within(dialog).getByTestId("augment-variants").textContent).toBe("1");
+    expect(variantsOf(dialog)).toBe("1");
+    for (const one of choices()) expect(one).toHaveProperty("disabled", false);
+    await chooseVariants(dialog, 4);
+    expect(variantsOf(dialog)).toBe("4");
+
     await userEvent.click(within(dialog).getByTestId("augment-brightness_contrast"));
-    expect(within(dialog).getByTestId("augment-variants").textContent).toBe("0");
-    expect(within(dialog).getByRole("button", { name: "More variants" })).toHaveProperty("disabled", true);
+    expect(variantsOf(dialog)).toBe("none");
+    for (const one of choices()) expect(one).toHaveProperty("disabled", true);
     // What variants are for is one press away, not a line under the row.
     expect(await variantsNote(dialog)).toContain("training split");
   });
@@ -964,7 +1028,6 @@ describe("writing a new recipe", () => {
   it("draws what each augmentation does in a card beside its label, and one Escape closes only the card", async () => {
     baseline();
     const dialog = await openNew();
-    await toAugment(dialog);
 
     const flip = within(dialog).getByTestId("augment-hflip-info");
     expect(flip.getAttribute("aria-label")).toBe("About flip");
@@ -992,7 +1055,6 @@ describe("writing a new recipe", () => {
   it("labels each augmentation switch by its row and says what it does", async () => {
     baseline();
     const dialog = await openNew();
-    await toAugment(dialog);
 
     const flip = within(dialog).getByRole("switch", { name: "Flip" });
     expect(flip.getAttribute("aria-describedby")).toBe("augment-hflip-detail");
@@ -1004,7 +1066,7 @@ describe("writing a new recipe", () => {
     expect(within(dialog).getByRole("switch", { name: "Rotate" })).not.toBeNull();
   });
 
-  it("creates the recipe the steps describe, and says it is ready", async () => {
+  it("creates the recipe the page describes, and says it is ready", async () => {
     baseline();
     on("POST", /\/preprocessing-recipes$/, { status: 201, body: recipeRow("yolo-640", LETTERBOX) });
     const dialog = await openNew();
@@ -1013,14 +1075,13 @@ describe("writing a new recipe", () => {
     await userEvent.clear(name);
     await userEvent.type(name, "yolo-640");
     expect(within(dialog).queryByTestId("recipe-name-suggested")).toBeNull();
-    await toAugment(dialog);
     await userEvent.click(within(dialog).getByTestId("augment-hflip"));
     await userEvent.click(within(dialog).getByTestId("augment-brightness_contrast"));
     // The amount, from 0.20 to 0.30 in two of its 0.05 steps.
     const amount = within(dialog).getByRole("slider", { name: "Amount" });
     amount.focus();
     await userEvent.keyboard("{ArrowRight}{ArrowRight}");
-    await userEvent.click(within(dialog).getByRole("button", { name: "More variants" }));
+    await chooseVariants(dialog, 2);
 
     await userEvent.click(within(dialog).getByTestId("recipe-save"));
 
@@ -1036,14 +1097,13 @@ describe("writing a new recipe", () => {
     expect(screen.queryByTestId("recipe-discard-dialog")).toBeNull();
   });
 
-  it("renders a refused save as prose between Previous and Save, never as its code, until the draft changes", async () => {
+  it("renders a refused save as prose beside the save, never as its code, until the draft changes", async () => {
     baseline();
     on("POST", /\/preprocessing-recipes$/, {
       status: 409,
       body: { code: "PREPROCESSING_RECIPE_NAME_TAKEN", message: "project 1111 already has a recipe named 'yolo-640'" },
     });
     const dialog = await openNew();
-    await toAugment(dialog);
     await userEvent.click(within(dialog).getByTestId("recipe-save"));
 
     const said = (await within(dialog).findByTestId("recipe-save-error")).textContent ?? "";
@@ -1063,10 +1123,121 @@ describe("writing a new recipe", () => {
 
     expect(within(dialog).getByTestId("recipe-targets-error").textContent).toContain("Try again to choose a model");
     expect(within(dialog).queryByTestId("recipe-target")).toBeNull();
-    // The model is optional: the recipe can still be taken to the end and created without one.
-    expect(within(dialog).getByTestId("recipe-next")).toHaveProperty("disabled", false);
-    await toAugment(dialog);
+    // The model is optional: the recipe can still be created without one.
     expect(within(dialog).getByTestId("recipe-save")).toHaveProperty("disabled", false);
+  });
+});
+
+describe("what the recipe makes for the release it was opened from", () => {
+  const SPLIT_RELEASE = { ...RELEASE_ROW, split: { train: 0.5, val: 0.25, test: 0.25, seed: 0, group_by: null } };
+  const PICTURE = {
+    annotations: [],
+    asset_id: ASSET_B,
+    frame_index: null,
+    height: 48,
+    width: 64,
+    image_base64: "iVBORw0KGgo=",
+    media_type: "image/png",
+    original_height: 480,
+    original_width: 640,
+    source_name: null,
+    variant: 0,
+  };
+
+  /** The Dataset page with `v1` split three ways, and a new recipe opened from its export. */
+  async function openFromSplitRelease(): Promise<HTMLElement> {
+    on("GET", /\/releases$/, { status: 200, body: { items: [SPLIT_RELEASE], total: 1 } });
+    on("GET", new RegExp(`/releases/${RELEASE}/assignment$`), { status: 200, body: { train: [ASSET_B, ASSET_A], val: [ASSET_C], test: [ASSET_D] } });
+    baseline();
+    const exported = await openExport();
+    await userEvent.click(within(exported).getByTestId("recipe-new"));
+    const dialog = await screen.findByTestId("recipe-dialog");
+    await within(dialog).findByTestId("recipe-editor");
+    return dialog;
+  }
+
+  const count = (dialog: HTMLElement, row: string): string => within(dialog).getByTestId(`recipe-tally-${row}`).querySelector("dd")?.textContent ?? "";
+
+  it("counts the release's folds, and what the variants add to the training split only", async () => {
+    const dialog = await openFromSplitRelease();
+    const tally = await within(dialog).findByTestId("recipe-tally-written");
+
+    // The release the dialog was opened from is the one asked for, and named.
+    expect(sent.some((r) => r.method === "GET" && pathOf(r) === `/releases/${RELEASE}/assignment`)).toBe(true);
+    expect(within(dialog).getByTestId("recipe-tally").textContent).toContain("For v1");
+    expect(count(dialog, "train")).toBe("2");
+    expect(count(dialog, "val")).toBe("1");
+    expect(count(dialog, "test")).toBe("1");
+    expect(tally.querySelector("dd")?.textContent).toBe("4");
+    expect(within(dialog).queryByTestId("recipe-tally-added")).toBeNull();
+
+    await userEvent.click(within(dialog).getByTestId("augment-hflip"));
+    await chooseVariants(dialog, 3);
+    expect(count(dialog, "added")).toBe("+6");
+    expect(count(dialog, "val")).toBe("1· unchanged");
+    expect(count(dialog, "test")).toBe("1· unchanged");
+    expect(count(dialog, "written")).toBe("10");
+  });
+
+  it("previews the release's first training image through the draft, and each variant on its tab", async () => {
+    on("POST", /\/preprocessing-preview$/, { status: 200, body: PICTURE });
+    const dialog = await openFromSplitRelease();
+
+    const image = await within(dialog).findByTestId("recipe-preview-image", {}, { timeout: 2000 });
+    expect(image.querySelector("img")?.getAttribute("src")).toBe("data:image/png;base64,iVBORw0KGgo=");
+    expect(within(dialog).queryByTestId("recipe-stage")).toBeNull();
+    const previews = (): Record<string, unknown>[] => sent.filter((r) => r.method === "POST" && pathOf(r).endsWith("/preprocessing-preview")).map(bodyOf);
+    expect(previews()[0]).toMatchObject({ asset_id: ASSET_B, variant: 0, spec: { steps: [], variants_per_asset: 0 } });
+    // No variants, no tabs: the original is all there is to show.
+    expect(within(dialog).queryByTestId("recipe-preview-tabs")).toBeNull();
+
+    await userEvent.click(within(dialog).getByTestId("augment-hflip"));
+    await chooseVariants(dialog, 2);
+    const tabs = await within(dialog).findByTestId("recipe-preview-tabs", {}, { timeout: 2000 });
+    expect(within(tabs).getAllByRole("radio").map((one) => one.textContent)).toEqual(["Original", "Variant 1", "Variant 2"]);
+    await userEvent.click(within(tabs).getByRole("radio", { name: "Variant 2" }));
+    await waitFor(() => expect(previews().at(-1)).toMatchObject({ asset_id: ASSET_B, variant: 2, spec: { variants_per_asset: 2 } }));
+  });
+
+  it("draws the fit instead when the server refuses the picture, says why quietly, and the save is not held", async () => {
+    on("POST", /\/preprocessing-preview$/, {
+      status: 409,
+      body: { code: "EXPORT_SOURCE_UNREADABLE", message: "asset bytes are gone" },
+    });
+    const dialog = await openFromSplitRelease();
+
+    const said = await within(dialog).findByTestId("recipe-preview-error", {}, { timeout: 2000 });
+    expect(said.textContent).not.toContain("EXPORT_SOURCE_UNREADABLE");
+    expect(said.className).not.toContain("destructive");
+    expect(within(dialog).getByTestId("recipe-stage")).not.toBeNull();
+    expect(within(dialog).queryByTestId("recipe-preview-image")).toBeNull();
+    expect(within(dialog).getByTestId("recipe-save")).toHaveProperty("disabled", false);
+  });
+
+  it("says an unsplit release writes each asset once, and that variants need a split, without asking for folds", async () => {
+    baseline();
+    const exported = await openExport();
+    await userEvent.click(within(exported).getByTestId("recipe-new"));
+    const dialog = await screen.findByTestId("recipe-dialog");
+
+    expect((await within(dialog).findByTestId("recipe-tally-written")).querySelector("dd")?.textContent).toBe("4· no split");
+    await userEvent.click(within(dialog).getByTestId("augment-hflip"));
+    expect(within(dialog).getByTestId("recipe-tally-no-split").textContent).toContain("v1 has no split. Variants are written for the training split only");
+    expect(within(dialog).queryByTestId("recipe-tally-written")).toBeNull();
+    expect(sent.some((r) => pathOf(r).endsWith("/assignment"))).toBe(false);
+    // Nothing to preview without a training image: the fit is drawn.
+    expect(within(dialog).getByTestId("recipe-stage")).not.toBeNull();
+  });
+
+  it("counts nothing and asks for nothing when opened without a release", async () => {
+    baseline();
+    const dialog = await openNew();
+    await userEvent.click(within(dialog).getByTestId("augment-hflip"));
+
+    expect(within(dialog).queryByTestId("recipe-tally")).toBeNull();
+    expect(within(dialog).getByTestId("recipe-stage")).not.toBeNull();
+    await new Promise((resolve) => setTimeout(resolve, 400));
+    expect(sent.some((r) => pathOf(r).endsWith("/assignment") || pathOf(r).endsWith("/preprocessing-preview"))).toBe(false);
   });
 });
 
@@ -1075,12 +1246,11 @@ describe("editing a stored recipe", () => {
     baseline([recipeRow("yolo-640", LETTERBOX)]);
     on("PUT", /\/preprocessing-recipes\/yolo-640$/, { status: 200, body: recipeRow("yolo-640", { ...LETTERBOX, variants_per_asset: 3 }) });
     const dialog = await openStored("yolo-640");
-    await toAugment(dialog);
 
     // Nothing changed yet, so Save changes has nothing to save.
     expect(within(dialog).getByTestId("recipe-save").textContent).toContain("Save changes");
     expect(within(dialog).getByTestId("recipe-save")).toHaveProperty("disabled", true);
-    await userEvent.click(within(dialog).getByRole("button", { name: "More variants" }));
+    await chooseVariants(dialog, 3);
     expect(within(dialog).getByTestId("recipe-save")).toHaveProperty("disabled", false);
     await userEvent.click(within(dialog).getByTestId("recipe-save"));
 
@@ -1098,7 +1268,6 @@ describe("editing a stored recipe", () => {
   it("asks before closing a changed recipe, and Discard closes without a request", async () => {
     baseline([recipeRow("yolo-640", LETTERBOX)]);
     const dialog = await openStored("yolo-640");
-    await toResize(dialog);
     const width = within(dialog).getByTestId("resize-width");
     await userEvent.clear(width);
     await userEvent.type(width, "320");
