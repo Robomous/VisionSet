@@ -27,7 +27,7 @@ import { refusalProse } from "../data/refusals";
 import { Badge, Button, Collapsible, CollapsibleContent, CollapsibleTrigger, FieldDescription, Input, InputGroup, InputGroupAddon, InputGroupInput, Kbd, Label, Popover, PopoverContent, PopoverTrigger, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, Switch, ToggleGroup, ToggleGroupItem, cn } from "@robomous/ui-core";
 import type { AttributeBody, GeometryType, LabelClassBody, OfferedGeometries } from "../screens/queries";
 import { ErrorState } from "./AsyncStates";
-import { CLASS_PALETTE, describeGeometries, hexOf, swatchOf } from "./classFieldsRules";
+import { CLASS_PALETTE, describeGeometries, hexOf, swatchOf, withGeometries } from "./classFieldsRules";
 import { KeypointSpecFields } from "./KeypointSpec";
 import { PropertyRow } from "./PropertyRow";
 import { ShapeGlyph } from "./ShapeGlyph";
@@ -424,16 +424,6 @@ function GeometryGroup({
       })}
     </ToggleGroup>
   );
-}
-
-/**
- * The class drawn as `geometries`. Unticking keypoints drops the spec with it:
- * the person chose to stop drawing keypoints, and a spec on a class without the
- * geometry is one publish refuses and this editor cannot otherwise remove.
- */
-export function withGeometries(declared: LabelClassBody, geometries: readonly GeometryType[]): LabelClassBody {
-  if (geometries.includes("keypoints") || declared.keypoints == null) return { ...declared, geometries: [...geometries] };
-  return { ...declared, geometries: [...geometries], keypoints: null };
 }
 
 /** What each shape asks of the person drawing it, said under its name. */

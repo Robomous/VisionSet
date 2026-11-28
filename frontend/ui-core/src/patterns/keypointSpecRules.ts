@@ -8,6 +8,8 @@
 
 import type { LabelClassBody } from "../screens/queries";
 
+type Spec = NonNullable<LabelClassBody["keypoints"]>;
+
 export function keypointSpecProblem(declared: Pick<LabelClassBody, "geometries" | "keypoints">): string | null {
   const spec = declared.keypoints;
   if (spec == null) return null;
@@ -41,4 +43,15 @@ export function keypointSpecProblems(
     const problem = keypointSpecProblem(declared);
     return problem === null ? [] : [{ name: declared.name.trim(), index, problem }];
   });
+}
+
+/** A point's name, or its position when a draft left it blank or an edge points past the names. */
+export function keypointName(spec: Spec, index: number): string {
+  const name = spec.names[index];
+  return name === undefined || name.trim() === "" ? `point ${index + 1}` : name;
+}
+
+/** Each edge as its two names, in the order the spec lists them. */
+export function skeletonPairs(spec: Spec): readonly string[] {
+  return spec.skeleton.map(([from, to]) => `${keypointName(spec, from)} – ${keypointName(spec, to)}`);
 }

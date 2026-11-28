@@ -7,27 +7,22 @@
 import type { JSX } from "react";
 
 import type { LabelClassBody } from "../screens/queries";
+import { keypointName, skeletonPairs } from "./keypointSpecRules";
 import { PropertyRow } from "./PropertyRow";
 
 type Spec = NonNullable<LabelClassBody["keypoints"]>;
 
-/** A point's name, or its position when a draft left it blank or an edge points past the names. */
-export function keypointName(spec: Spec, index: number): string {
-  const name = spec.names[index];
-  return name === undefined || name.trim() === "" ? `point ${index + 1}` : name;
+interface Chip {
+  readonly key: string;
+  readonly label: string;
 }
 
-/** Each edge as its two names, in the order the spec lists them. */
-export function skeletonPairs(spec: Spec): readonly string[] {
-  return spec.skeleton.map(([from, to]) => `${keypointName(spec, from)} – ${keypointName(spec, to)}`);
-}
-
-function Chips({ items, testId }: { readonly items: readonly string[]; readonly testId: string }): JSX.Element {
+function Chips({ items, testId }: { readonly items: readonly Chip[]; readonly testId: string }): JSX.Element {
   return (
     <ol className="flex flex-wrap items-center gap-1" data-testid={testId}>
-      {items.map((item, index) => (
-        <li key={index} className="flex h-6 items-center rounded-md bg-muted px-1.5">
-          {item}
+      {items.map((item) => (
+        <li key={item.key} className="flex h-6 items-center rounded-md bg-muted px-1.5">
+          {item.label}
         </li>
       ))}
     </ol>
@@ -35,7 +30,10 @@ function Chips({ items, testId }: { readonly items: readonly string[]; readonly 
 }
 
 function Points({ spec, slot }: { readonly spec: Spec; readonly slot: string }): JSX.Element {
-  return <Chips items={spec.names.map((_, index) => keypointName(spec, index))} testId={`keypoint-names-${slot}`} />;
+  return <Chips
+      items={spec.names.map((_, index) => ({ key: `point-${String(index)}`, label: keypointName(spec, index) }))}
+      testId={`keypoint-names-${slot}`}
+    />;
 }
 
 function Skeleton({ spec, slot }: { readonly spec: Spec; readonly slot: string }): JSX.Element {
@@ -46,7 +44,10 @@ function Skeleton({ spec, slot }: { readonly spec: Spec; readonly slot: string }
       </span>
     );
   }
-  return <Chips items={skeletonPairs(spec)} testId={`keypoint-skeleton-${slot}`} />;
+  return <Chips
+      items={skeletonPairs(spec).map((label, index) => ({ key: spec.skeleton[index].join("-"), label }))}
+      testId={`keypoint-skeleton-${slot}`}
+    />;
 }
 
 const NO_SPEC = "No spec: any number of points, drawn without a skeleton";

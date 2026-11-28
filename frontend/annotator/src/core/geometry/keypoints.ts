@@ -49,6 +49,7 @@ export function keypointLabels(
   annotations: readonly Pick<StoredAnnotation, "id" | "label_class" | "geometry">[],
   classes: readonly LabelClass[],
 ): readonly KeypointLabel[] {
+  const specs = new Map(classes.map((declared) => [declared.name, declared.keypoints]));
   const labels: KeypointLabel[] = [];
   for (const annotation of annotations) {
     const { geometry } = annotation;
@@ -63,7 +64,7 @@ export function keypointLabels(
     geometry.points.forEach((at, index) => {
       if (drawn(index)) points.push({ index, at, occluded: occluded(index) });
     });
-    const spec = classes.find((declared) => declared.name === annotation.label_class)?.keypoints;
+    const spec = specs.get(annotation.label_class);
     const edges: KeypointEdge[] = [];
     for (const [from, to] of spec?.skeleton ?? []) {
       if (!drawn(from) || !drawn(to)) continue;
