@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import signal
 import subprocess
 import sys
 import tempfile
@@ -203,6 +204,23 @@ class RunBoundedTest(unittest.TestCase):
         result = self.run_script(f"sleep 30 &\necho $! > '{pidfile}'\necho ok\n")
         self.assertEqual((result.returncode, result.stdout), (0, b"ok\n"))
         self.assertTrue(gone(int(pidfile.read_text(encoding="utf-8"))))
+
+    def test_output_survives_a_descendant_that_escapes_the_group(self) -> None:
+        pidfile = self.root / "escaped.pid"
+        escape = (
+            "import os, sys, time; os.setsid(); "
+            f"open({str(pidfile)!r}, 'w').write(str(os.getpid())); time.sleep(30)"
+        )
+        start = time.monotonic()
+        try:
+            result = self.run_script(
+                f'echo partial\n"{sys.executable}" -c "{escape}" &\nsleep 0.3\n'
+            )
+            self.assertLess(time.monotonic() - start, 5)
+            self.assertEqual((result.returncode, result.stdout), (0, b"partial\n"))
+        finally:
+            if pidfile.exists():
+                os.kill(int(pidfile.read_text(encoding="utf-8")), signal.SIGKILL)
 
     def test_output_beyond_the_cap_kills_the_process(self) -> None:
         start = time.monotonic()

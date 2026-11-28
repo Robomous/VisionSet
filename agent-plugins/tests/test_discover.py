@@ -16,6 +16,7 @@ import _support
 from discover import (
     OUTPUT_CAP,
     OVERRIDE_ENV,
+    REASON_TAIL,
     BundleError,
     Discovery,
     Host,
@@ -34,15 +35,18 @@ OK = ProbeResult(0, b"0.0.1b4\n")
 
 
 class FakeFs:
-    def __init__(self, windows: bool = False) -> None:
+    def __init__(self, windows: bool = False, fold_case: bool = False) -> None:
         self.pm = ntpath if windows else posixpath
         self.sep = "\\" if windows else "/"
+        self.fold_case = fold_case
         self.nodes: dict[str, str] = {}
         self.names: dict[str, str] = {}
         self.links: dict[str, str] = {}
+        self.contents: dict[str, str] = {}
 
     def k(self, path: str) -> str:
-        return str(self.pm.normcase(self.pm.normpath(path)))
+        key = str(self.pm.normcase(self.pm.normpath(path)))
+        return key.casefold() if self.fold_case else key
 
     def _add(self, path: str, kind: str) -> None:
         self.nodes[self.k(path)] = kind
@@ -51,8 +55,9 @@ class FakeFs:
         if parent != path and self.k(parent) not in self.nodes:
             self._add(parent, "dir")
 
-    def file(self, path: str, executable: bool = True) -> None:
+    def file(self, path: str, executable: bool = True, text: str = "") -> None:
         self._add(path, "exe" if executable else "file")
+        self.contents[self.k(path)] = text
 
     def mkdir(self, path: str) -> None:
         self._add(path, "dir")
@@ -90,6 +95,9 @@ class FakeFs:
     def is_executable(self, path: str) -> bool:
         return self._kind(path) == "exe"
 
+    def read_head(self, path: str) -> str:
+        return self.contents.get(self.k(self.realpath(path)), "")[:4096]
+
     def listdir(self, path: str) -> list[str]:
         prefix = self.k(self.realpath(path)) + self.sep
         return sorted(
@@ -111,12 +119,14 @@ class FakeRunner:
         self.behaviour: dict[str, Behaviour] = {}
         self.calls: list[list[str]] = []
         self.cwds: list[str] = []
+        self.envs: list[dict[str, str]] = []
 
     def __call__(
         self, argv: Sequence[str], cwd: str, env: Mapping[str, str], timeout: float, cap: int
     ) -> ProbeResult:
         self.calls.append(list(argv))
         self.cwds.append(cwd)
+        self.envs.append(dict(env))
         behaviour = self.behaviour[self.fs.k(self.fs.realpath(argv[0]))]
         return behaviour.version if list(argv[1:]) == ["--version"] else behaviour.mcp
 
@@ -127,9 +137,10 @@ class FakeRunner:
 class Scene:
     """One machine: a filesystem, the installs on it, and the environment discovery sees."""
 
-    def __init__(self, windows: bool = False, home: str = HOME) -> None:
+    def __init__(self, windows: bool = False, home: str = HOME, fold_case: bool = False) -> None:
         self.windows = windows
-        self.fs = FakeFs(windows)
+        self.fold_case = fold_case
+        self.fs = FakeFs(windows, fold_case)
         self.run = FakeRunner(self.fs)
         self.home = home
         self.env: dict[str, str] = {}
@@ -152,7 +163,7 @@ class Scene:
         self.env["PATH"] = (";" if self.windows else ":").join(entries)
 
     def host(self) -> Host:
-        return Host(env=self.env, windows=self.windows, home=self.home)
+        return Host(env=self.env, windows=self.windows, home=self.home, fold_case=self.fold_case)
 
     def discover(self, **kwargs: object) -> Discovery:
         options: dict[str, object] = {"project": PROJECT, "project_trusted": True}
@@ -333,7 +344,8 @@ class CheckoutTest(unittest.TestCase):
 
     def test_a_worktree_git_file_marks_the_root(self) -> None:
         s = Scene()
-        s.fs.file("/srv/wt/.git", executable=False)
+        s.fs.file("/srv/wt/.git", executable=False, text="gitdir: /srv/main/.git/worktrees/wt\n")
+        s.fs.file("/srv/wt/src/pyproject.toml", executable=False)
         s.install("/srv/.venv/bin/visionset")
         venv = s.install("/srv/wt/.venv/bin/visionset")
         self.assertEqual(chosen(s.discover(project="/srv/wt/src/pkg"))[2], venv)
@@ -357,10 +369,57 @@ class CheckoutTest(unittest.TestCase):
         self.assertEqual(chosen(result), (Tier.USER, "PATH", user))
         self.assertEqual(s.run.probed(), [user])
 
-    def test_home_itself_is_never_a_checkout(self) -> None:
+    def test_a_project_at_home_is_its_own_checkout(self) -> None:
         s = Scene()
         s.install(HOME + "/.venv/bin/visionset")
-        self.assertEqual(s.discover(project=HOME), Discovery(None, ()))
+        s.install(HOME + "/.local/bin/visionset")
+        s.path(HOME + "/.venv/bin", HOME + "/.local/bin")
+        result = s.discover(project=HOME, project_trusted=False)
+        self.assertIsNone(result.selected)
+        self.assertEqual(s.run.calls, [])
+        self.assertEqual(chosen(s.discover(project=HOME))[0], Tier.USER)
+
+    def test_a_checkout_that_is_home_with_a_venv_on_path_needs_trust(self) -> None:
+        s = Scene(home="/srv/repo")
+        s.fs.mkdir("/srv/repo/.git")
+        s.install("/srv/repo/.venv/bin/visionset")
+        s.path("/srv/repo/.venv/bin")
+        result = s.discover(project="/srv/repo", project_trusted=False)
+        self.assertIsNone(result.selected)
+        self.assertIn("has not trusted", reasons(result)[0])
+        self.assertEqual(s.run.calls, [])
+
+    def test_a_marker_at_the_filesystem_root_is_ignored(self) -> None:
+        s = Scene()
+        s.fs.mkdir("/.git")
+        s.fs.file("/pyproject.toml", executable=False)
+        user = s.install("/usr/local/bin/visionset")
+        s.path("/usr/local/bin")
+        result = s.discover(project="/srv/work", project_trusted=False)
+        self.assertEqual(chosen(result), (Tier.USER, "PATH", user))
+
+    def test_a_submodule_reaches_the_superproject(self) -> None:
+        s = Scene()
+        s.fs.mkdir("/srv/super/.git")
+        s.fs.file("/srv/super/sub/.git", executable=False, text="gitdir: ../.git/modules/sub\n")
+        s.install("/srv/super/.venv/bin/visionset")
+        s.path("/srv/super/.venv/bin")
+        result = s.discover(project="/srv/super/sub/src", project_trusted=False)
+        self.assertIsNone(result.selected)
+        self.assertEqual(s.run.calls, [])
+        s.env.pop("PATH")
+        result = s.discover(project="/srv/super/sub/src")
+        self.assertEqual(chosen(result)[0:2], (Tier.PROJECT, ".venv"))
+
+    def test_case_variants_match_on_a_case_insensitive_filesystem(self) -> None:
+        for fold_case, tier in ((True, None), (False, Tier.USER)):
+            with self.subTest(fold_case=fold_case):
+                s = Scene(home="/Users/u", fold_case=fold_case)
+                s.fs.mkdir("/Users/u/Code/repo/.git")
+                s.install("/Users/u/code/repo/.venv/bin/visionset")
+                s.path("/Users/u/code/repo/.venv/bin")
+                result = s.discover(project="/Users/u/Code/repo", project_trusted=False)
+                self.assertEqual(result.selected and result.selected.candidate.tier, tier)
 
 
 class TrustTest(unittest.TestCase):
@@ -411,6 +470,27 @@ class TrustTest(unittest.TestCase):
                 (".venv", "inside the project checkout,"),
             ],
         )
+        self.assertEqual(self.s.run.calls, [])
+
+    def test_user_locations_inside_the_checkout_need_trust(self) -> None:
+        for label, env in (("home", {}), ("pipx bin", {"PIPX_BIN_DIR": PROJECT + "/tools"})):
+            with self.subTest(label):
+                s = Scene(home=PROJECT + "/.home")
+                s.fs.mkdir(PROJECT + "/.git")
+                s.env.update(env)
+                s.install(PROJECT + "/.home/.local/bin/visionset")
+                s.install(PROJECT + "/tools/visionset")
+                result = s.discover(project_trusted=False)
+                self.assertIsNone(result.selected)
+                self.assertTrue(result.skipped)
+                self.assertTrue(all("has not trusted" in r for r in reasons(result)))
+                self.assertEqual(s.run.calls, [])
+                self.assertEqual(chosen(s.discover())[0], Tier.USER)
+
+    def test_a_cache_inside_the_checkout_needs_trust(self) -> None:
+        self.s.install(PROJECT + "/.cache/rt/bin/visionset")
+        result = self.s.discover(project_trusted=False, cached=[PROJECT + "/.cache/rt"])
+        self.assertIsNone(result.selected)
         self.assertEqual(self.s.run.calls, [])
 
     def test_trust_lets_the_checkout_binary_run(self) -> None:
@@ -494,6 +574,27 @@ class SkipReasonTest(unittest.TestCase):
         self.s.install(self.target, ProbeResult(0, f"{HOME}/cfg token=abcd1234efgh".encode()))
         reason = self.skipped(self.target)
         self.assertEqual(reason, "`--version` printed no version: ~/cfg token=<redacted>")
+
+    def test_version_output_is_redacted_before_it_is_cut(self) -> None:
+        self.s.env["MY_TOKEN"] = "supersecretvalue123"
+        for secret in ("ghp_" + "A" * 36, "supersecretvalue123"):
+            with self.subTest(secret=secret[:4]):
+                printed = "x" * (REASON_TAIL - 10) + " " + secret
+                self.s.install(self.target, ProbeResult(0, printed.encode()))
+                reason = self.skipped(self.target)
+                self.assertNotIn(secret[:9], reason)
+
+    def test_non_ascii_digits_are_not_a_version(self) -> None:
+        self.s.install(self.target, "\u0660.\u0660.\u0661b\u0664")
+        self.assertIn("printed no version", self.skipped(self.target))
+
+    def test_probes_run_without_interpreter_steering_variables(self) -> None:
+        self.s.env.update(PYTHONPATH="/evil", PYTHONSTARTUP="/evil.py", PYTHONHOME="/x", HOME=HOME)
+        self.s.env.update(PYTHONINSPECT="1", pythonbreakpoint="x.y", PATH="/usr/local/bin")
+        self.s.install(self.target)
+        self.s.discover(project=None)
+        env = self.s.run.envs[0]
+        self.assertEqual(env, {"HOME": HOME, "PATH": "/usr/local/bin", "NO_COLOR": "1"})
 
     def test_failed_version_probe_carries_redacted_stderr(self) -> None:
         stderr = f"Traceback\n  File {HOME}/x.py\nPermissionError: token=abcd1234efgh"
@@ -648,6 +749,14 @@ class WindowsTest(unittest.TestCase):
     def test_redaction_hides_home_in_any_case(self) -> None:
         text = redact("failed in c:\\users\\ana maria\\x and C:\\Users\\Ana Maria", self.s.host())
         self.assertEqual(text, "failed in ~\\x and ~")
+        text = redact("C:/Users/Ana Maria/x C:\\Users\\ANAMAR~1\\y", self.s.host())
+        self.assertEqual(text, "~/x ~\\y")
+
+    def test_drive_relative_path_entries_are_not_searched(self) -> None:
+        self.s.install("\\tools\\visionset.exe")
+        self.s.install("C:tools\\visionset.exe")
+        self.s.env["PATH"] = "\\tools;C:tools"
+        self.assertEqual(self.s.discover(project=None), Discovery(None, ()))
 
 
 class RedactionTest(unittest.TestCase):
@@ -661,7 +770,8 @@ class RedactionTest(unittest.TestCase):
 
     def test_secret_shapes(self) -> None:
         cases = {
-            "Authorization: Bearer abc.def.ghi123": "Authorization: Bearer <redacted>",
+            "Authorization: Bearer abc.def.ghi123": "Authorization: <redacted>",
+            "use Bearer abc.def.ghi123": "use Bearer <redacted>",
             "https://bob:hunter2@pypi.example/simple": "https://<redacted>@pypi.example/simple",
             "https://tok@pypi.example/simple": "https://<redacted>@pypi.example/simple",
             "api_key = 'x y z'": "api_key = <redacted>",
@@ -673,14 +783,34 @@ class RedactionTest(unittest.TestCase):
             "AKIA" + "E" * 16: "<redacted>",
             "glpat-" + "f" * 20: "<redacted>",
             "xoxb-1234567890-abc": "<redacted>",
+            "npm_" + "g" * 36: "<redacted>",
+            '{"token": "s3cr3tvalue"}': '{"token": <redacted>}',
+            "{'password': 'hunter2xx'}": "{'password': <redacted>}",
+            "--token s3cr3tvalue --other": "--token <redacted> --other",
+            "Authorization: token abcdef": "Authorization: <redacted>",
+            "private_key: -----BEGIN": "private_key: <redacted>",
+            "-----BEGIN RSA PRIVATE KEY-----\nMIIE\n-----END RSA PRIVATE KEY----- ok": (
+                "<redacted> ok"
+            ),
+            "https://u:p@ss@host/x": "https://<redacted>@host/x",
+            "//tok@host/x": "//<redacted>@host/x",
         }
         for raw, expected in cases.items():
             with self.subTest(raw=raw):
                 self.assertEqual(redact(raw, self.host()), expected)
 
     def test_home_but_not_a_sibling_sharing_its_prefix(self) -> None:
-        text = redact(f"{HOME}/a {HOME} '{HOME}' {HOME}x/b", self.host())
-        self.assertEqual(text, f"~/a ~ '~' {HOME}x/b")
+        host = Host(env={}, windows=False, home="/var/lib/svc")
+        text = redact("/var/lib/svc/a /var/lib/svc '/var/lib/svc' /var/lib/svcx/b", host)
+        self.assertEqual(text, "~/a ~ '~' /var/lib/svcx/b")
+
+    def test_any_user_home_is_hidden(self) -> None:
+        text = redact("/home/other/.config /Users/bob/x c:/Users/x/y /srv/home/keep", self.host())
+        self.assertEqual(text, "~/.config ~/x ~/y /srv/home/keep")
+
+    def test_short_secrets_are_redacted_by_name(self) -> None:
+        host = self.host(DB_PASSWORD="12345", HF_HUB_DISABLE_TOKEN="1")
+        self.assertEqual(redact("pw 12345 x123456 exit 1", host), "pw <redacted> x123456 exit 1")
 
     def test_control_characters_and_lines_collapse(self) -> None:
         self.assertEqual(

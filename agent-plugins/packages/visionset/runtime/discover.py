@@ -6,8 +6,8 @@ only ever run, never modified.
 
 A candidate's tier comes from where it was found, never from where a link resolves: a pipx
 or uv tool link in `~/.local/bin` is a user install although it points into a virtual
-environment. An invalid override is reported and nothing else is tried. A project candidate
-inside the checkout is not run unless the host trusts the project.
+environment. An invalid override is reported and nothing else is tried. No candidate inside
+the checkout, whatever its tier, is run unless the host trusts the project.
 
 This module writes nothing to stdout and reaches no network; the launcher owns both.
 """
@@ -20,8 +20,10 @@ import ntpath
 import os
 import posixpath
 import re
+import select
 import signal
 import subprocess
+import sys
 import threading
 from collections.abc import Callable, Iterator, Mapping, Sequence
 from dataclasses import dataclass
@@ -34,6 +36,23 @@ PROBE_TIMEOUT = 10.0
 OUTPUT_CAP = 64 * 1024
 REASON_TAIL = 400
 BATCH_SUFFIXES = (".cmd", ".bat")
+# Variables that make a Python console script load or run code other than its own.
+PROBE_ENV_SCRUB = frozenset(
+    {
+        "PYTHONPATH",
+        "PYTHONHOME",
+        "PYTHONSTARTUP",
+        "PYTHONINSPECT",
+        "PYTHONEXECUTABLE",
+        "PYTHONBREAKPOINT",
+        "PYTHONWARNINGS",
+        "PYTHONDEBUG",
+        "PYTHONVERBOSE",
+        "PYTHONDEVMODE",
+        "PYTHONPROFILEIMPORTTIME",
+        "__PYVENV_LAUNCHER__",
+    }
+)
 
 
 class BundleError(Exception):
@@ -103,6 +122,7 @@ class FileSystem(Protocol):
     def is_executable(self, path: str) -> bool: ...
     def realpath(self, path: str) -> str: ...
     def listdir(self, path: str) -> list[str]: ...
+    def read_head(self, path: str) -> str: ...
 
 
 class OsFileSystem:
@@ -127,18 +147,34 @@ class OsFileSystem:
         except OSError:
             return []
 
+    def read_head(self, path: str) -> str:
+        try:
+            with open(path, encoding="utf-8", errors="replace") as handle:
+                return handle.read(4096)
+        except OSError:
+            return ""
+
 
 @dataclass(frozen=True)
 class Host:
     env: Mapping[str, str]
     windows: bool
     home: str | None
+    fold_case: bool = False
 
     @classmethod
     def current(cls) -> Host:
         home = os.path.expanduser("~")
-        windows = os.name == "nt"
-        return cls(env=dict(os.environ), windows=windows, home=None if home == "~" else home)
+        return cls(
+            env=dict(os.environ),
+            windows=os.name == "nt",
+            home=None if home == "~" else home,
+            fold_case=sys.platform == "darwin",
+        )
+
+    @property
+    def case_insensitive(self) -> bool:
+        return self.windows or self.fold_case
 
     def get(self, name: str) -> str | None:
         if self.windows:
@@ -163,7 +199,7 @@ def load_bundle(path: Path) -> Bundle:
     return bundle
 
 
-_VERSION = re.compile(r"(\d+(?:\.\d+)*)(?:(a|b|rc)(\d+))?(?:\.dev(\d+))?")
+_VERSION = re.compile(r"([0-9]+(?:\.[0-9]+)*)(?:(a|b|rc)([0-9]+))?(?:\.dev([0-9]+))?")
 _VersionKey = tuple[tuple[int, ...], str | None, int | None, int | None]
 
 
@@ -193,40 +229,62 @@ def _wanted_version(compatibility: str) -> _VersionKey:
 
 _CONTROL = re.compile(r"\x1b\[[0-9;?]*[ -/]*[@-~]|[\x00-\x08\x0b-\x1f\x7f]")
 _SECRET_NAME = re.compile(r"TOKEN|SECRET|PASSWORD|PASSWD|KEY|CREDENTIAL|AUTH|COOKIE", re.IGNORECASE)
+_NOT_SECRET = frozenset({"0", "1", "true", "false", "yes", "no", "on", "off"})
+_KEY = (
+    r"[\w-]*(?:token|secret|password|passwd|api[_-]?key|access[_-]?key|private[_-]?key"
+    r"|credentials?)[\w-]*"
+)
+_VALUE = r"(?:\"[^\"]*\"|'[^']*'|[^\s,;}\]]+)"
+_PATH_END = r"[^\\/\s'\":;,)\]]+"
 _SECRET_SHAPES: tuple[tuple[re.Pattern[str], str], ...] = (
-    (re.compile(r"(?i)\b(bearer|basic)\s+[A-Za-z0-9._~+/=-]{8,}"), r"\1 <redacted>"),
-    (re.compile(r"(?i)\b([a-z][a-z0-9+.-]*://)[^/\s@]+@"), r"\1<redacted>@"),
     (
         re.compile(
-            r"(?i)\b(\w*(?:token|secret|password|passwd|api[_-]?key|access[_-]?key|credentials?))"
-            r"(\s*[=:]\s*)(\"[^\"]*\"|'[^']*'|\S+)"
+            r"-----BEGIN[A-Z ]*PRIVATE KEY-----.*?(?:-----END[A-Z ]*PRIVATE KEY-----|\Z)", re.DOTALL
         ),
-        r"\1\2<redacted>",
+        "<redacted>",
     ),
+    (re.compile(r"(?i)\b((?:proxy-)?authorization[\"']?\s*[:=]\s*)[^\r\n]*"), r"\1<redacted>"),
+    (re.compile(r"(?i)\b(bearer|basic)\s+[A-Za-z0-9._~+/=-]{8,}"), r"\1 <redacted>"),
+    (re.compile(r"(?i)((?:\b[a-z][a-z0-9+.-]*:)?//)[^/\s]+@"), r"\1<redacted>@"),
+    (re.compile(rf"(?i)([\"']?)({_KEY})\1(\s*[=:]\s*){_VALUE}"), r"\1\2\1\3<redacted>"),
+    (re.compile(rf"(?i)(--?{_KEY})(\s+)(?!-){_VALUE}"), r"\1\2<redacted>"),
     (
         re.compile(
             r"\b(?:gh[pousr]_[A-Za-z0-9]{20,}|github_pat_\w{20,}|sk-[A-Za-z0-9_-]{16,}"
             r"|hf_[A-Za-z0-9]{20,}|AKIA[0-9A-Z]{16}|xox[abprs]-[A-Za-z0-9-]{10,}"
-            r"|glpat-[A-Za-z0-9_-]{20,})"
+            r"|glpat-[A-Za-z0-9_-]{20,}|npm_[A-Za-z0-9]{36}|pypi-[A-Za-z0-9_-]{16,})"
         ),
         "<redacted>",
     ),
+)
+_ANY_HOME = (
+    re.compile(rf"(?i)(?<![\w])[a-z]:[\\/]users[\\/]{_PATH_END}"),
+    re.compile(rf"(?i)(?<![\w.~/\\:-])/(?:home|users)/{_PATH_END}"),
 )
 
 
 def redact(text: str, host: Host) -> str:
     """Make text from a candidate safe to show: no secrets, no home directory, one line."""
     text = _CONTROL.sub(" ", text)
-    secrets = {v for k, v in host.env.items() if _SECRET_NAME.search(k) and len(v) >= 6}
+    secrets = {
+        v
+        for k, v in host.env.items()
+        if _SECRET_NAME.search(k) and v and v.casefold() not in _NOT_SECRET
+    }
     for secret in sorted(secrets, key=len, reverse=True):
-        text = text.replace(secret, "<redacted>")
+        if len(secret) >= 6:
+            text = text.replace(secret, "<redacted>")
+        else:
+            text = re.sub(rf"(?<!\w){re.escape(secret)}(?!\w)", "<redacted>", text)
     for pattern, replacement in _SECRET_SHAPES:
         text = pattern.sub(replacement, text)
-    if host.home:
+    if host.home and host.home.rstrip("/\\"):
         home = host.home.rstrip("/\\")
-        flags = re.IGNORECASE if host.windows else 0
-        if home:
-            text = re.sub(re.escape(home) + r"(?=$|[\\/\s'\":;,)\]])", "~", text, flags=flags)
+        flags = re.IGNORECASE if host.case_insensitive else 0
+        for spelling in {home, home.replace("\\", "/")}:
+            text = re.sub(re.escape(spelling) + r"(?=$|[\\/\s'\":;,)\]])", "~", text, flags=flags)
+    for pattern in _ANY_HOME:
+        text = pattern.sub("~", text)
     return " ".join(text.split())
 
 
@@ -273,28 +331,39 @@ def run_bounded(
         return ProbeResult(None, error=error.strerror or type(error).__name__)
 
     overflow = threading.Event()
-    captured: dict[str, bytes] = {}
+    stop = threading.Event()
+    captured = {"stdout": bytearray(), "stderr": bytearray()}
 
     def drain(name: str, fd: int) -> None:
-        chunks: list[bytes] = []
+        buffer = captured[name]
         size = 0
         try:
-            while chunk := os.read(fd, 8192):
-                chunks.append(chunk[: max(cap - size, 0)])
+            while not stop.is_set():
+                if not windows and not select.select([fd], [], [], 0.05)[0]:
+                    continue
+                chunk = os.read(fd, 8192)
+                if not chunk:
+                    return
+                buffer.extend(chunk[: max(cap - size, 0)])
                 size += len(chunk)
                 if size > cap:
                     overflow.set()
                     _kill(process)
-                    break
+                    return
         except (OSError, ValueError):
-            pass
-        captured[name] = b"".join(chunks)
+            return
 
     streams = [stream for stream in (process.stdout, process.stderr) if stream is not None]
     readers = [
         threading.Thread(target=drain, args=(name, stream.fileno()), daemon=True)
         for name, stream in zip(("stdout", "stderr"), streams, strict=True)
     ]
+
+    def settle(seconds: float) -> bool:
+        for reader in readers:
+            reader.join(seconds)
+        return not any(reader.is_alive() for reader in readers)
+
     for reader in readers:
         reader.start()
     timed_out = False
@@ -305,20 +374,19 @@ def run_bounded(
         _kill(process)
         with contextlib.suppress(subprocess.TimeoutExpired):
             process.wait(5)
-    for reader in readers:
-        reader.join(0.5)
-    if any(reader.is_alive() for reader in readers):
+    if not settle(0.5):
         # A descendant still holds a pipe open after the probe itself has exited.
         _kill(process)
-        for reader in readers:
-            reader.join(0.5)
-    if not any(reader.is_alive() for reader in readers):
+        if not settle(0.5):
+            stop.set()
+            settle(0.2)
+    if settle(0):
         for stream in streams:
             stream.close()
     return ProbeResult(
         process.returncode,
-        captured.get("stdout", b""),
-        captured.get("stderr", b""),
+        bytes(captured["stdout"]),
+        bytes(captured["stderr"]),
         timed_out=timed_out,
         overflow=overflow.is_set(),
     )
@@ -343,13 +411,20 @@ class _Search:
         self.ancestors: list[str] = []
         self.checkout: str | None = None
         if project is not None:
-            if not self.pm.isabs(project):
+            if not self.absolute(project):
                 raise ValueError("project must be an absolute path")
             self.ancestors, self.checkout = self._find_checkout(self.pm.normpath(project))
         self.env_dirs = self._env_mappings()
 
     def key(self, path: str) -> str:
-        return str(self.pm.normcase(self.pm.normpath(path)))
+        key = str(self.pm.normcase(self.pm.normpath(path)))
+        return key.casefold() if self.host.case_insensitive else key
+
+    def absolute(self, path: str) -> bool:
+        if not self.host.windows:
+            return posixpath.isabs(path)
+        drive, rest = ntpath.splitdrive(path)
+        return bool(drive) and rest[:1] in ("\\", "/")
 
     def inside(self, path: str, root: str) -> bool:
         sep = "\\" if self.host.windows else "/"
@@ -364,36 +439,53 @@ class _Search:
 
     def _find_checkout(self, project: str) -> tuple[list[str], str | None]:
         home = self.key(self.host.home) if self.host.home else None
-        if self.key(project) == home:
-            return [], None
         sep = "\\" if self.host.windows else "/"
         under_home = home is not None and self.key(project).startswith(home.rstrip(sep) + sep)
-        walk: list[str] = []
-        current = project
-        while not (under_home and self.key(current) == home):
-            walk.append(current)
-            parent = self.pm.dirname(current)
-            if parent == current:
+        walk: list[str] = [project]
+        while self.key(walk[-1]) != home:
+            parent = self.pm.dirname(walk[-1])
+            if parent == walk[-1] or (under_home and self.key(parent) == home):
                 break
-            current = parent
-        for markers in ((".git",), ("pyproject.toml", ".venv", "venv")):
-            for index, directory in enumerate(walk):
-                if any(self.fs.lexists(self.pm.join(directory, m)) for m in markers):
-                    return walk[: index + 1], directory
+            walk.append(parent)
+
+        def marked(index: int, names: tuple[str, ...]) -> bool:
+            directory = walk[index]
+            if self.pm.dirname(directory) == directory:
+                return False
+            return any(self.fs.lexists(self.pm.join(directory, name)) for name in names)
+
+        for index in range(len(walk)):
+            if marked(index, (".git",)):
+                while self._is_submodule(walk[index]):
+                    outer = [j for j in range(index + 1, len(walk)) if marked(j, (".git",))]
+                    if not outer:
+                        break
+                    index = outer[0]
+                return walk[: index + 1], walk[index]
+        for index in range(len(walk)):
+            if marked(index, ("pyproject.toml", ".venv", "venv")):
+                return walk[: index + 1], walk[index]
         return walk[:1], walk[0]
+
+    def _is_submodule(self, directory: str) -> bool:
+        gitlink = self.pm.join(directory, ".git")
+        if not self.fs.is_file(gitlink):
+            return False
+        match = re.match(r"gitdir:\s*(\S.*)", self.fs.read_head(gitlink).strip())
+        return bool(match and re.search(r"(^|[\\/])\.git[\\/]modules[\\/]", match.group(1)))
 
     def _env_mappings(self) -> list[tuple[str, str]]:
         found: list[tuple[str, str]] = []
         virtual_env = self.host.get("VIRTUAL_ENV")
-        if virtual_env and self.pm.isabs(virtual_env):
+        if virtual_env and self.absolute(virtual_env):
             found.append((self.scripts(virtual_env), "VIRTUAL_ENV"))
         conda = self.host.get("CONDA_PREFIX")
-        if conda and self.pm.isabs(conda) and self.host.get("CONDA_DEFAULT_ENV") != "base":
+        if conda and self.absolute(conda) and self.host.get("CONDA_DEFAULT_ENV") != "base":
             found.append((self.scripts(conda), "CONDA_PREFIX"))
         uv_env = self.host.get("UV_PROJECT_ENVIRONMENT")
         if uv_env and not self.pm.isabs(uv_env) and self.checkout is not None:
             uv_env = self.pm.join(self.checkout, uv_env)
-        if uv_env and self.pm.isabs(uv_env):
+        if uv_env and self.absolute(uv_env):
             found.append((self.scripts(uv_env), "UV_PROJECT_ENVIRONMENT"))
         return found
 
@@ -486,7 +578,7 @@ class _Search:
         seen: set[str] = set()
 
         def emit(directory: str | None, tier: Tier, source: str) -> Iterator[Candidate]:
-            if not directory or not self.pm.isabs(directory):
+            if not directory or not self.absolute(directory):
                 return
             for path in self.executables(self.pm.normpath(directory)):
                 if self.key(path) in seen:
@@ -494,11 +586,7 @@ class _Search:
                 if not self.fs.lexists(path):
                     continue
                 seen.add(self.key(path))
-                in_checkout = (
-                    tier is Tier.PROJECT
-                    and self.checkout is not None
-                    and self.inside(path, self.checkout)
-                )
+                in_checkout = self.checkout is not None and self.inside(path, self.checkout)
                 yield Candidate(path, tier, source, in_checkout)
                 break
 
@@ -539,7 +627,8 @@ class _Checker:
         self.run = run
         self.timeout = timeout
         self.probed: dict[str, str] = {}
-        self.env = {**self.host.env, "NO_COLOR": "1"}
+        self.env = {k: v for k, v in self.host.env.items() if k.upper() not in PROBE_ENV_SCRUB}
+        self.env["NO_COLOR"] = "1"
 
     def check(self, candidate: Candidate) -> Found | Skipped:
         reason = self._refusal(candidate)
@@ -552,9 +641,9 @@ class _Checker:
         version, reason = self._probe(candidate.path, ["--version"])
         if reason is None:
             version = version.strip()
-            key = _version_key(version) if version and len(version.split()) == 1 else None
+            key = _version_key(version)
             if key is None:
-                printed = version[:REASON_TAIL] or "nothing"
+                printed = redact(version, self.host)[:REASON_TAIL] or "nothing"
                 reason = f"`--version` printed no version: {printed}"
             elif key != self.wanted:
                 reason = f"version {version} is outside {self.compatibility}"
@@ -566,9 +655,9 @@ class _Checker:
 
     def _refusal(self, candidate: Candidate) -> str | None:
         path = candidate.path
-        if candidate.tier is Tier.PROJECT and candidate.in_checkout and not self.project_trusted:
+        if candidate.in_checkout and not self.project_trusted:
             return "inside the project checkout, which the host has not trusted; not run"
-        if not self.search.pm.isabs(path):
+        if not self.search.absolute(path):
             return "is not an absolute path"
         if self.host.windows and path.lower().endswith(BATCH_SUFFIXES):
             return "is a batch-file shim, which needs a shell; not run"
