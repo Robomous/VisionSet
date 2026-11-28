@@ -5,7 +5,8 @@
 import { describe, expect, it } from "vitest";
 
 import { documentFromWire } from "../../core/state/document";
-import { withoutHidden } from "./visibility";
+import type { KeypointLabel } from "../../core/geometry/keypoints";
+import { keypointsWithoutHidden, withoutHidden } from "./visibility";
 
 const WIRE = {
   asset: { id: "asset-1", width: 100, height: 100 },
@@ -78,5 +79,20 @@ describe("withoutHidden", () => {
     const visible = withoutHidden(document, new Set(["a"]));
     expect([...visible.annotations.keys()]).toEqual(["b"]);
     expect(withoutHidden(document, new Set(["b"])).annotations.has("a")).toBe(true);
+  });
+});
+
+describe("keypointsWithoutHidden", () => {
+  const pose = (id: string): KeypointLabel => ({ id, labelClass: "person", points: [], edges: [] });
+  const labels = [pose("k1"), pose("k2")];
+
+  it("leaves out exactly the hidden keypoints", () => {
+    expect(keypointsWithoutHidden(labels, new Set(["k1", "a"])).map((one) => one.id)).toEqual(["k2"]);
+  });
+
+  it("returns the same array when none of them is hidden", () => {
+    expect(keypointsWithoutHidden(labels, undefined)).toBe(labels);
+    expect(keypointsWithoutHidden(labels, new Set())).toBe(labels);
+    expect(keypointsWithoutHidden(labels, new Set(["a"]))).toBe(labels);
   });
 });

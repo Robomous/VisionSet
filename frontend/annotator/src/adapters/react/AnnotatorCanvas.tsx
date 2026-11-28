@@ -217,7 +217,7 @@ import { digitFromCode, isComposing, isTextEntry } from "./keyboard";
 import { classColor, editedId, paintAnnotation, paintHighlightedVertex, paintSuggestions } from "./paint";
 import type { PaintedSuggestion } from "./paint";
 import { stageScreenSizes } from "./Shapes";
-import { withoutHidden } from "./visibility";
+import { keypointsWithoutHidden, withoutHidden } from "./visibility";
 import { TransientLayer } from "./TransientLayer";
 
 /** The states a press must hold the pointer for. `drawing-polygon` is not one. */
@@ -340,7 +340,8 @@ export interface AnnotatorCanvasProps {
   readonly overlay3d?: readonly Projected3DLabel[];
   /**
    * Keypoints annotations (`keypointLabels`), drawn read-only beneath the
-   * annotations and outside the document, like `overlay3d`. Memoize it.
+   * annotations and outside the document, like `overlay3d`. One whose id is in
+   * `hiddenIds` is not drawn. Memoize it.
    */
   readonly keypoints?: readonly KeypointLabel[];
   /**
@@ -1429,6 +1430,10 @@ export function AnnotatorCanvas({
     () => withoutHidden(snapshot.rendered, hiddenIds),
     [snapshot.rendered, hiddenIds],
   );
+  const visibleKeypoints = useMemo(
+    () => (keypoints === undefined ? undefined : keypointsWithoutHidden(keypoints, hiddenIds)),
+    [keypoints, hiddenIds],
+  );
 
   /**
    * Where the pointer is **for the tools**, which is nowhere while the hand is on.
@@ -1646,8 +1651,8 @@ export function AnnotatorCanvas({
             {overlay3d !== undefined && (
               <Overlay3DLayer labels={overlay3d} schema={snapshot.document.schema} />
             )}
-            {keypoints !== undefined && (
-              <KeypointLayer labels={keypoints} classes={snapshot.document.schema.classes} zoom={view.zoom} />
+            {visibleKeypoints !== undefined && (
+              <KeypointLayer labels={visibleKeypoints} classes={snapshot.document.schema.classes} zoom={view.zoom} />
             )}
             <AnnotationLayer
               committed={visibleCommitted}
