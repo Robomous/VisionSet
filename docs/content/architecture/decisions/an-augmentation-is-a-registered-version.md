@@ -70,10 +70,13 @@ modes and give a preview and a per-output provenance record a value to show and 
 
 The driver port gained an optional `draw` keyword. A driver whose `apply` does not take it is
 still called without it and must derive the same draw with `sample_step(step, seed)`; that
-compatibility is held by a test. The registry declares `tasks`, `semantics` and `loss` as data
-only - deciding whether a recipe fits an export target from them is the compatibility resolver's
-job ([#1239](https://github.com/Robomous/VisionSet/issues/1239)), and exposing them on the wire
-is [#1240](https://github.com/Robomous/VisionSet/issues/1240). MCP's recipe tools and the CLI's
+compatibility is held by a test. Whether a recipe fits an export is read from the registry's
+`modalities`, `geometries`, `tasks` and `loss` by the compatibility resolver
+([#1239](https://github.com/Robomous/VisionSet/issues/1239),
+[Which step serves which label](../../preprocessing.md#which-step-serves-which-label)); `semantics`
+refuses only kinds no geometry carries yet, because nothing in the data model marks a class as
+orientation-bound. Exposing the registry and the resolution on the wire is
+[#1240](https://github.com/Robomous/VisionSet/issues/1240). MCP's recipe tools and the CLI's
 `--spec FILE` take the spec itself and so accept and validate `version` and `params`; the REST
 body and every read-back shape carry neither yet. Before a second version or a declared parameter
 is registered, #1240 must carry both on every surface, or a recipe written with them would read

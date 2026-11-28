@@ -179,7 +179,11 @@ def export(
         )
         if check:
             report = ReleaseService(service).check_export(
-                found.id, plugin, target=addressed, recipe=spec
+                found.id,
+                plugin,
+                target=addressed,
+                recipe=spec,
+                drivers=None if spec is None else preprocessing_registry.drivers(),
             )
             _report(report, json_out=json_out)
             # **The same predicate `ReleaseService.export` gates on**, and not

@@ -219,7 +219,9 @@ train fold, named `<hash>-aug<k>` beside their source. The result separates
 `source_file_count` from `augmented_file_count`, and `preprocessing` carries the recipe
 as it ran, its hash, the Pillow version and a file-to-source mapping; the report on
 disk carries the same. An augmenting recipe refuses a release published without a
-split, and a step refuses a geometry it cannot move. `check_export` with the same
+split, a step refuses a geometry it cannot move, and `AUGMENTATION_INCOMPATIBLE` names
+every step the export's target or the registry cannot vouch for, such as a flip over
+keypoints a target trains for pose. `check_export` with the same
 `recipe` refuses what the export would, and its report is otherwise unchanged by it.
 """
 

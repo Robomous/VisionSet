@@ -62,6 +62,7 @@ from visionset.kernel.domain import (
     Annotation,
     AnnotationSchema,
     Asset,
+    AugmentationResolution,
     ClassCompatibility,
     ClassCount,
     ClassExportStatus,
@@ -80,6 +81,7 @@ from visionset.kernel.domain import (
     ManifestSource,
     ManifestTrack,
     ModalityCompatibility,
+    ReasonCode,
     RecipeSpec,
     Release,
     ReleasePublished,
@@ -93,8 +95,10 @@ from visionset.kernel.domain import (
     TransformedView,
     assign_split,
     canonical_bytes,
+    carried_by,
     geometry_needs_calibration,
     geometry_needs_scan_frame,
+    incompatible,
     manifest_version_for,
     manifest_within,
     normalize_release_tag,
@@ -102,6 +106,7 @@ from visionset.kernel.domain import (
     recipe_hash,
     require_calibration,
     require_scan_frame,
+    resolve_augmentation,
     sample_plan,
     sha256_hex,
     sha256_hex_of_stream,
@@ -112,6 +117,7 @@ from visionset.kernel.domain import (
     variant_seed,
 )
 from visionset.kernel.errors import (
+    AugmentationIncompatible,
     AugmentationRequiresSplit,
     ConstraintViolated,
     EmptyRelease,
@@ -121,6 +127,7 @@ from visionset.kernel.errors import (
     InvalidAnnotation,
     LossyExportNotConsented,
     NoSplitRecipe,
+    PreprocessingDriverNotFound,
     PreprocessingStepUnsupportedGeometry,
     ReleaseContentWouldViolateSchema,
     ReleaseNotFound,
@@ -430,6 +437,7 @@ class ReleaseService:
         *,
         target: ExportTarget | None = None,
         recipe: RecipeSpec | None = None,
+        drivers: Mapping[str, PreprocessingDriver] | None = None,
     ) -> ExportCompatibility:
         """What this format would drop from this release, before anything is written.
 
@@ -445,7 +453,11 @@ class ReleaseService:
         A resize that crops — ``fill`` or ``center_crop`` — is the one step
         that loses labels, and its losses are in the report beside the
         format's: a label cut away is dropped, a label cut down is degraded,
-        and either asks for consent the way a format's loss does.
+        and either asks for consent the way a format's loss does. Whether
+        each step can serve what the export carries is
+        :meth:`recipe_compatibility`'s resolution, the one :meth:`export`
+        refuses by; ``drivers``, when given, adds whether one is installed for
+        every step.
 
         Computed from the **frozen manifest**, never from live membership: an
         export describes a release, and a release is a snapshot. Two runs against
@@ -473,6 +485,10 @@ class ReleaseService:
                 published without a split recipe.
             PreprocessingStepUnsupportedGeometry: a recipe step cannot
                 transform a geometry the export would carry.
+            AugmentationIncompatible: ``target`` trains a label the export
+                would carry for a task a recipe step does not serve.
+            PreprocessingDriverNotFound: ``drivers`` was given and none of
+                them applies a step the recipe holds.
             ExportSourceUnreadable: a recipe step needs a source size the
                 manifest never recorded, or a recipe was given for an export
                 that writes scans.
@@ -482,11 +498,45 @@ class ReleaseService:
         manifest = self._read_manifest(release)
         compatibility = _compatibility(release, manifest, exporter, target)
         if recipe is not None:
-            view = _transformed(manifest, exporter, target, recipe, _split_of(release, manifest))
+            view = _transformed(
+                manifest, exporter, target, recipe, _split_of(release, manifest), drivers
+            )
             compatibility = _compatibility(
                 release, manifest, exporter, target, cropping=_cropping_of(recipe, view)
             )
         return compatibility
+
+    def recipe_compatibility(
+        self,
+        release_id: UUID,
+        exporter: Exporter,
+        recipe: RecipeSpec,
+        *,
+        target: ExportTarget | None = None,
+        drivers: Mapping[str, PreprocessingDriver] | None = None,
+    ) -> AugmentationResolution:
+        """Whether each step of ``recipe`` can serve each label this export would carry.
+
+        The resolution :meth:`check_export` and :meth:`export` refuse by,
+        computed the same way: over the frozen manifest narrowed to what the
+        format and ``target`` carry, the release's own folds, the task set of
+        ``target`` (none without one), and the step kinds ``drivers`` apply
+        (unjudged without them). It refuses nothing itself; a ``conditional``
+        entry is a loss the compatibility report counts and consent covers.
+
+        Raises:
+            ReleaseNotFound: no such release in this workspace.
+            WorkspaceCorrupt: the manifest blob is gone, or is not a manifest.
+        """
+        release = self.get(release_id)
+        manifest = self._read_manifest(release)
+        return _resolved(
+            _handed(manifest, exporter, target),
+            recipe,
+            _split_of(release, manifest),
+            target,
+            drivers,
+        )
 
     def require_export_consent(
         self,
@@ -496,6 +546,7 @@ class ReleaseService:
         allow_lossy: bool,
         target: ExportTarget | None = None,
         recipe: RecipeSpec | None = None,
+        drivers: Mapping[str, PreprocessingDriver] | None = None,
     ) -> ExportCompatibility:
         """The compatibility report, or refuse because the caller has not consented.
 
@@ -530,6 +581,10 @@ class ReleaseService:
                 published without a split recipe.
             PreprocessingStepUnsupportedGeometry: a recipe step cannot
                 transform a geometry the export would carry.
+            AugmentationIncompatible: ``target`` trains a label the export
+                would carry for a task a recipe step does not serve.
+            PreprocessingDriverNotFound: ``drivers`` was given and none of
+                them applies a step the recipe holds.
             ExportSourceUnreadable: a recipe step needs a source size the
                 manifest never recorded, or a recipe was given for an export
                 that writes scans.
@@ -537,7 +592,7 @@ class ReleaseService:
         """
         release = self.get(release_id)
         manifest = self._read_manifest(release)
-        return _consented(release, manifest, exporter, allow_lossy, target, recipe)[0]
+        return _consented(release, manifest, exporter, allow_lossy, target, recipe, drivers)[0]
 
     def export(
         self,
@@ -629,6 +684,8 @@ class ReleaseService:
                 published without a split recipe.
             PreprocessingStepUnsupportedGeometry: a recipe step cannot
                 transform a geometry the export would carry.
+            AugmentationIncompatible: ``target`` trains a label the export
+                would carry for a task a recipe step does not serve.
             PreprocessingDriverNotFound: no driver in ``drivers`` applies a
                 step the recipe holds.
             ExportSourceUnreadable: a recipe step needs a source size the
@@ -645,7 +702,15 @@ class ReleaseService:
         """
         release = self.get(release_id)
         manifest = self._read_manifest(release)
-        compatibility, view = _consented(release, manifest, exporter, allow_lossy, target, recipe)
+        compatibility, view = _consented(
+            release,
+            manifest,
+            exporter,
+            allow_lossy,
+            target,
+            recipe,
+            {} if drivers is None else drivers,
+        )
         addressed = _handed(manifest, exporter, target)
         assignment = _split_of(release, manifest)
         reader = _RecordingReader(manifest, self._workspace.blob_store)
@@ -1140,6 +1205,8 @@ def _split_of(release: Release, manifest: Manifest) -> SplitAssignment | None:
 _RECIPE_REFUSALS: Final = (
     AugmentationRequiresSplit,
     PreprocessingStepUnsupportedGeometry,
+    AugmentationIncompatible,
+    PreprocessingDriverNotFound,
     ExportSourceUnreadable,
 )
 
@@ -1151,6 +1218,7 @@ def _consented(
     allow_lossy: bool,
     target: ExportTarget | None,
     recipe: RecipeSpec | None,
+    drivers: Mapping[str, PreprocessingDriver] | None,
 ) -> tuple[ExportCompatibility, TransformedView | None]:
     """The report, and the recipe's view, or refuse an export nobody consented to.
 
@@ -1166,7 +1234,9 @@ def _consented(
         _require_consent(release, exporter, compatibility, allow_lossy)
         return compatibility, None
     try:
-        view = _transformed(manifest, exporter, target, recipe, _split_of(release, manifest))
+        view = _transformed(
+            manifest, exporter, target, recipe, _split_of(release, manifest), drivers
+        )
     except _RECIPE_REFUSALS:
         _require_consent(release, exporter, compatibility, allow_lossy)
         raise
@@ -1229,18 +1299,23 @@ def _transformed(
     target: ExportTarget | None,
     recipe: RecipeSpec,
     assignment: SplitAssignment | None,
+    drivers: Mapping[str, PreprocessingDriver] | None,
 ) -> TransformedView:
     """What the recipe makes of the manifest an export would hand the plugin.
 
     Narrowed by :func:`_handed` first, so a geometry the export drops never
     reaches a step that cannot move it; folds from :func:`_split_of`. A recipe
     reads and writes images, so an export handing the plugin a scan refuses one.
+    The recipe is then resolved over what is left and refused by
+    :func:`_refuse_unresolved` before anything is transformed.
 
     Raises:
         ExportSourceUnreadable: the export would hand the plugin a point-cloud
             asset, which records no pixel size and is not an image.
         AugmentationRequiresSplit, PreprocessingStepUnsupportedGeometry,
-            ExportSourceUnreadable: from ``transform_manifest``.
+            AugmentationIncompatible, PreprocessingDriverNotFound,
+            ExportSourceUnreadable: from :func:`_refuse_unresolved` and
+            ``transform_manifest``.
     """
     handed = _handed(manifest, exporter, target)
     scan = next((asset for asset in handed.assets if asset.modality != "image"), None)
@@ -1249,7 +1324,66 @@ def _transformed(
             f"asset {scan.asset_id} is a {scan.modality}, and a pre-processing recipe "
             f"transforms images only; export to {exporter.format_name} without a recipe"
         )
+    resolution = _resolved(handed, recipe, assignment, target, drivers)
+    _refuse_unresolved(resolution, handed, recipe, assignment, drivers)
     return transform_manifest(handed, recipe, assignment)
+
+
+def _resolved(
+    handed: Manifest,
+    recipe: RecipeSpec,
+    assignment: SplitAssignment | None,
+    target: ExportTarget | None,
+    drivers: Mapping[str, PreprocessingDriver] | None,
+) -> AugmentationResolution:
+    """The recipe's resolution over the manifest an export hands its plugin.
+
+    The one spelling :meth:`ReleaseService.recipe_compatibility`, pre-flight
+    and export share, so the three cannot disagree about what is refused.
+    """
+    return resolve_augmentation(
+        recipe,
+        carried_by(handed, assignment),
+        target_tasks=None if target is None else target.tasks,
+        installed_step_kinds=None if drivers is None else frozenset(drivers),
+    )
+
+
+def _refuse_unresolved(
+    resolution: AugmentationResolution,
+    handed: Manifest,
+    recipe: RecipeSpec,
+    assignment: SplitAssignment | None,
+    drivers: Mapping[str, PreprocessingDriver] | None,
+) -> None:
+    """Refuse a recipe the resolution refuses, with the refusal each reason has always had.
+
+    Answered in the order an export always met them: ``transform_manifest``
+    first, so a missing split, a geometry a step cannot move or a source size
+    the manifest never recorded keeps its class, message and first offender;
+    then a missing driver, as ``driver_for`` words it; then every other reason
+    as :class:`AugmentationIncompatible`, which never names a missing driver.
+    A resolution that refuses and is answered by none of these is still
+    refused: unknown support is never assumed.
+
+    Raises:
+        AugmentationRequiresSplit, PreprocessingStepUnsupportedGeometry,
+            ExportSourceUnreadable: from ``transform_manifest``.
+        PreprocessingDriverNotFound: a step's kind has no installed driver,
+            or the registry declares none for its operation.
+        AugmentationIncompatible: any other refusal.
+    """
+    refused = resolution.refusals()
+    if not refused:
+        return
+    transform_manifest(handed, recipe, assignment)
+    if ReasonCode.DRIVER_UNAVAILABLE in resolution.reasons():
+        if drivers is not None:
+            for step in recipe.steps:
+                driver_for(drivers, step.kind)
+        undriven = next(one for one in refused if ReasonCode.DRIVER_UNAVAILABLE in one.reasons)
+        raise PreprocessingDriverNotFound(undriven.message, installed=tuple(sorted(drivers or {})))
+    raise incompatible(refused)
 
 
 def _hand_over(
