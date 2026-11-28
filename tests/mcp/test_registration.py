@@ -90,6 +90,7 @@ SHIPPED = {
     "list_releases",
     "verify_release",
     "check_export",
+    "assess_recipe",
     "export_release",
     "list_export_targets",
     "list_preprocessing_recipes",

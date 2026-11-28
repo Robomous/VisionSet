@@ -38,7 +38,7 @@ from visionset import wire
 from visionset.formats import registry
 from visionset.jobs import export as export_job
 from visionset.jobs.inline import Surface, tracked_run
-from visionset.kernel.domain import ExportTarget, SplitRecipe
+from visionset.kernel.domain import ExportTarget, RecipeSpec, SplitRecipe
 from visionset.kernel.ports import Exporter, resolve_target
 from visionset.kernel.services import (
     PreprocessingRecipeService,
@@ -224,6 +224,52 @@ def check_export(
             drivers=None if spec is None else preprocessing_registry.drivers(),
         )
     return wire.export_compatibility(report)
+
+
+def assess_recipe(
+    project: ProjectRef,
+    tag: TagRef,
+    spec: Annotated[
+        RecipeSpec,
+        Field(
+            description=(
+                "The recipe to assess, saved or not, in the shape `create_preprocessing_recipe` "
+                "takes."
+            )
+        ),
+    ],
+    target: TargetRef = None,
+    format: FormatRef = None,
+) -> shapes.RecipeAssessment | Refusal:
+    """Say what a draft pre-processing recipe would do to a release, without saving or writing it.
+
+    Use it while composing a recipe, before `create_preprocessing_recipe` or
+    `export_release`. Exactly one of `target` and `format`, as for export.
+    `resolution` lists every step's verdict over each class, geometry and modality
+    the export would carry: `supported`, `conditional` (it runs and a `fill` or
+    `center_crop` resize can cut labels, which needs `allow_lossy`) or `refused`,
+    with `reasons`. Then exactly one of: `counts`, the files the export would write
+    (base images, augmented variants, each fold's images, labels cut away or
+    down), or `refusal`, the `code` and `message` `export_release` with
+    `allow_lossy=true` would refuse the same recipe with. A recipe problem is
+    never an error here; whether the export needs `allow_lossy` is `check_export`'s
+    answer.
+
+    Details: visionset://export
+    """
+    if (target is None) == (format is None):
+        return refused("give exactly one of target and format")
+    with opened_workspace() as workspace:
+        release = ReleaseService(workspace).resolve(project, tag)
+        plugin, addressed = _addressed(target, format)
+        assessment = ReleaseService(workspace).assess_recipe(
+            release.id,
+            plugin,
+            spec,
+            target=addressed,
+            drivers=preprocessing_registry.drivers(),
+        )
+    return wire.recipe_assessment(assessment)
 
 
 def export_release(

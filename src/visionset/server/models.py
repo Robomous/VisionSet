@@ -154,6 +154,9 @@ from visionset.kernel.domain import (
     ProjectStage,
     ProjectStats,
     ProjectSummary,
+    ReasonCode,
+    RecipeAssessment,
+    RecipeCounts,
     RecipeSpec,
     RecipeUsage,
     Release,
@@ -178,6 +181,7 @@ from visionset.kernel.domain import (
     SplitGrouping,
     SplitRecipe,
     Step,
+    StepCompatibility,
     SuggestParameter,
     Task,
     TimeRange,
@@ -187,6 +191,7 @@ from visionset.kernel.domain import (
     TrackingStatus,
     TrackStatus,
     TransformedAnnotation,
+    Verdict,
     VertexVisibilities,
     VideoImport,
     VideoImportState,
@@ -3715,6 +3720,106 @@ class RecipeSpecBody(BaseModel):
             target=self.target,
             steps=tuple(step.to_domain() for step in self.steps),
             variants_per_asset=self.variants_per_asset,
+        )
+
+
+class StepCompatibilityOut(BaseModel):
+    """One step's verdict over one kind of label the export carries, or over the step itself.
+
+    `label_class` and `geometry` are null on an entry about the step as a
+    whole: no driver, no split, an unregistered version, or assets of a
+    modality the step cannot read. `reasons` is empty exactly when `verdict` is
+    `supported`. `annotations` counts the labels the step meets: every one for
+    a resize, the train fold's for an augmentation.
+    """
+
+    step: str
+    version: int | None
+    label_class: str | None
+    geometry: GeometryType | None
+    modality: Literal["image", "point_cloud"] | None
+    verdict: Verdict
+    reasons: list[ReasonCode]
+    message: str
+    annotations: int
+
+    @classmethod
+    def of(cls, entry: StepCompatibility) -> Self:
+        return cls(
+            step=entry.step,
+            version=entry.version,
+            label_class=entry.label_class,
+            geometry=entry.geometry,
+            modality=entry.modality,
+            verdict=entry.verdict,
+            reasons=list(entry.reasons),
+            message=entry.message,
+            annotations=entry.annotations,
+        )
+
+
+class RecipeCountsOut(BaseModel):
+    """The files an export of the recipe writes, and the labels a cropping resize costs.
+
+    `train_images`, `val_images` and `test_images` count each fold's files, a
+    train image's variants included, and are null for a release published
+    without a split.
+    """
+
+    source_files: int
+    augmented_files: int
+    train_images: int | None
+    val_images: int | None
+    test_images: int | None
+    dropped_labels: int
+    clipped_labels: int
+
+    @classmethod
+    def of(cls, counts: RecipeCounts) -> Self:
+        return cls(
+            source_files=counts.source_files,
+            augmented_files=counts.augmented_files,
+            train_images=counts.train_images,
+            val_images=counts.val_images,
+            test_images=counts.test_images,
+            dropped_labels=counts.dropped_labels,
+            clipped_labels=counts.clipped_labels,
+        )
+
+
+class RecipeRefusalOut(BaseModel):
+    """The refusal an export of the recipe would answer with: its error code and message."""
+
+    code: str
+    message: str
+
+
+class RecipeAssessmentOut(BaseModel):
+    """What a recipe would do to one release, for one target or format.
+
+    Exactly one of `counts` and `refusal` is set. `resolution` lists every
+    verdict either way, so a refused recipe still says which steps and labels
+    are at fault.
+    """
+
+    release_id: UUID
+    format: str
+    target: str | None
+    resolution: list[StepCompatibilityOut]
+    counts: RecipeCountsOut | None
+    refusal: RecipeRefusalOut | None
+
+    @classmethod
+    def of(cls, assessment: RecipeAssessment) -> Self:
+        return cls(
+            release_id=assessment.release_id,
+            format=assessment.format_name,
+            target=assessment.target,
+            resolution=[StepCompatibilityOut.of(one) for one in assessment.resolution.entries],
+            counts=None if assessment.counts is None else RecipeCountsOut.of(assessment.counts),
+            refusal=None
+            if assessment.refusal is None
+            else RecipeRefusalOut(code=assessment.refusal.code, message=assessment.refusal.message),
         )
 
 

@@ -725,6 +725,46 @@ class RecipeSpec(TypedDict):
 
 
 @closed
+class StepCompatibility(TypedDict):
+    step: str
+    version: int | None
+    label_class: str | None
+    geometry: str | None
+    modality: str | None
+    verdict: str
+    reasons: list[str]
+    message: str
+    annotations: int
+
+
+@closed
+class RecipeCounts(TypedDict):
+    source_files: int
+    augmented_files: int
+    train_images: int | None
+    val_images: int | None
+    test_images: int | None
+    dropped_labels: int
+    clipped_labels: int
+
+
+@closed
+class RecipeRefusal(TypedDict):
+    code: str
+    message: str
+
+
+@closed
+class RecipeAssessment(TypedDict):
+    release_id: str
+    format: str
+    target: str | None
+    resolution: list[StepCompatibility]
+    counts: RecipeCounts | None
+    refusal: RecipeRefusal | None
+
+
+@closed
 class RecipeUsage(TypedDict):
     export_count: int
     release_id: str

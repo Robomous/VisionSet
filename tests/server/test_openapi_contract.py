@@ -367,7 +367,7 @@ def test_a_vocabulary_is_open_exactly_when_its_shape_allows_it() -> None:
     assert wrong == [], "\n".join(wrong)
 
 
-def test_the_open_set_is_the_eight_the_client_was_generated_for() -> None:
+def test_the_open_set_is_the_nine_the_client_was_generated_for() -> None:
     """The roster, so growing the set is a decision somebody makes on purpose.
 
     The gate above derives membership from shape and would stay green if the
@@ -388,6 +388,7 @@ def test_the_open_set_is_the_eight_the_client_was_generated_for() -> None:
         "JobAction",
         "ModelCapability",
         "PreLabelExclusionReason",
+        "ReasonCode",
         "SuggestParameter",
         "Task",
     }

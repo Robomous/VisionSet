@@ -131,6 +131,7 @@ GET    /releases/{release_id}/manifest                    bytes
 GET    /releases/{release_id}/verify
 GET    /releases/{release_id}/assignment
 GET    /releases/{release_id}/export-compatibility        ?target=|format=, exactly one; &recipe=
+POST   /releases/{release_id}/recipe-assessment           ?target=|format=, exactly one; a draft spec as the body, read-only
 POST   /releases/{release_id}/export                      ?target=|format=&allow_lossy=&recipe=, launch
 GET    /formats
 GET    /formats/matrix                                    every installed importer and exporter, with its verification evidence
@@ -642,8 +643,8 @@ Both are reachable on the same route, and they differ in `detail`:
 
 Most malformed input arrives as the first: a `LabelClass` that cannot be constructed never
 reaches a service to be refused by one. The export address is one more of the first kind:
-`POST /releases/{id}/export` and `GET /releases/{id}/export-compatibility` take exactly one of
-`target` and `format`, and both or neither is a 422 `VALIDATION_ERROR` whose single error has
+`POST /releases/{id}/export`, `GET /releases/{id}/export-compatibility` and
+`POST /releases/{id}/recipe-assessment` take exactly one of `target` and `format`, and both or neither is a 422 `VALIDATION_ERROR` whose single error has
 `loc: ["query"]`, `msg: "give exactly one of target and format"` and an `input` echoing the two
 values as sent.
 
@@ -976,10 +977,10 @@ each is a decision somebody will otherwise try to "fix":
 - **Unknown keys pass.** `additionalProperties: false` constrains what the API *accepts*,
   not what it may one day *send*. A client that refused an added field would turn every
   backward-compatible release into a broken page.
-- **An unknown member of an *open* vocabulary passes.** Eight vocabularies carry
+- **An unknown member of an *open* vocabulary passes.** Nine vocabularies carry
   `x-visionset-open` in the spec — the four `allowed_actions` sets, `capabilities`,
-  `SuggestionOut.parameters`, the reasons a class is left out of a pre-label prompt, and the
-  tasks an export target accepts — and
+  `SuggestionOut.parameters`, the reasons a class is left out of a pre-label prompt, the
+  tasks an export target accepts, and the reasons a recipe assessment gives a step — and
   the generated check for one accepts a member this client
   never compiled against, exactly as it accepts an added field. Every other enum still
   refuses, and refuses the whole response with it: a value the client must *switch* on has no

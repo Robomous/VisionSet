@@ -3622,6 +3622,55 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/releases/{release_id}/recipe-assessment": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Assess Recipe
+         * @description Say what a draft recipe would do to this release, for one target or format.
+         *
+         *     The body is the spec itself, saved or not, in the shape a recipe is stored
+         *     with. The answer is every verdict the recipe receives over what the export
+         *     would carry — per step, class, geometry and modality, with reasons — and
+         *     then either the files an export of it would write (the images the format
+         *     reads, augmented variants, each fold's images, and the labels a `fill` or
+         *     `center_crop` resize cuts away or down) or the refusal that export would
+         *     answer with instead, as its error `code` and `message`. The format is run
+         *     over what the export would hand it, into a scratch directory removed
+         *     afterwards, so a format that leaves an image out is counted without it,
+         *     and a layout the format refuses is reported as the export job would fail.
+         *
+         *     A recipe problem is never an error status here. `refusal` is set exactly
+         *     when an export of the same spec, with `allow_lossy=true`, would refuse it,
+         *     and carries that refusal's code and message. Consent is not judged: an
+         *     export without `allow_lossy` of a lossy format, or through a cropping
+         *     resize, is refused for the loss before the recipe, and
+         *     `GET /releases/{release_id}/export-compatibility` is that answer.
+         *
+         *     Exactly one of `target` and `format`, as for export; both or neither is a
+         *     422 `VALIDATION_ERROR`, and so is a spec that breaks the recipe grammar.
+         *     An unknown release is 404 `RELEASE_NOT_FOUND`, an unknown target 404
+         *     `EXPORT_TARGET_NOT_FOUND` and an unknown format 404
+         *     `EXPORT_FORMAT_NOT_FOUND`. A target two installed formats both declare is
+         *     500 `EXPORT_TARGET_CONFLICT`, and a release whose manifest blob is gone
+         *     is 500 `WORKSPACE_CORRUPT`.
+         *
+         *     A POST because a draft is a body and not a stored name; it writes nothing
+         *     and answers the same thing every time for the same spec.
+         */
+        post: operations["assess_recipe"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/releases/{release_id}/verify": {
         parameters: {
             query?: never;
@@ -7282,6 +7331,73 @@ export interface components {
             total: number;
         };
         /**
+         * ReasonCode
+         * @description Why a step is conditional or refused for a label. A new reason is a new member.
+         *
+         *     Open on the wire because it travels only as an entry's list of reasons, which
+         *     a client renders member by member: a reason an older client never compiled
+         *     against must not cost it the whole assessment.
+         * @enum {string}
+         */
+        ReasonCode: "modality_unsupported" | "geometry_unsupported" | "task_unsupported" | "semantics_unrepresentable" | "driver_unavailable" | "loss_requires_consent" | "requires_split" | "unknown_combination" | (string & {});
+        /**
+         * RecipeAssessmentOut
+         * @description What a recipe would do to one release, for one target or format.
+         *
+         *     Exactly one of `counts` and `refusal` is set. `resolution` lists every
+         *     verdict either way, so a refused recipe still says which steps and labels
+         *     are at fault.
+         */
+        RecipeAssessmentOut: {
+            counts: components["schemas"]["RecipeCountsOut"] | null;
+            /** Format */
+            format: string;
+            refusal: components["schemas"]["RecipeRefusalOut"] | null;
+            /**
+             * Release Id
+             * Format: uuid
+             */
+            release_id: string;
+            /** Resolution */
+            resolution: components["schemas"]["StepCompatibilityOut"][];
+            /** Target */
+            target: string | null;
+        };
+        /**
+         * RecipeCountsOut
+         * @description The files an export of the recipe writes, and the labels a cropping resize costs.
+         *
+         *     `train_images`, `val_images` and `test_images` count each fold's files, a
+         *     train image's variants included, and are null for a release published
+         *     without a split.
+         */
+        RecipeCountsOut: {
+            /** Augmented Files */
+            augmented_files: number;
+            /** Clipped Labels */
+            clipped_labels: number;
+            /** Dropped Labels */
+            dropped_labels: number;
+            /** Source Files */
+            source_files: number;
+            /** Test Images */
+            test_images: number | null;
+            /** Train Images */
+            train_images: number | null;
+            /** Val Images */
+            val_images: number | null;
+        };
+        /**
+         * RecipeRefusalOut
+         * @description The refusal an export of the recipe would answer with: its error code and message.
+         */
+        RecipeRefusalOut: {
+            /** Code */
+            code: string;
+            /** Message */
+            message: string;
+        };
+        /**
          * RecipeSpecBody
          * @description What a recipe does to every exported image, and how many variants it makes.
          *
@@ -7890,6 +8006,34 @@ export interface components {
             val: number;
         };
         /**
+         * StepCompatibilityOut
+         * @description One step's verdict over one kind of label the export carries, or over the step itself.
+         *
+         *     `label_class` and `geometry` are null on an entry about the step as a
+         *     whole: no driver, no split, an unregistered version, or assets of a
+         *     modality the step cannot read. `reasons` is empty exactly when `verdict` is
+         *     `supported`. `annotations` counts the labels the step meets: every one for
+         *     a resize, the train fold's for an augmentation.
+         */
+        StepCompatibilityOut: {
+            /** Annotations */
+            annotations: number;
+            geometry: components["schemas"]["GeometryType"] | null;
+            /** Label Class */
+            label_class: string | null;
+            /** Message */
+            message: string;
+            /** Modality */
+            modality: ("image" | "point_cloud") | null;
+            /** Reasons */
+            reasons: components["schemas"]["ReasonCode"][];
+            /** Step */
+            step: string;
+            verdict: components["schemas"]["Verdict"];
+            /** Version */
+            version: number | null;
+        };
+        /**
          * SuggestParameter
          * @description A setting that shapes a suggestion. Order is display order.
          * @enum {string}
@@ -8185,6 +8329,12 @@ export interface components {
             problem: string | null;
             server: components["schemas"]["TrackingServerOut"] | null;
         };
+        /**
+         * Verdict
+         * @description What one step does with one kind of label.
+         * @enum {string}
+         */
+        Verdict: "supported" | "conditional" | "refused";
         /**
          * VertexVisibility
          * @description What is known about one vertex of a path: COCO keypoint visibility's three states.
@@ -16672,6 +16822,82 @@ export interface operations {
             };
         };
     };
+    assess_recipe: {
+        parameters: {
+            query?: {
+                /** @description An export target's name. `GET /export-targets` lists them. */
+                target?: string | null;
+                /** @description An installed format's name. `GET /formats` lists them. */
+                format?: string | null;
+            };
+            header?: never;
+            path: {
+                release_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RecipeSpecBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RecipeAssessmentOut"];
+                };
+            };
+            /** @description Missing or invalid bearer token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description No such resource */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description The request payload is not processable */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unhandled server error, with an incident id */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description The workspace is busy; retry after the header says */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
     verify_release: {
         parameters: {
             query?: never;
@@ -17891,6 +18117,7 @@ export interface KnownMembers {
   JobAction: "start" | "pre_label" | "complete";
   ModelCapability: "point_suggest" | "text_detect";
   PreLabelExclusionReason: "no_producible_geometry" | "required_attribute";
+  ReasonCode: "modality_unsupported" | "geometry_unsupported" | "task_unsupported" | "semantics_unrepresentable" | "driver_unavailable" | "loss_requires_consent" | "requires_split" | "unknown_combination";
   SuggestParameter: "tolerance";
   Task: "detect" | "segment" | "classify" | "pose" | "obb" | "semantic" | "depth";
 }

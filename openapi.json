@@ -6822,6 +6822,168 @@
         "title": "ProviderPage",
         "type": "object"
       },
+      "ReasonCode": {
+        "description": "Why a step is conditional or refused for a label. A new reason is a new member.\n\nOpen on the wire because it travels only as an entry's list of reasons, which\na client renders member by member: a reason an older client never compiled\nagainst must not cost it the whole assessment.",
+        "enum": [
+          "modality_unsupported",
+          "geometry_unsupported",
+          "task_unsupported",
+          "semantics_unrepresentable",
+          "driver_unavailable",
+          "loss_requires_consent",
+          "requires_split",
+          "unknown_combination"
+        ],
+        "title": "ReasonCode",
+        "type": "string",
+        "x-visionset-open": true
+      },
+      "RecipeAssessmentOut": {
+        "description": "What a recipe would do to one release, for one target or format.\n\nExactly one of `counts` and `refusal` is set. `resolution` lists every\nverdict either way, so a refused recipe still says which steps and labels\nare at fault.",
+        "properties": {
+          "counts": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RecipeCountsOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "format": {
+            "title": "Format",
+            "type": "string"
+          },
+          "refusal": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RecipeRefusalOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "release_id": {
+            "format": "uuid",
+            "title": "Release Id",
+            "type": "string"
+          },
+          "resolution": {
+            "items": {
+              "$ref": "#/components/schemas/StepCompatibilityOut"
+            },
+            "title": "Resolution",
+            "type": "array"
+          },
+          "target": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target"
+          }
+        },
+        "required": [
+          "release_id",
+          "format",
+          "target",
+          "resolution",
+          "counts",
+          "refusal"
+        ],
+        "title": "RecipeAssessmentOut",
+        "type": "object"
+      },
+      "RecipeCountsOut": {
+        "description": "The files an export of the recipe writes, and the labels a cropping resize costs.\n\n`train_images`, `val_images` and `test_images` count each fold's files, a\ntrain image's variants included, and are null for a release published\nwithout a split.",
+        "properties": {
+          "augmented_files": {
+            "title": "Augmented Files",
+            "type": "integer"
+          },
+          "clipped_labels": {
+            "title": "Clipped Labels",
+            "type": "integer"
+          },
+          "dropped_labels": {
+            "title": "Dropped Labels",
+            "type": "integer"
+          },
+          "source_files": {
+            "title": "Source Files",
+            "type": "integer"
+          },
+          "test_images": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Test Images"
+          },
+          "train_images": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Train Images"
+          },
+          "val_images": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Val Images"
+          }
+        },
+        "required": [
+          "source_files",
+          "augmented_files",
+          "train_images",
+          "val_images",
+          "test_images",
+          "dropped_labels",
+          "clipped_labels"
+        ],
+        "title": "RecipeCountsOut",
+        "type": "object"
+      },
+      "RecipeRefusalOut": {
+        "description": "The refusal an export of the recipe would answer with: its error code and message.",
+        "properties": {
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "message"
+        ],
+        "title": "RecipeRefusalOut",
+        "type": "object"
+      },
       "RecipeSpecBody": {
         "additionalProperties": false,
         "description": "What a recipe does to every exported image, and how many variants it makes.\n\nAt most one `resize` step, and it comes first. `variants_per_asset` counts\naugmented outputs \u2014 0 to 8 \u2014 and requires at least one `augment` step,\nwhich in turn requires at least one variant; each augmentation appears at\nmost once. `target` records which export target's hints the recipe was\nwritten from and is informational: a recipe applies to any export.",
@@ -8011,6 +8173,93 @@
         "title": "SplitRecipeBody",
         "type": "object"
       },
+      "StepCompatibilityOut": {
+        "description": "One step's verdict over one kind of label the export carries, or over the step itself.\n\n`label_class` and `geometry` are null on an entry about the step as a\nwhole: no driver, no split, an unregistered version, or assets of a\nmodality the step cannot read. `reasons` is empty exactly when `verdict` is\n`supported`. `annotations` counts the labels the step meets: every one for\na resize, the train fold's for an augmentation.",
+        "properties": {
+          "annotations": {
+            "title": "Annotations",
+            "type": "integer"
+          },
+          "geometry": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/GeometryType"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "label_class": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Label Class"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          },
+          "modality": {
+            "anyOf": [
+              {
+                "enum": [
+                  "image",
+                  "point_cloud"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Modality"
+          },
+          "reasons": {
+            "items": {
+              "$ref": "#/components/schemas/ReasonCode"
+            },
+            "title": "Reasons",
+            "type": "array"
+          },
+          "step": {
+            "title": "Step",
+            "type": "string"
+          },
+          "verdict": {
+            "$ref": "#/components/schemas/Verdict"
+          },
+          "version": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Version"
+          }
+        },
+        "required": [
+          "step",
+          "version",
+          "label_class",
+          "geometry",
+          "modality",
+          "verdict",
+          "reasons",
+          "message",
+          "annotations"
+        ],
+        "title": "StepCompatibilityOut",
+        "type": "object"
+      },
       "SuggestParameter": {
         "description": "A setting that shapes a suggestion. Order is display order.",
         "enum": [
@@ -8606,6 +8855,16 @@
         ],
         "title": "TrackingStatusOut",
         "type": "object"
+      },
+      "Verdict": {
+        "description": "What one step does with one kind of label.",
+        "enum": [
+          "supported",
+          "conditional",
+          "refused"
+        ],
+        "title": "Verdict",
+        "type": "string"
       },
       "VertexVisibility": {
         "description": "What is known about one vertex of a path: COCO keypoint visibility's three states.\n\nThe integers are COCO's own ``v`` values, so a keypoint exporter writes them\nunchanged. ``UNLABELED`` is a vertex nobody judged, which is not the same\nclaim as ``OCCLUDED`` (judged, and hidden) \u2014 a format with a binary flag has\nto decide what an unjudged vertex becomes, and each one says so where it\nwrites it.\n\nClosed and integer on the wire: it is accepted in requests, so it can never\nbe an open vocabulary, and a client switching on three numbers needs no\nstring table.",
@@ -20554,6 +20813,141 @@
           }
         ],
         "summary": "Get Release Manifest",
+        "tags": [
+          "releases"
+        ]
+      }
+    },
+    "/releases/{release_id}/recipe-assessment": {
+      "post": {
+        "description": "Say what a draft recipe would do to this release, for one target or format.\n\nThe body is the spec itself, saved or not, in the shape a recipe is stored\nwith. The answer is every verdict the recipe receives over what the export\nwould carry \u2014 per step, class, geometry and modality, with reasons \u2014 and\nthen either the files an export of it would write (the images the format\nreads, augmented variants, each fold's images, and the labels a `fill` or\n`center_crop` resize cuts away or down) or the refusal that export would\nanswer with instead, as its error `code` and `message`. The format is run\nover what the export would hand it, into a scratch directory removed\nafterwards, so a format that leaves an image out is counted without it,\nand a layout the format refuses is reported as the export job would fail.\n\nA recipe problem is never an error status here. `refusal` is set exactly\nwhen an export of the same spec, with `allow_lossy=true`, would refuse it,\nand carries that refusal's code and message. Consent is not judged: an\nexport without `allow_lossy` of a lossy format, or through a cropping\nresize, is refused for the loss before the recipe, and\n`GET /releases/{release_id}/export-compatibility` is that answer.\n\nExactly one of `target` and `format`, as for export; both or neither is a\n422 `VALIDATION_ERROR`, and so is a spec that breaks the recipe grammar.\nAn unknown release is 404 `RELEASE_NOT_FOUND`, an unknown target 404\n`EXPORT_TARGET_NOT_FOUND` and an unknown format 404\n`EXPORT_FORMAT_NOT_FOUND`. A target two installed formats both declare is\n500 `EXPORT_TARGET_CONFLICT`, and a release whose manifest blob is gone\nis 500 `WORKSPACE_CORRUPT`.\n\nA POST because a draft is a body and not a stored name; it writes nothing\nand answers the same thing every time for the same spec.",
+        "operationId": "assess_recipe",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "release_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Release Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "An export target's name. `GET /export-targets` lists them.",
+            "in": "query",
+            "name": "target",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "An export target's name. `GET /export-targets` lists them.",
+              "title": "Target"
+            }
+          },
+          {
+            "description": "An installed format's name. `GET /formats` lists them.",
+            "in": "query",
+            "name": "format",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "An installed format's name. `GET /formats` lists them.",
+              "title": "Format"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RecipeSpecBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RecipeAssessmentOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Missing or invalid bearer token"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "No such resource"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The request payload is not processable"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unhandled server error, with an incident id"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The workspace is busy; retry after the header says"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Assess Recipe",
         "tags": [
           "releases"
         ]

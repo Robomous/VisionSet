@@ -60,6 +60,8 @@ from tests.fixtures.samples import (
     PREPROCESSING_RECIPE,
     PROJECT,
     PROJECT_PREVIEW,
+    RECIPE_ASSESSMENT,
+    RECIPE_ASSESSMENT_REFUSED,
     RECIPE_USAGE,
     RELEASE,
     SCHEMA_CHANGE_PREVIEW,
@@ -401,6 +403,21 @@ PAIRS: list[tuple[str, Mapping[str, Any], type[BaseModel]]] = [
         wire.class_compatibility(EXPORT_COMPATIBILITY.classes[0]),
         models.ClassCompatibilityOut,
     ),
+    (
+        "recipe_assessment",
+        wire.recipe_assessment(RECIPE_ASSESSMENT),
+        models.RecipeAssessmentOut,
+    ),
+    (
+        "recipe_assessment_refused",
+        wire.recipe_assessment(RECIPE_ASSESSMENT_REFUSED),
+        models.RecipeAssessmentOut,
+    ),
+    (
+        "step_compatibility",
+        wire.step_compatibility(RECIPE_ASSESSMENT.resolution.entries[0]),
+        models.StepCompatibilityOut,
+    ),
     ("pre_label_plan", wire.pre_label_plan(PRE_LABEL_PLAN), models.PreLabelPlanOut),
     ("frame_occurrence", wire.frame_occurrence(OCCURRENCE), models.FrameOccurrenceOut),
     (
@@ -568,6 +585,13 @@ def test_the_settings_projection_agrees_value_for_value_with_the_rest_model(
     assert wire.workspace_settings(settings) == rest
 
 
+@pytest.mark.parametrize("value", [RECIPE_ASSESSMENT, RECIPE_ASSESSMENT_REFUSED])
+def test_the_recipe_assessment_agrees_value_for_value_with_the_rest_model(value: Any) -> None:
+    rest = models.RecipeAssessmentOut.of(value).model_dump(mode="json")
+
+    assert rest == wire.recipe_assessment(value)
+
+
 def test_a_timestamp_keeps_its_microseconds_and_ends_in_z() -> None:
     # Deliberately *not* ``_output.moment``'s format, which stops at seconds. A
     # single shared helper would pass every key-set assertion above and fail the
@@ -693,6 +717,9 @@ SHAPES: dict[str, Any] = {
     "preprocessing_hints_populated": shapes.PreprocessingHints,
     "export_compatibility": shapes.ExportCompatibility,
     "class_compatibility": shapes.ClassCompatibility,
+    "recipe_assessment": shapes.RecipeAssessment,
+    "recipe_assessment_refused": shapes.RecipeAssessment,
+    "step_compatibility": shapes.StepCompatibility,
     "pre_label_plan": shapes.PreLabelPlan,
     "frame_occurrence": shapes.FrameOccurrence,
     "track_observation": shapes.TrackObservation,

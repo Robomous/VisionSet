@@ -43,6 +43,7 @@ from __future__ import annotations
 import inspect
 import json
 import os
+import tempfile
 from collections.abc import Callable, Collection, Mapping
 from dataclasses import dataclass
 from io import BytesIO
@@ -82,6 +83,9 @@ from visionset.kernel.domain import (
     ManifestTrack,
     ModalityCompatibility,
     ReasonCode,
+    RecipeAssessment,
+    RecipeCounts,
+    RecipeRefusal,
     RecipeSpec,
     Release,
     ReleasePublished,
@@ -116,6 +120,7 @@ from visionset.kernel.domain import (
     validate_schema_annotation,
     variant_seed,
 )
+from visionset.kernel.error_codes import error_code
 from visionset.kernel.errors import (
     AugmentationIncompatible,
     AugmentationRequiresSplit,
@@ -537,6 +542,36 @@ class ReleaseService:
             target,
             drivers,
         )
+
+    def assess_recipe(
+        self,
+        release_id: UUID,
+        exporter: Exporter,
+        recipe: RecipeSpec,
+        *,
+        target: ExportTarget | None = None,
+        drivers: Mapping[str, PreprocessingDriver] | None = None,
+    ) -> RecipeAssessment:
+        """What ``recipe`` would do to this release for this export, without raising for it.
+
+        :meth:`recipe_compatibility`'s resolution beside either the files an
+        export of the recipe writes or the refusal it would raise instead. The
+        refusal comes from running the transform :meth:`check_export` and
+        :meth:`export` run, and catching what it raises, so the assessment
+        refuses exactly when export does, with the same code and sentence.
+        Consent is not asked: whether the format or a cropping resize loses
+        labels is :meth:`check_export`'s report, and the crop's losses are
+        counted here and listed as ``conditional`` entries.
+
+        ``drivers`` has :meth:`check_export`'s meaning: ``None`` leaves driver
+        availability unjudged. Nothing is written and the recipe is not saved.
+
+        Raises:
+            ReleaseNotFound: no such release in this workspace.
+            WorkspaceCorrupt: the manifest blob is gone, or is not a manifest.
+        """
+        release = self.get(release_id)
+        return _assessed(release, self._read_manifest(release), exporter, recipe, target, drivers)
 
     def require_export_consent(
         self,
@@ -1318,15 +1353,109 @@ def _transformed(
             ``transform_manifest``.
     """
     handed = _handed(manifest, exporter, target)
+    resolution = _resolved(handed, recipe, assignment, target, drivers)
+    return _transform_handed(handed, exporter, recipe, assignment, resolution, drivers)
+
+
+def _transform_handed(
+    handed: Manifest,
+    exporter: Exporter,
+    recipe: RecipeSpec,
+    assignment: SplitAssignment | None,
+    resolution: AugmentationResolution,
+    drivers: Mapping[str, PreprocessingDriver] | None,
+) -> TransformedView:
+    """:func:`_transformed` over a manifest already handed and resolved.
+
+    Raises:
+        ExportSourceUnreadable: the export would hand the plugin a point-cloud
+            asset, which records no pixel size and is not an image.
+        AugmentationRequiresSplit, PreprocessingStepUnsupportedGeometry,
+            AugmentationIncompatible, PreprocessingDriverNotFound,
+            ExportSourceUnreadable: from :func:`_refuse_unresolved` and
+            ``transform_manifest``.
+    """
     scan = next((asset for asset in handed.assets if asset.modality != "image"), None)
     if scan is not None:
         raise ExportSourceUnreadable(
             f"asset {scan.asset_id} is a {scan.modality}, and a pre-processing recipe "
             f"transforms images only; export to {exporter.format_name} without a recipe"
         )
-    resolution = _resolved(handed, recipe, assignment, target, drivers)
     _refuse_unresolved(resolution, handed, recipe, assignment, drivers)
     return transform_manifest(handed, recipe, assignment)
+
+
+def _assessed(
+    release: Release,
+    manifest: Manifest,
+    exporter: Exporter,
+    recipe: RecipeSpec,
+    target: ExportTarget | None,
+    drivers: Mapping[str, PreprocessingDriver] | None,
+) -> RecipeAssessment:
+    """The assessment :meth:`ReleaseService.assess_recipe` answers, over a manifest in hand.
+
+    Counted the way :meth:`ReleaseService.export` counts: the plugin is handed
+    what an export would hand it and run into a scratch directory that is then
+    removed, and every key it reads is recorded, so a format that leaves an
+    image out is counted without it. It reads :data:`_STAND_IN_IMAGE` rather
+    than transformed bytes: the counts depend on which images are read, never
+    on their pixels. Only the recipe refusals :func:`_consented` re-raises
+    after consent are caught, from the transform or from the plugin, so an
+    error that is not about the recipe still escapes.
+    """
+    assignment = _split_of(release, manifest)
+    handed = _handed(manifest, exporter, target)
+    resolution = _resolved(handed, recipe, assignment, target, drivers)
+    addressed = {
+        "release_id": release.id,
+        "format_name": exporter.format_name,
+        "target": None if target is None else target.name,
+        "resolution": resolution,
+    }
+    reader = _DryReader()
+    try:
+        view = _transform_handed(handed, exporter, recipe, assignment, resolution, drivers)
+        with tempfile.TemporaryDirectory(prefix="visionset-assessment-") as scratch:
+            _hand_over(
+                exporter,
+                release,
+                plugin_manifest(handed, view),
+                Path(scratch),
+                reader.read,
+                assignment,
+            )
+    except _RECIPE_REFUSALS as refused:
+        code = error_code(refused)
+        assert code is not None, "every recipe refusal has a published code"
+        return RecipeAssessment.model_validate(
+            {**addressed, "refusal": RecipeRefusal(code=code, message=str(refused))}
+        )
+    return RecipeAssessment.model_validate(
+        {**addressed, "counts": _counted(view, reader, assignment)}
+    )
+
+
+def _counted(
+    view: TransformedView, reader: _RecordingReader, assignment: SplitAssignment | None
+) -> RecipeCounts:
+    """What the plugin read, counted as an export counts it, and per fold under a split."""
+    fold_of = {file.content_hash: file.fold for file in view.files if file.variant == 0}
+    folds: dict[str, int] = {}
+    for source_hash in reader.read_sources():
+        fold = fold_of.get(source_hash)
+        if fold is not None:
+            folds[fold] = folds.get(fold, 0) + 1
+    split = assignment is not None
+    return RecipeCounts(
+        source_files=reader.read_count(variant=0),
+        augmented_files=reader.read_count(variant=None) - reader.read_count(variant=0),
+        train_images=folds.get("train", 0) if split else None,
+        val_images=folds.get("val", 0) if split else None,
+        test_images=folds.get("test", 0) if split else None,
+        dropped_labels=view.dropped_count,
+        clipped_labels=view.clipped_count,
+    )
 
 
 def _resolved(
@@ -1523,6 +1652,10 @@ class _RecordingReader:
                 f"{named} is not in the blob store; verify the release and restore it"
             ) from exc
 
+    def read_sources(self) -> list[str]:
+        """The source hash of every distinct key read, once per key."""
+        return [one.source_content_hash for one in self._produced.values()]
+
     def read_count(self, *, variant: int | None) -> int:
         """How many distinct keys were read: all of them, or one variant's."""
         return sum(
@@ -1570,6 +1703,27 @@ class _RecordingReader:
                     produced = unmatched.pop(digest)
                     rows[_key_of(produced)] = _mapping_row(dest, path, produced)
         return tuple(rows[key] for key in sorted(rows))
+
+
+#: A one-pixel PNG: what a plugin reads in an assessment's dry run, in place of
+#: the transformed bytes an export would hand it.
+_STAND_IN_IMAGE: Final = (
+    b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01\x08\x00\x00"
+    b"\x00\x00:~\x9bU\x00\x00\x00\nIDATx\xdac`\x00\x00\x00\x02\x00\x01\xe5'\xde\xfc\x00"
+    b"\x00\x00\x00IEND\xaeB`\x82"
+)
+
+
+class _DryReader(_RecordingReader):
+    """A recording reader that opens no blob: every key reads as :data:`_STAND_IN_IMAGE`."""
+
+    def __init__(self) -> None:
+        self._produced = {}
+
+    def read(self, key: str) -> BinaryIO:
+        source_hash, variant = source_of_content_hash(key)
+        self._produced[key] = _Produced(source_hash, variant, None)
+        return BytesIO(_STAND_IN_IMAGE)
 
 
 def _key_of(produced: _Produced) -> str:

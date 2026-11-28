@@ -303,3 +303,116 @@ def test_a_crop_loss_is_named_as_the_resize_not_the_format(root: Path, tmp_path:
     assert written.exit_code == 0, written.output
     assert "Cut away by the fill resize: sign" in written.stderr
     assert "Not carried by ultralytics" not in written.stderr
+
+
+def test_assess_counts_a_draft_recipe_and_saves_nothing(root: Path, tmp_path: Path) -> None:
+    name, out = _labeled_release(root, tmp_path)
+    ok(root, "release", "publish", "--tag", "split", "--project", name, "--split", "0.6,0.2,0.2")
+    argv = ("-p", name, "--release", "split", "-f", "ultralytics")
+    flags = ("--resize", "letterbox:64x64", "--augment", "hflip", "--variants", "1")
+
+    assessed = payload(root, "recipe", "assess", *argv, *flags)
+    exported = payload(
+        root,
+        "export",
+        *argv,
+        "--out",
+        str(out),
+        "--allow-lossy",
+        "--recipe",
+        _saved(root, name, flags),
+    )
+
+    assert assessed["refusal"] is None
+    assert assessed["counts"]["source_files"] == exported["source_file_count"]
+    assert assessed["counts"]["augmented_files"] == exported["augmented_file_count"]
+    human = run(root, "recipe", "assess", *argv, *flags)
+    assert human.exit_code == 0, human.output
+    assert plain(human.stdout).splitlines()[0].split()[:4] == [
+        "STEP",
+        "CLASS",
+        "GEOMETRY",
+        "VERDICT",
+    ]
+
+
+def _saved(root: Path, project_name: str, flags: tuple[str, ...]) -> str:
+    ok(root, "recipe", "create", "saved", "-p", project_name, *flags)
+    return "saved"
+
+
+def test_assess_exits_one_with_the_refusal_the_export_check_gives(
+    root: Path, tmp_path: Path
+) -> None:
+    name, _ = _labeled_release(root, tmp_path)
+    ok(root, "recipe", "create", "flip", "-p", name, "--augment", "hflip", "--variants", "1")
+    argv = ("-p", name, "--release", "v1.0", "-f", "dummy")
+
+    assessed = run(
+        root, "recipe", "assess", *argv, "--augment", "hflip", "--variants", "1", "--json"
+    )
+    checked = run(root, "export", *argv, "--check", "--recipe", "flip")
+
+    assert assessed.exit_code == 1, assessed.output
+    assert checked.exit_code == 1, checked.output
+    body = json.loads(assessed.stdout)
+    assert body["counts"] is None
+    assert body["refusal"]["code"] == "AUGMENTATION_REQUIRES_SPLIT"
+    assert body["refusal"]["message"] in " ".join(plain(checked.output).split())
+
+
+def test_assess_takes_exactly_one_of_target_and_format(root: Path, tmp_path: Path) -> None:
+    name, _ = _labeled_release(root, tmp_path)
+
+    neither = run(
+        root, "recipe", "assess", "-p", name, "--release", "v1.0", "--resize", "stretch:64x64"
+    )
+
+    assert neither.exit_code == 2, neither.output
+    assert "exactly one of --target and --format" in usage_error(neither)
+
+
+def test_assess_by_target_answers_for_that_target(root: Path, tmp_path: Path) -> None:
+    name, _ = _labeled_release(root, tmp_path)
+
+    assessed = payload(
+        root,
+        "recipe",
+        "assess",
+        "-p",
+        name,
+        "--release",
+        "v1.0",
+        "--target",
+        "yolo11",
+        "--resize",
+        "letterbox:64x64",
+    )
+
+    assert (assessed["target"], assessed["format"]) == ("yolo11", "ultralytics")
+    assert assessed["refusal"] is None
+
+
+def test_assess_judges_drivers_by_what_is_installed(
+    root: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    name, _ = _labeled_release(root, tmp_path)
+    monkeypatch.setattr("visionset.cli.preprocessing.preprocessing_registry.drivers", dict)
+
+    result = run(
+        root,
+        "recipe",
+        "assess",
+        "-p",
+        name,
+        "--release",
+        "v1.0",
+        "-f",
+        "dummy",
+        "--resize",
+        "letterbox:64x64",
+        "--json",
+    )
+
+    assert result.exit_code == 1, result.output
+    assert json.loads(result.stdout)["refusal"]["code"] == "PREPROCESSING_DRIVER_NOT_FOUND"

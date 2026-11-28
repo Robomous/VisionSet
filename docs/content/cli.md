@@ -644,6 +644,16 @@ that breaks the recipe grammar - the rule is named. `recipe update` replaces the
 takes `--rename`; `recipe delete` asks nothing, because every export that used the recipe kept
 its own copy.
 
+`recipe assess --project P --release TAG` (with `--target` or `--format`, exactly one, as for
+`export`) judges a draft before it is saved: the spec comes from `--spec FILE` or the same flag
+form, except that `--target` here addresses the export rather than recording the spec's own.
+It prints every step's verdict per class and geometry, then the images the export would write -
+source images, augmented variants, each fold's images, and the labels a cropping resize cuts away
+or down, counted as the export counts the images the format reads - or the refusal the export
+would answer with given `--allow-lossy`, and exits 1 then, on `export --check`'s
+precedent. Nothing is saved or written. `--json` prints `visionset.wire.recipe_assessment`, the
+document the REST route and the `assess_recipe` tool publish.
+
 `export --recipe NAME` applies one: the recipe is resolved through the release's project, every
 image is resized as it says, and augmented variants of the train-fold images are written beside
 their sources. `--check` with a recipe also refuses now what the export would refuse -

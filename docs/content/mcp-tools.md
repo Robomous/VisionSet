@@ -11,7 +11,7 @@ error envelope, and the three gate words.
 
 ## Always offered
 
-82 tools, in the order an agent meets them: make a project, give it a schema, put images in it, work through them, promote, publish, export.
+83 tools, in the order an agent meets them: make a project, give it a schema, put images in it, work through them, promote, publish, export.
 
 | Tool | Takes | What it does |
 | --- | --- | --- |
@@ -83,6 +83,7 @@ error envelope, and the three gate words.
 | `list_export_targets` | — | List the models a release can be exported for, each with the format that writes for it. |
 | `format_matrix` | — | List every installed format once per direction, with the tests that back it. |
 | `check_export` | `project`, `tag`, `target`?, `format`?, `recipe`? | Say what a target or a format would drop from a release, without writing anything. |
+| `assess_recipe` | `project`, `tag`, `spec`, `target`?, `format`? | Say what a draft pre-processing recipe would do to a release, without saving or writing it. |
 | `export_release` | `project`, `tag`, `dest`, `target`?, `format`?, `allow_lossy`?, `allow_non_empty`?, `recipe`? | Write a release to a local directory, for a target or in one of the installed formats. |
 | `list_preprocessing_recipes` | `project` | List a project's pre-processing recipes, oldest first, each with its whole spec. |
 | `get_preprocessing_recipe` | `project`, `name` | Read one pre-processing recipe by name, with its whole spec. |

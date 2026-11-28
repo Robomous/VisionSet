@@ -178,3 +178,75 @@ def test_an_export_with_a_recipe_reports_the_recipe(
     assert result["preprocessing"]["recipe_hash"]
     assert result["preprocessing"]["mapping"] == []
     assert (result["source_file_count"], result["augmented_file_count"]) == (0, 0)
+
+
+def test_a_draft_recipe_is_assessed_with_its_counts_and_nothing_is_saved(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    named = promoted(monkeypatch, tmp_path)
+    payload(call("publish_release", project=named, tag="v1.0"))
+
+    assessed = payload(
+        call("assess_recipe", project=named, tag="v1.0", format="dummy", spec=LETTERBOX)
+    )
+
+    assert assessed["refusal"] is None
+    assert assessed["counts"]["augmented_files"] == 0
+    assert assessed["counts"]["train_images"] is None
+    assert {entry["step"] for entry in assessed["resolution"]} == {"resize"}
+    assert payload(call("list_preprocessing_recipes", project=named))["total"] == 0
+
+
+def test_a_draft_the_export_would_refuse_is_answered_with_that_refusal(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    named = promoted(monkeypatch, tmp_path)
+    payload(call("publish_release", project=named, tag="v1.0"))
+    payload(call("create_preprocessing_recipe", project=named, name="flips", spec=FLIPS))
+
+    assessed = payload(call("assess_recipe", project=named, tag="v1.0", format="dummy", spec=FLIPS))
+    checked = error(call("check_export", project=named, tag="v1.0", format="dummy", recipe="flips"))
+
+    assert assessed["counts"] is None
+    assert assessed["refusal"] == {"code": checked["code"], "message": checked["message"]}
+
+
+def test_assessing_takes_exactly_one_address_and_refuses_an_unknown_target(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    named = promoted(monkeypatch, tmp_path)
+    payload(call("publish_release", project=named, tag="v1.0"))
+
+    neither = error(call("assess_recipe", project=named, tag="v1.0", spec=LETTERBOX))
+    unknown = error(call("assess_recipe", project=named, tag="v1.0", target="nope", spec=LETTERBOX))
+
+    assert "exactly one of target and format" in neither["message"]
+    assert unknown["code"] == "EXPORT_TARGET_NOT_FOUND"
+
+
+def test_an_assessment_by_target_answers_for_that_target(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    named = promoted(monkeypatch, tmp_path)
+    payload(call("publish_release", project=named, tag="v1.0"))
+
+    assessed = payload(
+        call("assess_recipe", project=named, tag="v1.0", target="dummy", spec=LETTERBOX)
+    )
+
+    assert assessed["target"] == "dummy"
+    assert assessed["refusal"] is None
+
+
+def test_an_assessment_judges_drivers_by_what_is_installed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    named = promoted(monkeypatch, tmp_path)
+    payload(call("publish_release", project=named, tag="v1.0"))
+    monkeypatch.setattr("visionset.mcp.releases.preprocessing_registry.drivers", dict)
+
+    assessed = payload(
+        call("assess_recipe", project=named, tag="v1.0", format="dummy", spec=LETTERBOX)
+    )
+
+    assert assessed["refusal"]["code"] == "PREPROCESSING_DRIVER_NOT_FOUND"

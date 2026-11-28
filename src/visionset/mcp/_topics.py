@@ -142,7 +142,7 @@ words, a schema with nothing askable, and a deployment without the local runtime
 EXPORT: Final = """\
 # Exporting a release
 
-Applies to `check_export` and `export_release`.
+Applies to `check_export`, `assess_recipe` and `export_release`.
 
 ## Target or format
 
@@ -223,6 +223,19 @@ split, a step refuses a geometry it cannot move, and `AUGMENTATION_INCOMPATIBLE`
 every step the export's target or the registry cannot vouch for, such as a flip over
 keypoints a target trains for pose. `check_export` with the same
 `recipe` refuses what the export would, and its report is otherwise unchanged by it.
+
+## Assessing a draft recipe
+
+`assess_recipe` takes a spec rather than a recipe name, so a recipe can be judged
+before it is saved. It never refuses for the recipe: what `export_release` with
+`allow_lossy=true` would refuse it with comes back as `refusal` (`code` and
+`message`), beside `resolution`, every step's verdict and reasons per class and
+geometry. When nothing refuses, `counts` says what the export would write:
+`source_files` (the images the format reads), `augmented_files`, the files in each
+fold (null without a split) and the labels a cropping resize cuts away
+(`dropped_labels`) or down (`clipped_labels`). Consent is not judged: without
+`allow_lossy`, a lossy format or a cropping resize is refused for the loss first,
+and `check_export` says whether it will be.
 """
 
 SCHEMA_CHANGES: Final = """\
