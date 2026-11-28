@@ -136,6 +136,22 @@ the same inputs, and `ReleaseService.recipe_compatibility` returns it to an SDK 
 refusing anything. Nothing stops at the first problem: a mixed release gets an entry for every
 class and geometry that fails, so a refusal names all of them.
 
+`ReleaseService.assess_recipe(release_id, exporter, recipe, target=, drivers=)` answers the
+same question for a draft, saved or not, and never raises for the recipe. Its
+`RecipeAssessment` holds the resolution, the target it is for, and exactly one of `counts` or
+`refusal`. `refusal` is the code and message the export would refuse the recipe with, caught
+from the same transform pre-flight and export run, so an assessment refuses exactly when the
+export would. `counts` are the export's files: `source_files` (one per image the format is
+handed), `augmented_files`, `train_images`, `val_images` and `test_images` (each fold's files, a
+train image's variants included; null without a split), and `dropped_labels` and
+`clipped_labels`, what a cropping resize cuts away or down. Consent is not part of it: whether
+the format or the crop needs `allow_lossy` is the compatibility report's answer. A
+single-tag format that leaves untagged pictures out (`classification-dir`) writes fewer source
+images than `source_files` says; the report's `untagged_assets` counts them. An unknown release
+or a damaged manifest still raises. The assessment transforms the whole manifest, as an
+export's pre-flight does; twenty thousand assets at eight variants took about seven seconds on
+one desktop core when it was measured.
+
 What the export carries is `carried_by(manifest, folds)` over the manifest the export hands its
 plugin - after the format and the target have narrowed it, so a label the export drops is never
 judged. A resize meets every label; an augmentation meets the labels of the train fold only,
@@ -430,8 +446,8 @@ transform still agree through the same code.
 | | |
 | --- | --- |
 | UI | In a release's **Export** section, choose a saved recipe or create one from the **Recipe** list. The dialog shows the name, model, resize, and augmentation controls on one page. When a training image is available, the preview shows how the recipe transforms it and estimates the output counts for each fold. Select **Create recipe** or **Save changes** to keep the draft. Use **Edit** or **Delete** beside the selected recipe to manage it. See [exporting in the browser](ui.md#the-dataset-its-releases-and-getting-the-data-out). |
-| REST | `POST`/`GET /projects/{id}/preprocessing-recipes`, `GET`/`PUT`/`DELETE /projects/{id}/preprocessing-recipes/{name}`, `POST /projects/{id}/preprocessing-preview`; `recipe=` on `POST /releases/{id}/export` and `GET /releases/{id}/export-compatibility`. The job carries the recipe as a snapshot. |
-| CLI | `visionset recipe create NAME -p P --spec FILE` or `--resize letterbox:640x640 --augment hflip,brightness_contrast --variants 2 --target yolo11`; `recipe list`, `show`, `update`, `delete`; `export --recipe NAME`. See [cli.md](cli.md#visionset-release-and-visionset-export). |
-| MCP | `create_preprocessing_recipe`, `list_preprocessing_recipes`, `get_preprocessing_recipe`, `update_preprocessing_recipe`, `delete_preprocessing_recipe` (only with `--allow-destructive`); `recipe` on `export_release` and `check_export`. See [mcp.md](mcp.md#datasets-releases-and-export). |
+| REST | `POST`/`GET /projects/{id}/preprocessing-recipes`, `GET`/`PUT`/`DELETE /projects/{id}/preprocessing-recipes/{name}`, `POST /projects/{id}/preprocessing-preview`; `recipe=` on `POST /releases/{id}/export` and `GET /releases/{id}/export-compatibility`; `POST /releases/{id}/recipe-assessment` judges a draft spec. The job carries the recipe as a snapshot. |
+| CLI | `visionset recipe create NAME -p P --spec FILE` or `--resize letterbox:640x640 --augment hflip,brightness_contrast --variants 2 --target yolo11`; `recipe list`, `show`, `update`, `delete`; `recipe assess`; `export --recipe NAME`. See [cli.md](cli.md#visionset-release-and-visionset-export). |
+| MCP | `create_preprocessing_recipe`, `list_preprocessing_recipes`, `get_preprocessing_recipe`, `update_preprocessing_recipe`, `delete_preprocessing_recipe` (only with `--allow-destructive`); `assess_recipe` for a draft; `recipe` on `export_release` and `check_export`. See [mcp.md](mcp.md#datasets-releases-and-export). |
 
 The export half is described with the rest of exporting in [releases.md](releases.md#exporting).

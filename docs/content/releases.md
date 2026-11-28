@@ -552,6 +552,17 @@ would hand the format a scan refuses one, at the check and at the export, with
 `augmented_file_count`, and `preprocessing` on the report maps every written image to the asset
 it came from.
 
+`ReleaseService.assess_recipe(release_id, exporter, recipe, target=, drivers=)` asks the same
+question of a draft recipe and answers instead of raising: the resolver's verdicts, then either
+the files the export would write - `source_files` and `augmented_files` to match those two
+counts, each fold's images, and the labels a cropping resize cuts - or the refusal the export
+would raise, as its error code and message. It runs the transform `check_export` runs and
+catches only the recipe refusals listed above, so the two cannot disagree; an unknown release or
+a damaged manifest still raises. Over REST it is `POST /releases/{id}/recipe-assessment`, with
+the spec as the body and the export's `target` or `format`; the CLI's `recipe assess` and MCP's
+`assess_recipe` answer from the same call. See
+[preprocessing.md](preprocessing.md#which-step-serves-which-label).
+
 ### Export targets
 
 The user-facing unit of export is a **target**: the model the release will train. A target
