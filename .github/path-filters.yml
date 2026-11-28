@@ -98,6 +98,20 @@ docs:
   - ".github/workflows/ci.yml"
   - ".github/path-filters.yml"
 
+# The agent-plugin bundle, and what its contract tests read outside it: the version and
+# the distribution metadata it is held to, the maintainer-skill linker it must stay out
+# of, and the frontend package whose version spelling it shares.
+agent-plugins:
+  - "agent-plugins/**"
+  - "VERSION"
+  - "pyproject.toml"
+  - "uv.lock"
+  - "frontend/app/package.json"
+  - "scripts/setup_agents.sh"
+  - "scripts/check.sh"
+  - ".github/workflows/ci.yml"
+  - ".github/path-filters.yml"
+
 # Tracked paths that no job reads, declared so the coverage checker can tell
 # "deliberately inert" apart from "nobody classified this yet". Adding a file
 # here is a claim that changing it cannot break a check — if that stops being

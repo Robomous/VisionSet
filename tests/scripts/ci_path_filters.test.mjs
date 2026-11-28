@@ -93,6 +93,17 @@ test("a server file a script gate reads wakes the job that runs the gate", () =>
   assert.deepEqual(groupsFor("src/visionset/server/routes/video_imports.py"), ["docker", "frontend", "python"]);
 });
 
+test("the agent-plugin bundle wakes only its own job", () => {
+  // The bundle never imports the distribution, so nothing under it can break a
+  // Python, frontend or docs check; its own job is the only one with work to do.
+  assert.deepEqual(groupsFor("agent-plugins/tools/bundle.py"), ["agent-plugins"]);
+  assert.deepEqual(groupsFor("agent-plugins/packages/visionset/bundle.toml"), ["agent-plugins"]);
+});
+
+test("the version file wakes the agent-plugin job, whose manifests carry it", () => {
+  assert.ok(groupsFor("VERSION").includes("agent-plugins"));
+});
+
 test("the API contract wakes both sides of it", () => {
   // Python regenerates it and fails on drift; the frontend regenerates its client
   // from it and fails on drift. A change here has to face both.
@@ -103,7 +114,7 @@ test("this workflow and this file wake everything they gate", () => {
   // A change to the gating itself is the one change that must re-validate every
   // job — otherwise a filter edit is only ever tested by the jobs it did not skip.
   for (const file of [".github/workflows/ci.yml", ".github/path-filters.yml"]) {
-    assert.deepEqual(groupsFor(file), ["docker", "docs", "frontend", "python"], file);
+    assert.deepEqual(groupsFor(file), ["agent-plugins", "docker", "docs", "frontend", "python"], file);
   }
 });
 

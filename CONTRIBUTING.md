@@ -165,7 +165,7 @@ run for the moments you deliberately want the whole thing on your own machine: r
 a CI failure, debugging an integration problem, validating a high-risk change before
 pushing it. It collects *every* failure rather than stopping at the first, carries
 `set -euo pipefail`, and prints a per-step timing table. Take a group with
-`bash scripts/check.sh python`, `frontend`, `generated` or `browser`; it is not a required
+`bash scripts/check.sh python`, `agent-plugins`, `frontend`, `generated` or `browser`; it is not a required
 step before a commit, push, or pull request.
 
 **A high-risk change escalates to the relevant suites, not to everything.** The real-server
@@ -247,6 +247,7 @@ a deliberate manual run, because each costs minutes or needs its own install.
 | Import contracts | `uv run lint-imports` | `python` |
 | Kernel type-safety (strict) | `uv run mypy src/visionset/kernel` — the kernel and nothing else; the script runs `uv run mypy src/visionset`, well over twice as many files | `python` |
 | Lint/format | `uv run ruff check .` / `uv run ruff format .` | `python` |
+| Agent-plugin bundle | `bash scripts/check.sh agent-plugins` — the contract tests under `agent-plugins/tests/` on a bare Python 3.11 (`-I -S`, so a non-stdlib import in the runtime fails), the manifest drift and schema checks, and ruff and strict mypy over the tree. The rules they hold are in [An agent plugin only launches the MCP server](docs/content/architecture/decisions/an-agent-plugin-only-launches-the-mcp-server.md); CI runs it as `agent plugins` | `agent-plugins` |
 | Frontend build + tests | `pnpm -r build && pnpm test` — **no browser at all**; anything only chromium can see passes here | `frontend` |
 | Frontend lint | `pnpm -r lint` — **after** a build: `frontend/app` resolves the four libraries through their `dist/`, so its typecheck has no declarations until they are built | `frontend` |
 | Annotator headless boundary | `pnpm --filter @visionset/annotator lint` | part of `frontend` (`pnpm -r lint`) |
