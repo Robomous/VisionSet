@@ -1,0 +1,2855 @@
+{
+ "recipes": {
+  "all-v1": {
+   "canonical": "{\"steps\":[{\"amount\":0.2,\"kind\":\"augment\",\"op\":\"hflip\"},{\"amount\":0.2,\"kind\":\"augment\",\"op\":\"brightness_contrast\"},{\"amount\":0.2,\"kind\":\"augment\",\"op\":\"rot90\"}],\"target\":null,\"variants_per_asset\":1}",
+   "document": {
+    "steps": [
+     {
+      "kind": "augment",
+      "op": "hflip"
+     },
+     {
+      "amount": 0.2,
+      "kind": "augment",
+      "op": "brightness_contrast"
+     },
+     {
+      "kind": "augment",
+      "op": "rot90"
+     }
+    ],
+    "target": null,
+    "variants_per_asset": 1
+   },
+   "draws": [
+    {
+     "brightness_contrast": [
+      "0x1.e6441f7b7fddcp-1",
+      "0x1.c7e454142e4acp-1"
+     ],
+     "content_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+     "k": 1,
+     "rot90": 3,
+     "seed": "1ce4f67b5fd5275a39dd69199b1f07c4165098a78bb9cc9baa6fdb86ba0fa6f6"
+    },
+    {
+     "brightness_contrast": [
+      "0x1.bc0d32eb55a6dp-1",
+      "0x1.c2f7a529c2f7bp-1"
+     ],
+     "content_hash": "3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f",
+     "k": 1,
+     "rot90": 2,
+     "seed": "04c5c4872b107fa633b58e740c8c1238325a4859069a41ccc23cb98f57928f59"
+    }
+   ],
+   "geometry": {
+    "bbox": "ebfbc001d0d652871cb3bdb7016591cca721ba7f0458062c0346c7b22a4a31f2",
+    "classification_tag": "b68685b67803fab50a220309ae70050225dd43420967c2ecbad38d75b9a1f29a",
+    "cuboid_3d": "refused PreprocessingStepUnsupportedGeometry: the 'hflip' step cannot transform a cuboid_3d (asset 00000000-0000-0000-0000-00000000b006 carries one). Remove the step, or export a release without cuboid_3d labels",
+    "mask": "f702243ef06179ccbe94cd78ad5e1917e89ea45aaec101bd296ef851a32671a9",
+    "obb": "b9b4c04507d12853e20170a445740e41106deb20d5adac325382f255fef7ef3b",
+    "polygon": "77746356bdcb24bb81b2b0ef42be4c72ab47f5915a676d849b0ad410da981388",
+    "polyline": "refused PreprocessingStepUnsupportedGeometry: the 'rot90' step cannot transform a polyline (asset 00000000-0000-0000-0000-00000000b004 carries one). Remove the step, or export a release without polyline labels",
+    "polyline_3d": "refused PreprocessingStepUnsupportedGeometry: the 'hflip' step cannot transform a polyline_3d (asset 00000000-0000-0000-0000-00000000b007 carries one). Remove the step, or export a release without polyline_3d labels"
+   },
+   "geometry_showcase": {
+    "bbox": "ab9cfd430e724ea6dad39dd343b2d88a701c626554ea730e4aaa3736d2970e21",
+    "classification_tag": "0e5abe1e6d47e8804c317035e88729363c39f188aec877122620fa88e6e891c3",
+    "cuboid_3d": "refused PreprocessingStepUnsupportedGeometry: the 'hflip' step cannot transform a cuboid_3d (asset 00000000-0000-0000-0000-00000000b006 carries one). Remove the step, or export a release without cuboid_3d labels",
+    "mask": "3864cd4ae34b331af6d55f2ef2ead1ee1bd34c7896747efe98740dabfadba4be",
+    "obb": "cec5368e6a4de2fd5e16c53ac3a57c30339dfb8202626aa150c9d3841f6e1a42",
+    "polygon": "877c460efd871a2e625c1a3593950f757a7be92a46cde5f9304908f9c1506a4e",
+    "polyline": "refused PreprocessingStepUnsupportedGeometry: the 'rot90' step cannot transform a polyline (asset 00000000-0000-0000-0000-00000000b004 carries one). Remove the step, or export a release without polyline labels",
+    "polyline_3d": "refused PreprocessingStepUnsupportedGeometry: the 'hflip' step cannot transform a polyline_3d (asset 00000000-0000-0000-0000-00000000b007 carries one). Remove the step, or export a release without polyline_3d labels"
+   },
+   "hash": "019b471ca4aecfc06e63890f44f4e00b6bda0d862f2584af391add6641a7d7ce",
+   "pixels": {
+    "0": "PNG:RGB:37x23:716a23fd20769b6edcd276d01efe233c563327ab82865717860eb08667ffddbf",
+    "1": "PNG:RGB:23x37:96e0ef0f765fa99d4f207435c8bbc7516293965a76fce2a30c32df4931455136",
+    "showcase": "PNG:RGB:23x37:7dfa1d44826f32c53b17f2c4644adf009c75e169c3ea26d2cfb4633ab225e406"
+   },
+   "wire": "{\"steps\": [{\"amount\": 0.2, \"kind\": \"augment\", \"op\": \"hflip\"}, {\"amount\": 0.2, \"kind\": \"augment\", \"op\": \"brightness_contrast\"}, {\"amount\": 0.2, \"kind\": \"augment\", \"op\": \"rot90\"}], \"target\": null, \"variants_per_asset\": 1}"
+  },
+  "all-v2": {
+   "canonical": "{\"steps\":[{\"amount\":0.2,\"kind\":\"augment\",\"op\":\"hflip\"},{\"amount\":0.2,\"kind\":\"augment\",\"op\":\"brightness_contrast\"},{\"amount\":0.2,\"kind\":\"augment\",\"op\":\"rot90\"}],\"target\":null,\"variants_per_asset\":2}",
+   "document": {
+    "steps": [
+     {
+      "kind": "augment",
+      "op": "hflip"
+     },
+     {
+      "amount": 0.2,
+      "kind": "augment",
+      "op": "brightness_contrast"
+     },
+     {
+      "kind": "augment",
+      "op": "rot90"
+     }
+    ],
+    "target": null,
+    "variants_per_asset": 2
+   },
+   "draws": [
+    {
+     "brightness_contrast": [
+      "0x1.d647d76ea314bp-1",
+      "0x1.f3b6f2af8d509p-1"
+     ],
+     "content_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+     "k": 1,
+     "rot90": 3,
+     "seed": "4c53ae5c4bd9cd4a70a4af5b2bb3b8d093bf83e9ea183282ced95947cb737b4b"
+    },
+    {
+     "brightness_contrast": [
+      "0x1.22ec016fefb8dp+0",
+      "0x1.0821aa8aa1bb4p+0"
+     ],
+     "content_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+     "k": 2,
+     "rot90": 3,
+     "seed": "9a4edaaad74e039794542a5a2fb1976e0d4e442177854b83747ca2e13fe31b53"
+    },
+    {
+     "brightness_contrast": [
+      "0x1.077ee7eb6de55p+0",
+      "0x1.db7d500041e3cp-1"
+     ],
+     "content_hash": "3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f",
+     "k": 1,
+     "rot90": 3,
+     "seed": "9812de0392bd43cc525ca4003aa3cfa8746568ed68a2f26e12ee64f481935ce4"
+    },
+    {
+     "brightness_contrast": [
+      "0x1.1365ac6379cc2p+0",
+      "0x1.2c976ea05fcaap+0"
+     ],
+     "content_hash": "3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f",
+     "k": 2,
+     "rot90": 2,
+     "seed": "7f7f31cfb07e2ef8ef7a94908e0b0bc2bba9f7692a318f0fde6acf3af3e1db18"
+    }
+   ],
+   "geometry": {
+    "bbox": "80376094100963b4763da3b5910b104dcf11516e2a2fd6a45b737dafb042b277",
+    "classification_tag": "34372326802b324a89ff2255a104a335326acfae15678f29a8ea39cbdb2b4060",
+    "cuboid_3d": "refused PreprocessingStepUnsupportedGeometry: the 'hflip' step cannot transform a cuboid_3d (asset 00000000-0000-0000-0000-00000000b006 carries one). Remove the step, or export a release without cuboid_3d labels",
+    "mask": "7e56e9aee796a13d708cd8f39f2d96c44806c5b6a2c0111e88cb4b4b789c5ce3",
+    "obb": "aa042a09d093902bc19a42150910e47538b4c509de9eb8f943436e9c44f91373",
+    "polygon": "05671cb149aa5853ef70cbc5ae5d86002ae292b07698d595fe1c321846faca9c",
+    "polyline": "refused PreprocessingStepUnsupportedGeometry: the 'rot90' step cannot transform a polyline (asset 00000000-0000-0000-0000-00000000b004 carries one). Remove the step, or export a release without polyline labels",
+    "polyline_3d": "refused PreprocessingStepUnsupportedGeometry: the 'hflip' step cannot transform a polyline_3d (asset 00000000-0000-0000-0000-00000000b007 carries one). Remove the step, or export a release without polyline_3d labels"
+   },
+   "geometry_showcase": {
+    "bbox": "e37b1bc24fa14c458496d45a90ebb8e24c8ba20cf88ed812062a196d07a2bed5",
+    "classification_tag": "27103c7516f31b7efd4b6caa5cb7e23f6cb55dcab46c0116b0b1a8375e801fad",
+    "cuboid_3d": "refused PreprocessingStepUnsupportedGeometry: the 'hflip' step cannot transform a cuboid_3d (asset 00000000-0000-0000-0000-00000000b006 carries one). Remove the step, or export a release without cuboid_3d labels",
+    "mask": "1bd19839a5eb3e0058ae3ad03b608e0f5481823862541689e5a2e883ee556f88",
+    "obb": "64f72dd1f668205179f0db117cd8429baed3eeae2e5a997e5355bbd6f52dec9f",
+    "polygon": "b0af453d5d0bdf4dd1767133d532e8bb84f311f19f78f7ff5cbc68647e4145fc",
+    "polyline": "refused PreprocessingStepUnsupportedGeometry: the 'rot90' step cannot transform a polyline (asset 00000000-0000-0000-0000-00000000b004 carries one). Remove the step, or export a release without polyline labels",
+    "polyline_3d": "refused PreprocessingStepUnsupportedGeometry: the 'hflip' step cannot transform a polyline_3d (asset 00000000-0000-0000-0000-00000000b007 carries one). Remove the step, or export a release without polyline_3d labels"
+   },
+   "hash": "c7b10c71f00d3b8ac3e92c209d403310ac66dcd90ffa1fcb839c58107d084167",
+   "pixels": {
+    "0": "PNG:RGB:37x23:716a23fd20769b6edcd276d01efe233c563327ab82865717860eb08667ffddbf",
+    "1": "PNG:RGB:23x37:f114c967018ab72b64a4d4428ccc77adf057f01ce7ecd6e8c6f0817ab815e876",
+    "2": "PNG:RGB:37x23:303af88cbe75da1f0893e7740ab4a4fe302cf290d57c8e1634d4467bbf122215",
+    "showcase": "PNG:RGB:23x37:7dfa1d44826f32c53b17f2c4644adf009c75e169c3ea26d2cfb4633ab225e406"
+   },
+   "wire": "{\"steps\": [{\"amount\": 0.2, \"kind\": \"augment\", \"op\": \"hflip\"}, {\"amount\": 0.2, \"kind\": \"augment\", \"op\": \"brightness_contrast\"}, {\"amount\": 0.2, \"kind\": \"augment\", \"op\": \"rot90\"}], \"target\": null, \"variants_per_asset\": 2}"
+  },
+  "all-v3": {
+   "canonical": "{\"steps\":[{\"amount\":0.2,\"kind\":\"augment\",\"op\":\"hflip\"},{\"amount\":0.2,\"kind\":\"augment\",\"op\":\"brightness_contrast\"},{\"amount\":0.2,\"kind\":\"augment\",\"op\":\"rot90\"}],\"target\":null,\"variants_per_asset\":3}",
+   "document": {
+    "steps": [
+     {
+      "kind": "augment",
+      "op": "hflip"
+     },
+     {
+      "amount": 0.2,
+      "kind": "augment",
+      "op": "brightness_contrast"
+     },
+     {
+      "kind": "augment",
+      "op": "rot90"
+     }
+    ],
+    "target": null,
+    "variants_per_asset": 3
+   },
+   "draws": [
+    {
+     "brightness_contrast": [
+      "0x1.a90682bcdc39cp-1",
+      "0x1.25f5fa88bf8fap+0"
+     ],
+     "content_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+     "k": 1,
+     "rot90": 1,
+     "seed": "24adde361348236cdee6f2552dab3051a6a67a39b06afb1173128d29ec16a4e7"
+    },
+    {
+     "brightness_contrast": [
+      "0x1.2747c7acc0e16p+0",
+      "0x1.9b01da7c01684p-1"
+     ],
+     "content_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+     "k": 2,
+     "rot90": 3,
+     "seed": "f5e28614e233732f01c2511b8be1b1b50b2e2ca63539324c38a34b0b8c4d1fbc"
+    },
+    {
+     "brightness_contrast": [
+      "0x1.2f6f12c995d58p+0",
+      "0x1.d3f27f39d3f28p-1"
+     ],
+     "content_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+     "k": 3,
+     "rot90": 1,
+     "seed": "61a2f41cf695aef748ef1f0851433a9a78f60925bcb9e3516521b95766a7aa5e"
+    },
+    {
+     "brightness_contrast": [
+      "0x1.e6e6980c4d4d0p-1",
+      "0x1.ebd379a91f06bp-1"
+     ],
+     "content_hash": "3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f",
+     "k": 1,
+     "rot90": 1,
+     "seed": "09c2f05160a03e0f66c8581381e913991aad6c75ccbbc24956318c33dc0ae96d"
+    },
+    {
+     "brightness_contrast": [
+      "0x1.149da5b6ae374p+0",
+      "0x1.2e7a8b5c61adcp+0"
+     ],
+     "content_hash": "3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f",
+     "k": 2,
+     "rot90": 3,
+     "seed": "feab3c35b38a1e48f4325c66a1431a3c3c0ac3834c025a11cd6f9b0e54eadcba"
+    },
+    {
+     "brightness_contrast": [
+      "0x1.9c3c06da6908ep-1",
+      "0x1.1172852844a5cp+0"
+     ],
+     "content_hash": "3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f",
+     "k": 3,
+     "rot90": 2,
+     "seed": "e3d9671d034b0891ab9e4ce4763cee2c00c8d2f058665ccca7677ced28583ee9"
+    }
+   ],
+   "geometry": {
+    "bbox": "9967dad499122efee2dc687ef068fca92f67a2bc15816275ff591bc3b9cb2db1",
+    "classification_tag": "c7ca3f783bf353ef7078f8329417436e7abed3f219d8be084bb6ce0b9ae1f77e",
+    "cuboid_3d": "refused PreprocessingStepUnsupportedGeometry: the 'hflip' step cannot transform a cuboid_3d (asset 00000000-0000-0000-0000-00000000b006 carries one). Remove the step, or export a release without cuboid_3d labels",
+    "mask": "1fba76ec910472a547ab5832afbfea9fbaac7cb8c517282c6adfc69cc3a14fae",
+    "obb": "bf2294f61fffdda00d8e12ff1377f29a7310e94a1f277f6196f7bede2509e043",
+    "polygon": "d49447d5758810679861ab3afbfd256d4d5b24a0406148eeec5e2f16e9aa6b0a",
+    "polyline": "refused PreprocessingStepUnsupportedGeometry: the 'rot90' step cannot transform a polyline (asset 00000000-0000-0000-0000-00000000b004 carries one). Remove the step, or export a release without polyline labels",
+    "polyline_3d": "refused PreprocessingStepUnsupportedGeometry: the 'hflip' step cannot transform a polyline_3d (asset 00000000-0000-0000-0000-00000000b007 carries one). Remove the step, or export a release without polyline_3d labels"
+   },
+   "geometry_showcase": {
+    "bbox": "2a7b6d47b16924cac5834b70a72d2f6e40c8400f9719f7bb2242e9f54361f583",
+    "classification_tag": "f1d064651437ec11e52fef03fb5f09821755127e88385148b79045fadc1106af",
+    "cuboid_3d": "refused PreprocessingStepUnsupportedGeometry: the 'hflip' step cannot transform a cuboid_3d (asset 00000000-0000-0000-0000-00000000b006 carries one). Remove the step, or export a release without cuboid_3d labels",
+    "mask": "497fa9523fe1a520bf1e1b1fa407445e45e1351dd3f4ebcdad1928f5236617e3",
+    "obb": "cefe59b7b99d7b7b1e15a958370d2471830208aa7368490dc6b825669c334468",
+    "polygon": "aad91d089831031551704cd9619054d736e537ca83023a4a4b3bbdd4ce6310b0",
+    "polyline": "refused PreprocessingStepUnsupportedGeometry: the 'rot90' step cannot transform a polyline (asset 00000000-0000-0000-0000-00000000b004 carries one). Remove the step, or export a release without polyline labels",
+    "polyline_3d": "refused PreprocessingStepUnsupportedGeometry: the 'hflip' step cannot transform a polyline_3d (asset 00000000-0000-0000-0000-00000000b007 carries one). Remove the step, or export a release without polyline_3d labels"
+   },
+   "hash": "a58b8d7caf1026fc5f793a04a87778e3285979c306a26637ca9fc65ec57c0f2d",
+   "pixels": {
+    "0": "PNG:RGB:37x23:716a23fd20769b6edcd276d01efe233c563327ab82865717860eb08667ffddbf",
+    "1": "PNG:RGB:23x37:5d810c721b259cb83882ee804cf217cd25ea6a762b8b550959d4c3fa88648d62",
+    "2": "PNG:RGB:37x23:2bd70d9fe1feae12a60703f7869cbe66438039907cb9a70c0c546d387fc9510a",
+    "3": "PNG:RGB:37x23:c02d9629c43435057d6ef0776a6b1b4a7b9cfb97f9f0dccec763a4b57fa907f5",
+    "showcase": "PNG:RGB:23x37:7dfa1d44826f32c53b17f2c4644adf009c75e169c3ea26d2cfb4633ab225e406"
+   },
+   "wire": "{\"steps\": [{\"amount\": 0.2, \"kind\": \"augment\", \"op\": \"hflip\"}, {\"amount\": 0.2, \"kind\": \"augment\", \"op\": \"brightness_contrast\"}, {\"amount\": 0.2, \"kind\": \"augment\", \"op\": \"rot90\"}], \"target\": null, \"variants_per_asset\": 3}"
+  },
+  "all-v4": {
+   "canonical": "{\"steps\":[{\"amount\":0.2,\"kind\":\"augment\",\"op\":\"hflip\"},{\"amount\":0.2,\"kind\":\"augment\",\"op\":\"brightness_contrast\"},{\"amount\":0.2,\"kind\":\"augment\",\"op\":\"rot90\"}],\"target\":null,\"variants_per_asset\":4}",
+   "document": {
+    "steps": [
+     {
+      "kind": "augment",
+      "op": "hflip"
+     },
+     {
+      "amount": 0.2,
+      "kind": "augment",
+      "op": "brightness_contrast"
+     },
+     {
+      "kind": "augment",
+      "op": "rot90"
+     }
+    ],
+    "target": null,
+    "variants_per_asset": 4
+   },
+   "draws": [
+    {
+     "brightness_contrast": [
+      "0x1.0e1e0e89daeaep+0",
+      "0x1.b5388caf4ed23p-1"
+     ],
+     "content_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+     "k": 1,
+     "rot90": 2,
+     "seed": "621ec045a34b24582286afdb7b2849cbdbafc65407b48c6ab8c9d28dae5ddac0"
+    },
+    {
+     "brightness_contrast": [
+      "0x1.dbcc055b7565ap-1",
+      "0x1.a96b647f43050p-1"
+     ],
+     "content_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+     "k": 2,
+     "rot90": 2,
+     "seed": "77379de152bf06b213c63d9fe8810bdc6c01e3e904d4c5edc6bdf6c4e4a50b61"
+    },
+    {
+     "brightness_contrast": [
+      "0x1.2ba362045ed6ap+0",
+      "0x1.f8de4fc9f8de6p-1"
+     ],
+     "content_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+     "k": 3,
+     "rot90": 1,
+     "seed": "6edf18aaed18750a7715e3bc5b66488c0e67679b786d069eaac6b9f857449f7b"
+    },
+    {
+     "brightness_contrast": [
+      "0x1.eb92231851f89p-1",
+      "0x1.efdbfa4056426p-1"
+     ],
+     "content_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+     "k": 4,
+     "rot90": 1,
+     "seed": "1c7c741f6676abde6bd2f8d02b0ec9c9c0790dfc834b9fde0a8b49ce4f60aaae"
+    },
+    {
+     "brightness_contrast": [
+      "0x1.315c6c8c648fap+0",
+      "0x1.0febb10e431eep+0"
+     ],
+     "content_hash": "3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f",
+     "k": 1,
+     "rot90": 3,
+     "seed": "af61a46bfb670f5ea7cd3aa32b3ff6cac03d2f2d87405be226d3a2a83d70c113"
+    },
+    {
+     "brightness_contrast": [
+      "0x1.115f56cd77c5cp+0",
+      "0x1.d9597afdd9598p-1"
+     ],
+     "content_hash": "3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f",
+     "k": 2,
+     "rot90": 1,
+     "seed": "53944824ab6e59014fafd9bd22a7538e3d48816094923ac4c8393656bbf79913"
+    },
+    {
+     "brightness_contrast": [
+      "0x1.166d382449a07p+0",
+      "0x1.d22ec42d05620p-1"
+     ],
+     "content_hash": "3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f",
+     "k": 3,
+     "rot90": 1,
+     "seed": "dfddf68eb8110c5a46ba7538a94224a7a58545462f10f8d7fcc5f28ec46ac131"
+    },
+    {
+     "brightness_contrast": [
+      "0x1.f6549cd9f654ap-1",
+      "0x1.da733ed840d9bp-1"
+     ],
+     "content_hash": "3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f",
+     "k": 4,
+     "rot90": 2,
+     "seed": "44ea239773e9c41051100e8ed5896656c57477f06cf7fc4dd8c436b04a0828b8"
+    }
+   ],
+   "geometry": {
+    "bbox": "7681b7a5b3d4265f73006df797194d162e78353b70d68f5119c0ddfae34f4b65",
+    "classification_tag": "e5072dad0b247d04f97a8734953c01f253f8b841ced5006c157aa231e8e50088",
+    "cuboid_3d": "refused PreprocessingStepUnsupportedGeometry: the 'hflip' step cannot transform a cuboid_3d (asset 00000000-0000-0000-0000-00000000b006 carries one). Remove the step, or export a release without cuboid_3d labels",
+    "mask": "8c943c59c123b07242bc2cb0797f5741f1ddfcf84247951a45cc2dfd0e3fdef6",
+    "obb": "eeebd01c178b7a1b56c551e26b2c0c93eac5533ad44a18917b3165de4cb70991",
+    "polygon": "808c5a3cc9610c9d36c822f029cad820d52f8e8e225ef9c96179ba991ff4c5f0",
+    "polyline": "refused PreprocessingStepUnsupportedGeometry: the 'rot90' step cannot transform a polyline (asset 00000000-0000-0000-0000-00000000b004 carries one). Remove the step, or export a release without polyline labels",
+    "polyline_3d": "refused PreprocessingStepUnsupportedGeometry: the 'hflip' step cannot transform a polyline_3d (asset 00000000-0000-0000-0000-00000000b007 carries one). Remove the step, or export a release without polyline_3d labels"
+   },
+   "geometry_showcase": {
+    "bbox": "3efda9adda8290e7359368da1a1e53f13c6065eeeb86ada188e14b3371585f48",
+    "classification_tag": "22ebc8ce76029f250c5591a215821b2c1a92bd0af11f6c9fe14b8dedcd50b6a0",
+    "cuboid_3d": "refused PreprocessingStepUnsupportedGeometry: the 'hflip' step cannot transform a cuboid_3d (asset 00000000-0000-0000-0000-00000000b006 carries one). Remove the step, or export a release without cuboid_3d labels",
+    "mask": "c9dd0874803878248e7e65e550bcfd9f51f01def5cf9083afa28c4824f917d39",
+    "obb": "e25d4c4b7bb0b3821948009aaa988f34f728b351a4d36f83719f0324d0ec7474",
+    "polygon": "7e1088627c2606c188253babe1ca82c78722705d8191b0545ce9df6d552916f3",
+    "polyline": "refused PreprocessingStepUnsupportedGeometry: the 'rot90' step cannot transform a polyline (asset 00000000-0000-0000-0000-00000000b004 carries one). Remove the step, or export a release without polyline labels",
+    "polyline_3d": "refused PreprocessingStepUnsupportedGeometry: the 'hflip' step cannot transform a polyline_3d (asset 00000000-0000-0000-0000-00000000b007 carries one). Remove the step, or export a release without polyline_3d labels"
+   },
+   "hash": "0fc1dd201f1aeee8bee2dadd822a44bc94f1534019e72a1f08e00a70b6b6980c",
+   "pixels": {
+    "0": "PNG:RGB:37x23:716a23fd20769b6edcd276d01efe233c563327ab82865717860eb08667ffddbf",
+    "1": "PNG:RGB:37x23:4b9ee3aee14dcd23e47d44f5874e3d57d1334fd4caf2a8e34459ebdc8ee14344",
+    "2": "PNG:RGB:37x23:3ff189ac90364cb1701b6236d21a3c70e206242389995ab27c68a49e01ac5bd8",
+    "3": "PNG:RGB:23x37:d727d2b1d52c2b577da4977c1f8a8d1d549f965fc9ccaad227fc569dbf82f769",
+    "4": "PNG:RGB:37x23:bd17566e57291e440a97d93b6173326ef910d074446b27401cf87510980917bf",
+    "showcase": "PNG:RGB:23x37:7dfa1d44826f32c53b17f2c4644adf009c75e169c3ea26d2cfb4633ab225e406"
+   },
+   "wire": "{\"steps\": [{\"amount\": 0.2, \"kind\": \"augment\", \"op\": \"hflip\"}, {\"amount\": 0.2, \"kind\": \"augment\", \"op\": \"brightness_contrast\"}, {\"amount\": 0.2, \"kind\": \"augment\", \"op\": \"rot90\"}], \"target\": null, \"variants_per_asset\": 4}"
+  },
+  "all-v5": {
+   "canonical": "{\"steps\":[{\"amount\":0.2,\"kind\":\"augment\",\"op\":\"hflip\"},{\"amount\":0.2,\"kind\":\"augment\",\"op\":\"brightness_contrast\"},{\"amount\":0.2,\"kind\":\"augment\",\"op\":\"rot90\"}],\"target\":null,\"variants_per_asset\":5}",
+   "document": {
+    "steps": [
+     {
+      "kind": "augment",
+      "op": "hflip"
+     },
+     {
+      "amount": 0.2,
+      "kind": "augment",
+      "op": "brightness_contrast"
+     },
+     {
+      "kind": "augment",
+      "op": "rot90"
+     }
+    ],
+    "target": null,
+    "variants_per_asset": 5
+   },
+   "draws": [
+    {
+     "brightness_contrast": [
+      "0x1.b1a393cce4d6dp-1",
+      "0x1.30e22f1d30e23p+0"
+     ],
+     "content_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+     "k": 1,
+     "rot90": 3,
+     "seed": "c60df8631e0c78c0fa3575c8fa91e60a927935c32c4bd930bfef15af751f790b"
+    },
+    {
+     "brightness_contrast": [
+      "0x1.d50f56dd08429p-1",
+      "0x1.098b95b5098bap+0"
+     ],
+     "content_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+     "k": 2,
+     "rot90": 1,
+     "seed": "b26340ee4a532c9497dcf6443c68d8433c5281efb2c199c8289600a5226248d2"
+    },
+    {
+     "brightness_contrast": [
+      "0x1.acd3ae1c133a2p-1",
+      "0x1.f904dd6c5f6b5p-1"
+     ],
+     "content_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+     "k": 3,
+     "rot90": 2,
+     "seed": "db2d7d2f180899a3774614c7aab37e8782bc1afe0410ff80dbf7f2d3c17d1db2"
+    },
+    {
+     "brightness_contrast": [
+      "0x1.c2523315c2524p-1",
+      "0x1.a98dca16765aap-1"
+     ],
+     "content_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+     "k": 4,
+     "rot90": 3,
+     "seed": "2462e07332e6bfdb13f13c9caa1435323d9d153679c1b796b999093cef28a528"
+    },
+    {
+     "brightness_contrast": [
+      "0x1.b44af33c1ab16p-1",
+      "0x1.29924c1cc32bfp+0"
+     ],
+     "content_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+     "k": 5,
+     "rot90": 3,
+     "seed": "d9ddf3c4215db00be7edbe4743032002fd2f1b8e64c9cf0cef2bfd7151f7f856"
+    },
+    {
+     "brightness_contrast": [
+      "0x1.1c9c6c1d1c9c7p+0",
+      "0x1.e937e2504f9e5p-1"
+     ],
+     "content_hash": "3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f",
+     "k": 1,
+     "rot90": 2,
+     "seed": "87cb7796c7870e486385dae4c71a0ffd3d0258154a4de2f1a29de45cc2359c84"
+    },
+    {
+     "brightness_contrast": [
+      "0x1.144caf5cade65p+0",
+      "0x1.1700e14f7d675p+0"
+     ],
+     "content_hash": "3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f",
+     "k": 2,
+     "rot90": 2,
+     "seed": "383e4d22b2bfb667b98233464f07af045c88dedef8054c025ec73b470a2edff6"
+    },
+    {
+     "brightness_contrast": [
+      "0x1.d52d0b3f6ec6bp-1",
+      "0x1.e8473391e8474p-1"
+     ],
+     "content_hash": "3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f",
+     "k": 3,
+     "rot90": 3,
+     "seed": "d298149f4a784e0f6259007612dafd56cf116c9ece9dfe5f0c21f99c7d35bdd4"
+    },
+    {
+     "brightness_contrast": [
+      "0x1.e33dea4849a46p-1",
+      "0x1.0b80df77d84dbp+0"
+     ],
+     "content_hash": "3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f",
+     "k": 4,
+     "rot90": 3,
+     "seed": "c0c5dd3a5c0d64da9cc22eab7563d4634fa227b39b1b58fbc4e6d1a1b635fafe"
+    },
+    {
+     "brightness_contrast": [
+      "0x1.17f820657e5e9p+0",
+      "0x1.a34e1b8c09b49p-1"
+     ],
+     "content_hash": "3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f",
+     "k": 5,
+     "rot90": 3,
+     "seed": "633efd4ebbec50fd0c21a26f6a09186d2ca19d07dc90d5796ce6c8e48afc3e95"
+    }
+   ],
+   "geometry": {
+    "bbox": "f87f6758e055bb04b1eefe489db4c86b1e7bca313f28144c2e9729ee4d943f13",
+    "classification_tag": "530def0c392e4512c2ffd93a60ecdb74ccd1f460ea00ca20fa020996abad42f2",
+    "cuboid_3d": "refused PreprocessingStepUnsupportedGeometry: the 'hflip' step cannot transform a cuboid_3d (asset 00000000-0000-0000-0000-00000000b006 carries one). Remove the step, or export a release without cuboid_3d labels",
+    "mask": "7c47ef1ad69f516b3d5e6e487e14278c740eb4aa7c9b56a9bae6d61604083236",
+    "obb": "acc2bb415ef0d948e07ede015faaf3184bb491269f0a4731cbb0d97f9a73c9d4",
+    "polygon": "5699f3d0da1db9440ec97bb00bb0b11f04878a6a153a679b7cd5c0ae3321ab8c",
+    "polyline": "refused PreprocessingStepUnsupportedGeometry: the 'rot90' step cannot transform a polyline (asset 00000000-0000-0000-0000-00000000b004 carries one). Remove the step, or export a release without polyline labels",
+    "polyline_3d": "refused PreprocessingStepUnsupportedGeometry: the 'hflip' step cannot transform a polyline_3d (asset 00000000-0000-0000-0000-00000000b007 carries one). Remove the step, or export a release without polyline_3d labels"
+   },
+   "geometry_showcase": {
+    "bbox": "75cfc358374b918303fa52f990a88f953d9bba1f62f32f0215aa8d32022fd62e",
+    "classification_tag": "81985807671005dff5d2d6d986e260987e879b04bf4a683e8c1e3977341e6c6f",
+    "cuboid_3d": "refused PreprocessingStepUnsupportedGeometry: the 'hflip' step cannot transform a cuboid_3d (asset 00000000-0000-0000-0000-00000000b006 carries one). Remove the step, or export a release without cuboid_3d labels",
+    "mask": "a55e310b0cf881a07f0e201f672aabe24d0ef33a590d69251ce91cabdcbf2b7d",
+    "obb": "a68cbdb033b7251923073ee7285d769d2325b682cd7e1e2d44b33c779e519271",
+    "polygon": "c47b8a875e077af87b9176c32227c28237b0fdd1512c636b419c3b7ed62c3bee",
+    "polyline": "refused PreprocessingStepUnsupportedGeometry: the 'rot90' step cannot transform a polyline (asset 00000000-0000-0000-0000-00000000b004 carries one). Remove the step, or export a release without polyline labels",
+    "polyline_3d": "refused PreprocessingStepUnsupportedGeometry: the 'hflip' step cannot transform a polyline_3d (asset 00000000-0000-0000-0000-00000000b007 carries one). Remove the step, or export a release without polyline_3d labels"
+   },
+   "hash": "5c998d8ef8801d94d4b19ca92934922b3544106618d65e444e7f71d6f55e73b6",
+   "pixels": {
+    "0": "PNG:RGB:37x23:716a23fd20769b6edcd276d01efe233c563327ab82865717860eb08667ffddbf",
+    "1": "PNG:RGB:37x23:3a5465dac7ac15c953760fba9364534f3476640788a1601690e26aa5372aa3b0",
+    "2": "PNG:RGB:37x23:27c6d64976f5fb3e23c0fe969450293d83c9cbc2738331a0779cea61bee5a9de",
+    "3": "PNG:RGB:37x23:cb3956431c5cf2000946748e81349b22b5b78ca79c6d08e3b36942da47d79d39",
+    "4": "PNG:RGB:23x37:fec7463b63fab91168a43066741ecddb31d1c4a41856ca3388e8582b24594fe4",
+    "5": "PNG:RGB:23x37:9345d9448bc4645e4a59bc3c3b4b1ea38310820e0abb0c424f8953edf070b46a",
+    "showcase": "PNG:RGB:23x37:7dfa1d44826f32c53b17f2c4644adf009c75e169c3ea26d2cfb4633ab225e406"
+   },
+   "wire": "{\"steps\": [{\"amount\": 0.2, \"kind\": \"augment\", \"op\": \"hflip\"}, {\"amount\": 0.2, \"kind\": \"augment\", \"op\": \"brightness_contrast\"}, {\"amount\": 0.2, \"kind\": \"augment\", \"op\": \"rot90\"}], \"target\": null, \"variants_per_asset\": 5}"
+  },
+  "all-v6": {
+   "canonical": "{\"steps\":[{\"amount\":0.2,\"kind\":\"augment\",\"op\":\"hflip\"},{\"amount\":0.2,\"kind\":\"augment\",\"op\":\"brightness_contrast\"},{\"amount\":0.2,\"kind\":\"augment\",\"op\":\"rot90\"}],\"target\":null,\"variants_per_asset\":6}",
+   "document": {
+    "steps": [
+     {
+      "kind": "augment",
+      "op": "hflip"
+     },
+     {
+      "amount": 0.2,
+      "kind": "augment",
+      "op": "brightness_contrast"
+     },
+     {
+      "kind": "augment",
+      "op": "rot90"
+     }
+    ],
+    "target": null,
+    "variants_per_asset": 6
+   },
+   "draws": [
+    {
+     "brightness_contrast": [
+      "0x1.0379211fd045fp+0",
+      "0x1.d048ab9d037bep-1"
+     ],
+     "content_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+     "k": 1,
+     "rot90": 2,
+     "seed": "a7fed66188aed2cf445ad684b98726301cca87546c94fa28022595e73d62b1d8"
+    },
+    {
+     "brightness_contrast": [
+      "0x1.e4d1fec1e4d20p-1",
+      "0x1.21ae65babb480p+0"
+     ],
+     "content_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+     "k": 2,
+     "rot90": 3,
+     "seed": "8447a28b5e067e72d433fe526f12bf90aa57c30d0e79de56d674c610e26d79dd"
+    },
+    {
+     "brightness_contrast": [
+      "0x1.2f1d010f95837p+0",
+      "0x1.0c8bbc1172f22p+0"
+     ],
+     "content_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+     "k": 3,
+     "rot90": 1,
+     "seed": "2cb1a96cf5c882a69f5d562bf363dcf5ed7e72f03b41467c479c9842dc5f47a5"
+    },
+    {
+     "brightness_contrast": [
+      "0x1.e0defb76adabdp-1",
+      "0x1.c83fa420fb72ep-1"
+     ],
+     "content_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+     "k": 4,
+     "rot90": 2,
+     "seed": "fa3135795916ba543a4f8d292ac1ec438136b1de3feba103b63379cf779d4073"
+    },
+    {
+     "brightness_contrast": [
+      "0x1.0ce30ae773497p+0",
+      "0x1.197a67204cadap+0"
+     ],
+     "content_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+     "k": 5,
+     "rot90": 2,
+     "seed": "404be105a0379b42bfb201d08c2ac64141ff0e0cd4bf3a7111694f285c2b8cfc"
+    },
+    {
+     "brightness_contrast": [
+      "0x1.0378084036ab4p+0",
+      "0x1.d684115109b75p-1"
+     ],
+     "content_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+     "k": 6,
+     "rot90": 1,
+     "seed": "0a55418e88ac14a04c2515a5ba951feab65b1abaabf6b9d4652f05b74fa07af3"
+    },
+    {
+     "brightness_contrast": [
+      "0x1.2adc75ee5e0fbp+0",
+      "0x1.9e14d1a26ae1ap-1"
+     ],
+     "content_hash": "3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f",
+     "k": 1,
+     "rot90": 1,
+     "seed": "4e444762eb2726d3059a060b5e3c5d148e29a8fcb72f5c4a46ae75b93eb9cf04"
+    },
+    {
+     "brightness_contrast": [
+      "0x1.2260431d22604p+0",
+      "0x1.e046351846acap-1"
+     ],
+     "content_hash": "3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f",
+     "k": 2,
+     "rot90": 3,
+     "seed": "068d16d2d5f0a7c85857c25e5ef16a1ab865776f0e7e1ae654e431600b766ae4"
+    },
+    {
+     "brightness_contrast": [
+      "0x1.d5d9eadaa2a6cp-1",
+      "0x1.06b64570a04fep+0"
+     ],
+     "content_hash": "3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f",
+     "k": 3,
+     "rot90": 1,
+     "seed": "12dd8a3e4b50659190c7ad99464f83d4009b586ffbdd0da08bab921e3c1f3c41"
+    },
+    {
+     "brightness_contrast": [
+      "0x1.25b4c4b058e80p+0",
+      "0x1.b302d671b302ep-1"
+     ],
+     "content_hash": "3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f",
+     "k": 4,
+     "rot90": 2,
+     "seed": "f40be8ecde43ebb81fc38c0ef7cc23554d5c3beb660a2bc5aa7abe4b8dc9e1d1"
+    },
+    {
+     "brightness_contrast": [
+      "0x1.283c8e9f8ea30p+0",
+      "0x1.0835183b6e9b8p+0"
+     ],
+     "content_hash": "3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f",
+     "k": 5,
+     "rot90": 2,
+     "seed": "621d0c58e497648e9484bc94bd71082abdf8cbaed781522a4864b3cabf8c7258"
+    },
+    {
+     "brightness_contrast": [
+      "0x1.27375cda5a6a9p+0",
+      "0x1.13ef904913ef9p+0"
+     ],
+     "content_hash": "3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f",
+     "k": 6,
+     "rot90": 2,
+     "seed": "be3aa22de20a6821b1d6e8b60ecbe53bda74e204a46b7c75e182aa68b372c8e2"
+    }
+   ],
+   "geometry": {
+    "bbox": "f7ba124813a46af7eee121006315368c22589a0fb3f0ecd3ca86aeeecb51d180",
+    "classification_tag": "744587fec6a5f7dca362966a81591249cc633b6dc2433a0723bcbd3062582256",
+    "cuboid_3d": "refused PreprocessingStepUnsupportedGeometry: the 'hflip' step cannot transform a cuboid_3d (asset 00000000-0000-0000-0000-00000000b006 carries one). Remove the step, or export a release without cuboid_3d labels",
+    "mask": "17062b6d92d3a175d2b5757d1465595eaa76a766c480dcb12a4f738d5e60eead",
+    "obb": "d8538c71d48a1889f40285d476d9f4331cfba6135cd9bfbe5f41d7ae29164ffe",
+    "polygon": "f5c8ccc39a2e1f518600d08fcaab61fc114bb5445bcbd721d70b299834aaeedb",
+    "polyline": "refused PreprocessingStepUnsupportedGeometry: the 'rot90' step cannot transform a polyline (asset 00000000-0000-0000-0000-00000000b004 carries one). Remove the step, or export a release without polyline labels",
+    "polyline_3d": "refused PreprocessingStepUnsupportedGeometry: the 'hflip' step cannot transform a polyline_3d (asset 00000000-0000-0000-0000-00000000b007 carries one). Remove the step, or export a release without polyline_3d labels"
+   },
+   "geometry_showcase": {
+    "bbox": "fb5ad41307a3be469f55eb1069055c875b5df90c4c8fa0ae6ce54592ee25fc27",
+    "classification_tag": "0c8090a7bc377d9c421479746cc5945188d6c3dddfdadb2ac198e7a2f72406d6",
+    "cuboid_3d": "refused PreprocessingStepUnsupportedGeometry: the 'hflip' step cannot transform a cuboid_3d (asset 00000000-0000-0000-0000-00000000b006 carries one). Remove the step, or export a release without cuboid_3d labels",
+    "mask": "eaf8d71d3492e3846023b5b3ceee54b96c294ebb1f19f8c3f9ffc2e2f890552f",
+    "obb": "f5c984f7dddc13738b678609de876970a96087679c30bd914240d95c5d6df902",
+    "polygon": "2d547da8216183fff4bc15502005abfe075c17dfff87e3279af9d087b28a3d3b",
+    "polyline": "refused PreprocessingStepUnsupportedGeometry: the 'rot90' step cannot transform a polyline (asset 00000000-0000-0000-0000-00000000b004 carries one). Remove the step, or export a release without polyline labels",
+    "polyline_3d": "refused PreprocessingStepUnsupportedGeometry: the 'hflip' step cannot transform a polyline_3d (asset 00000000-0000-0000-0000-00000000b007 carries one). Remove the step, or export a release without polyline_3d labels"
+   },
+   "hash": "850467452a983d64eacc5bb327369e194dc4847833f50334678718f2e0684f33",
+   "pixels": {
+    "0": "PNG:RGB:37x23:716a23fd20769b6edcd276d01efe233c563327ab82865717860eb08667ffddbf",
+    "1": "PNG:RGB:37x23:88d78fd73946943826f3d8a6e0d113cbbc21513d33031f5d929d90babeea07bf",
+    "2": "PNG:RGB:23x37:265dde827d829a52d0826b6ed42170712631c1a70f27f282d4105df921dd0097",
+    "3": "PNG:RGB:23x37:12083437aee2884cee5fe169dc8cf2d8890b0e62d54a86482770fbaa07717173",
+    "4": "PNG:RGB:37x23:671388385ec9f2a8bbab8c3588b1e979fa1b2c2dc23bdf8c3a95c518748d886d",
+    "5": "PNG:RGB:23x37:318bd855a6ecca41f853accf90dbf3d1bb115f5a6c5bdb1ef7d5eb8a5e6f54a6",
+    "6": "PNG:RGB:23x37:e9571788afae80e52fbf8c137cfa03da86e7f62f183557587df81bf4b4ddaaf6",
+    "showcase": "PNG:RGB:23x37:7dfa1d44826f32c53b17f2c4644adf009c75e169c3ea26d2cfb4633ab225e406"
+   },
+   "wire": "{\"steps\": [{\"amount\": 0.2, \"kind\": \"augment\", \"op\": \"hflip\"}, {\"amount\": 0.2, \"kind\": \"augment\", \"op\": \"brightness_contrast\"}, {\"amount\": 0.2, \"kind\": \"augment\", \"op\": \"rot90\"}], \"target\": null, \"variants_per_asset\": 6}"
+  },
+  "all-v7": {
+   "canonical": "{\"steps\":[{\"amount\":0.2,\"kind\":\"augment\",\"op\":\"hflip\"},{\"amount\":0.2,\"kind\":\"augment\",\"op\":\"brightness_contrast\"},{\"amount\":0.2,\"kind\":\"augment\",\"op\":\"rot90\"}],\"target\":null,\"variants_per_asset\":7}",
+   "document": {
+    "steps": [
+     {
+      "kind": "augment",
+      "op": "hflip"
+     },
+     {
+      "amount": 0.2,
+      "kind": "augment",
+      "op": "brightness_contrast"
+     },
+     {
+      "kind": "augment",
+      "op": "rot90"
+     }
+    ],
+    "target": null,
+    "variants_per_asset": 7
+   },
+   "draws": [
+    {
+     "brightness_contrast": [
+      "0x1.2fbb45cbfc882p+0",
+      "0x1.bc4da0ca891a7p-1"
+     ],
+     "content_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+     "k": 1,
+     "rot90": 3,
+     "seed": "f1a97f4cf7542e7d2b6108fd3977230d864604ab1784ab5b1b7a0fe508c1b46c"
+    },
+    {
+     "brightness_contrast": [
+      "0x1.13e8ace37a4f2p+0",
+      "0x1.2b76e2f1f843bp+0"
+     ],
+     "content_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+     "k": 2,
+     "rot90": 3,
+     "seed": "5d472902b1c5b038eca9375c88d2b7b8aa5ec81f5034b025af67c95b244a9eda"
+    },
+    {
+     "brightness_contrast": [
+      "0x1.c08b13cc26f18p-1",
+      "0x1.2e33bae3949a2p+0"
+     ],
+     "content_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+     "k": 3,
+     "rot90": 3,
+     "seed": "0eacc82030add8bff38153382290f8aa77c87d0cb8f675d051867c54530a6869"
+    },
+    {
+     "brightness_contrast": [
+      "0x1.1949a9dd7fb01p+0",
+      "0x1.16968e83e3636p+0"
+     ],
+     "content_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+     "k": 4,
+     "rot90": 3,
+     "seed": "7a8614fbbf3828a9b8786449e8c4e4c66cdb44cc578b920713e89a77cbb6dfed"
+    },
+    {
+     "brightness_contrast": [
+      "0x1.c0659c7b59ff4p-1",
+      "0x1.218f8823ee5c6p+0"
+     ],
+     "content_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+     "k": 5,
+     "rot90": 1,
+     "seed": "666f0f65307f039ad3e6d45964c362dea8ce7a526b80f47cab5a177cbb711f9d"
+    },
+    {
+     "brightness_contrast": [
+      "0x1.ffeacc0d331e0p-1",
+      "0x1.058744b29f20ep+0"
+     ],
+     "content_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+     "k": 6,
+     "rot90": 1,
+     "seed": "138afe7d7fe57f108dd22bbec0e9d972dff3e963577db9737b943c8c554b3be0"
+    },
+    {
+     "brightness_contrast": [
+      "0x1.d31726c4397d9p-1",
+      "0x1.29b862e0c3520p+0"
+     ],
+     "content_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+     "k": 7,
+     "rot90": 3,
+     "seed": "62c0fd9147dcf075e84cf7314670579fe57feabf2dd250399514363d022e6e82"
+    },
+    {
+     "brightness_contrast": [
+      "0x1.263feffe59732p+0",
+      "0x1.233777df899dep+0"
+     ],
+     "content_hash": "3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f",
+     "k": 1,
+     "rot90": 1,
+     "seed": "39c0ca82df9fd7fbd80aabaed22af5cd1b8e69bf5b53a4d0664ef460af9dbe0b"
+    },
+    {
+     "brightness_contrast": [
+      "0x1.f3b086f38d4a2p-1",
+      "0x1.ea15d8bd1d491p-1"
+     ],
+     "content_hash": "3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f",
+     "k": 2,
+     "rot90": 2,
+     "seed": "87ae6f84709ca8b0649b4eec66392db578eae6bf90dbee9d2950762cb43c14e8"
+    },
+    {
+     "brightness_contrast": [
+      "0x1.26350735f301ep+0",
+      "0x1.dc145e46a8e13p-1"
+     ],
+     "content_hash": "3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f",
+     "k": 3,
+     "rot90": 1,
+     "seed": "74d0744adf849206531975d8fb53981e3f56f266bca77959813f905cb5370027"
+    },
+    {
+     "brightness_contrast": [
+      "0x1.1172309777d8ap+0",
+      "0x1.b7dee7541e455p-1"
+     ],
+     "content_hash": "3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f",
+     "k": 4,
+     "rot90": 2,
+     "seed": "bf554729ab9d797a25d6a129c87285739cb3c399e4201632bddad957f043695e"
+    },
+    {
+     "brightness_contrast": [
+      "0x1.cf1497210247dp-1",
+      "0x1.0bd3e026a56d8p+0"
+     ],
+     "content_hash": "3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f",
+     "k": 5,
+     "rot90": 2,
+     "seed": "165e175142d9bce99d91b060543685bd48840de729a6f652b142f1b50f7483c6"
+    },
+    {
+     "brightness_contrast": [
+      "0x1.a048a819a048bp-1",
+      "0x1.c6a514982d0b8p-1"
+     ],
+     "content_hash": "3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f",
+     "k": 6,
+     "rot90": 2,
+     "seed": "00c34306085ad220384e59be000707dd0976a0e1c9b7cbcec9958450556dad37"
+    },
+    {
+     "brightness_contrast": [
+      "0x1.cf9f4c6b6938fp-1",
+      "0x1.fc320105fc320p-1"
+     ],
+     "content_hash": "3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f",
+     "k": 7,
+     "rot90": 1,
+     "seed": "5c572f7b43871f867b3e8147ff891f69f53f8064337c3e5b633774bef5017380"
+    }
+   ],
+   "geometry": {
+    "bbox": "b1903595b17b20b773628480f3ac1512d208a813441935ef8038c256b8345274",
+    "classification_tag": "274fc2446cbb96b4e87384ba1993440333eec18724106a5688cc651f8a336710",
+    "cuboid_3d": "refused PreprocessingStepUnsupportedGeometry: the 'hflip' step cannot transform a cuboid_3d (asset 00000000-0000-0000-0000-00000000b006 carries one). Remove the step, or export a release without cuboid_3d labels",
+    "mask": "e3e8496ec307e6fe78837d2fd6b17b18b40394e2b49b8dc2d930ac6023fc95c3",
+    "obb": "1a79cc066057a53cdc9ef00813b179bb914eafa75f744ad508cc67ac6afafb58",
+    "polygon": "e27ddd087316e7f24bbe0207ce6d9f87a15695a7ab9caed0e10bf59560e77676",
+    "polyline": "refused PreprocessingStepUnsupportedGeometry: the 'rot90' step cannot transform a polyline (asset 00000000-0000-0000-0000-00000000b004 carries one). Remove the step, or export a release without polyline labels",
+    "polyline_3d": "refused PreprocessingStepUnsupportedGeometry: the 'hflip' step cannot transform a polyline_3d (asset 00000000-0000-0000-0000-00000000b007 carries one). Remove the step, or export a release without polyline_3d labels"
+   },
+   "geometry_showcase": {
+    "bbox": "8b737ce136f130716f48e12879178a94fd93f6cdb10555696ae5a591c65f1cfe",
+    "classification_tag": "64cf1a5419d97b642a7d5f5b2e159f47e3003197cb91b1cb38c1dd202bbb1a3e",
+    "cuboid_3d": "refused PreprocessingStepUnsupportedGeometry: the 'hflip' step cannot transform a cuboid_3d (asset 00000000-0000-0000-0000-00000000b006 carries one). Remove the step, or export a release without cuboid_3d labels",
+    "mask": "d4d65e108a2e3a6e85c871bc87ab665287a0e530de0bbc03446d79e298e234a2",
+    "obb": "5664bdfcf1bc369a81aa824c7d391c82857ed091b8312d63ccbddb54c1adc9ab",
+    "polygon": "93031d9091a7c5e4ee49079b12541b5109b61dffe79df32d13bc8057e71500dd",
+    "polyline": "refused PreprocessingStepUnsupportedGeometry: the 'rot90' step cannot transform a polyline (asset 00000000-0000-0000-0000-00000000b004 carries one). Remove the step, or export a release without polyline labels",
+    "polyline_3d": "refused PreprocessingStepUnsupportedGeometry: the 'hflip' step cannot transform a polyline_3d (asset 00000000-0000-0000-0000-00000000b007 carries one). Remove the step, or export a release without polyline_3d labels"
+   },
+   "hash": "5d3245f8d7e2d9b9c7b59efeae07ffd68d8dd285eb10f9b6ba1ba73ba51320a2",
+   "pixels": {
+    "0": "PNG:RGB:37x23:716a23fd20769b6edcd276d01efe233c563327ab82865717860eb08667ffddbf",
+    "1": "PNG:RGB:23x37:1c4d5ef79f787c82111352aaa8fcaf8e787ae8d1b1d8b512341fbde415cb2402",
+    "2": "PNG:RGB:37x23:693a8021e9e3c90c14a511acbeb1a5159284ed16323e7dada599073c4131c437",
+    "3": "PNG:RGB:23x37:726c3a4f901d88f40a6d7446d603783ce53e4e001ec01285526720d6ed4b3ea4",
+    "4": "PNG:RGB:23x37:2bf67b4c3809805f559f7936a3fb48fd98a238da704924b1689cbc6598b01f54",
+    "5": "PNG:RGB:23x37:1e116dcfefb9ec92d505cc9cfaf5ed261874e839df5796bb9b76e51f8f4b01f2",
+    "6": "PNG:RGB:23x37:593af8b50a62bbcfc6bd8f65cfe5ddd4604258226d7fcd4898135d33f8a5478e",
+    "7": "PNG:RGB:23x37:68a1965f48cf07cc57d2e8b0ff4fb139db5938d402a5a00d53cc30cac9fce815",
+    "showcase": "PNG:RGB:23x37:7dfa1d44826f32c53b17f2c4644adf009c75e169c3ea26d2cfb4633ab225e406"
+   },
+   "wire": "{\"steps\": [{\"amount\": 0.2, \"kind\": \"augment\", \"op\": \"hflip\"}, {\"amount\": 0.2, \"kind\": \"augment\", \"op\": \"brightness_contrast\"}, {\"amount\": 0.2, \"kind\": \"augment\", \"op\": \"rot90\"}], \"target\": null, \"variants_per_asset\": 7}"
+  },
+  "all-v8": {
+   "canonical": "{\"steps\":[{\"amount\":0.2,\"kind\":\"augment\",\"op\":\"hflip\"},{\"amount\":0.2,\"kind\":\"augment\",\"op\":\"brightness_contrast\"},{\"amount\":0.2,\"kind\":\"augment\",\"op\":\"rot90\"}],\"target\":null,\"variants_per_asset\":8}",
+   "document": {
+    "steps": [
+     {
+      "kind": "augment",
+      "op": "hflip"
+     },
+     {
+      "amount": 0.2,
+      "kind": "augment",
+      "op": "brightness_contrast"
+     },
+     {
+      "kind": "augment",
+      "op": "rot90"
+     }
+    ],
+    "target": null,
+    "variants_per_asset": 8
+   },
+   "draws": [
+    {
+     "brightness_contrast": [
+      "0x1.e979a85b83135p-1",
+      "0x1.0f396dd6a8d31p+0"
+     ],
+     "content_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+     "k": 1,
+     "rot90": 1,
+     "seed": "303d2b8f63d81272a60f9298e59fd7de9a633f81be3e9d4c11b735bee69845d4"
+    },
+    {
+     "brightness_contrast": [
+      "0x1.0783afe10783bp+0",
+      "0x1.cde94bcf6782fp-1"
+     ],
+     "content_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+     "k": 2,
+     "rot90": 2,
+     "seed": "491389e192c937b241639ec3e5d36cfb2451acac64d6c8b93249c65cde96ff1f"
+    },
+    {
+     "brightness_contrast": [
+      "0x1.9ba5b26e68728p-1",
+      "0x1.9f157b8b38af2p-1"
+     ],
+     "content_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+     "k": 3,
+     "rot90": 3,
+     "seed": "ac63c61b028f1f0a06dada6eaa362deabe5412e6a384850a10d0d5d6db7dafe2"
+    },
+    {
+     "brightness_contrast": [
+      "0x1.026e10ad68d48p+0",
+      "0x1.0ad807903e0b4p+0"
+     ],
+     "content_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+     "k": 4,
+     "rot90": 2,
+     "seed": "c6925359861329b19b1c12e8b42cb051f3720a8840db197dac0ea54f8cdec331"
+    },
+    {
+     "brightness_contrast": [
+      "0x1.d967a91c3fce2p-1",
+      "0x1.08870fae3bba4p+0"
+     ],
+     "content_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+     "k": 5,
+     "rot90": 3,
+     "seed": "b0f365934fc193639551a733aaee91195f949e210491552ca571d0e78aaf4877"
+    },
+    {
+     "brightness_contrast": [
+      "0x1.e7a91bb38142cp-1",
+      "0x1.163f7f26afd92p+0"
+     ],
+     "content_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+     "k": 6,
+     "rot90": 3,
+     "seed": "beef3c35619362a0b79ebde02745b33f3c5e9fc8aca98e4aff17bb8c207bbfc9"
+    },
+    {
+     "brightness_contrast": [
+      "0x1.ee672ef454cdap-1",
+      "0x1.2f93dcc662c71p+0"
+     ],
+     "content_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+     "k": 7,
+     "rot90": 3,
+     "seed": "a855183c6a00fab1f6f1a7ef19e9b5d0bd26e5a8cd1666c0b0b3731b9d16da34"
+    },
+    {
+     "brightness_contrast": [
+      "0x1.9c7447299c745p-1",
+      "0x1.1de75fdd1de76p+0"
+     ],
+     "content_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+     "k": 8,
+     "rot90": 2,
+     "seed": "78815f77039158f4cac26fa8fe2a076161351508067ad86f047f442d14326657"
+    },
+    {
+     "brightness_contrast": [
+      "0x1.fef566113228ap-1",
+      "0x1.2b7fb77591e62p+0"
+     ],
+     "content_hash": "3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f",
+     "k": 1,
+     "rot90": 3,
+     "seed": "637015327eb2bf95ecbf4aa5b6a9e7a7f44587bd2392018f41fa735e58245e4b"
+    },
+    {
+     "brightness_contrast": [
+      "0x1.09edf5b1d6bacp+0",
+      "0x1.b4fe1218e8315p-1"
+     ],
+     "content_hash": "3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f",
+     "k": 2,
+     "rot90": 2,
+     "seed": "f5659fd398d2e63c223d969fefa18ece4587ac16018428d6643d800377cb0459"
+    },
+    {
+     "brightness_contrast": [
+      "0x1.0b55a0a971bc1p+0",
+      "0x1.21a2d94dee6fbp+0"
+     ],
+     "content_hash": "3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f",
+     "k": 3,
+     "rot90": 2,
+     "seed": "5cafd5319c5611a7d4171f42c6ac88d49f28fc06a25592da0b78cd1d9d7c3552"
+    },
+    {
+     "brightness_contrast": [
+      "0x1.9bf00e0002568p-1",
+      "0x1.1a23a73b808a1p+0"
+     ],
+     "content_hash": "3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f",
+     "k": 4,
+     "rot90": 1,
+     "seed": "3fc29afd02ec1180c1592214c1d4ec40895bf6d0099d8dd1a170ac2f04f6112b"
+    },
+    {
+     "brightness_contrast": [
+      "0x1.b8186a4a84e54p-1",
+      "0x1.9d8b5c6a6a583p-1"
+     ],
+     "content_hash": "3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f",
+     "k": 5,
+     "rot90": 2,
+     "seed": "50dc1545261e84dd04ee338572973d5669e772009ce925796f8d809e11d701bc"
+    },
+    {
+     "brightness_contrast": [
+      "0x1.fcfc177063628p-1",
+      "0x1.de1ec3eb77b86p-1"
+     ],
+     "content_hash": "3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f",
+     "k": 6,
+     "rot90": 1,
+     "seed": "276a2fcb7c3b1d4c55a674e62863e7ce8aae7ee1a253d1a80e2f6476c90a50eb"
+    },
+    {
+     "brightness_contrast": [
+      "0x1.1148677c447bap+0",
+      "0x1.9a13d0f0007a4p-1"
+     ],
+     "content_hash": "3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f",
+     "k": 7,
+     "rot90": 3,
+     "seed": "719c4db5ab3502b60098c52cec75d27b79e2818d3675074e62ea0438c15910fa"
+    },
+    {
+     "brightness_contrast": [
+      "0x1.fe4082f2cb0d6p-1",
+      "0x1.19ac02d119ac0p+0"
+     ],
+     "content_hash": "3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f",
+     "k": 8,
+     "rot90": 3,
+     "seed": "9249f93b7dd0a3afc02e070ac054d2500b26c9a17cc099f929802235528404d0"
+    }
+   ],
+   "geometry": {
+    "bbox": "495154f8a3336691003a708fd86b03f1d02f468b0304c524468a3468115f2770",
+    "classification_tag": "5ebe70b291a6d1976310a6583423347251f32a984be8d5fc1f7ed0d6105ae676",
+    "cuboid_3d": "refused PreprocessingStepUnsupportedGeometry: the 'hflip' step cannot transform a cuboid_3d (asset 00000000-0000-0000-0000-00000000b006 carries one). Remove the step, or export a release without cuboid_3d labels",
+    "mask": "d045b9db4893a08d8b78cb4c49955852cebb0a39d330e9bc6673217e96280b29",
+    "obb": "f6d643daf1e5360dce20a9424a0a20c57d15e90cbf8a748db788c11ffb79551c",
+    "polygon": "07fb5db3bfc388344f607037bf70e657c9f5c822e1e94c1a40fb1196c690c7d0",
+    "polyline": "refused PreprocessingStepUnsupportedGeometry: the 'rot90' step cannot transform a polyline (asset 00000000-0000-0000-0000-00000000b004 carries one). Remove the step, or export a release without polyline labels",
+    "polyline_3d": "refused PreprocessingStepUnsupportedGeometry: the 'hflip' step cannot transform a polyline_3d (asset 00000000-0000-0000-0000-00000000b007 carries one). Remove the step, or export a release without polyline_3d labels"
+   },
+   "geometry_showcase": {
+    "bbox": "ddfc2817e66e4a14ccf495bb1af712863a88ca72fddb4e8a078899b111b77b21",
+    "classification_tag": "4f775652ba74c11b285962d98de5d826587e84cc952b2e1fe40bb7e4a96633e4",
+    "cuboid_3d": "refused PreprocessingStepUnsupportedGeometry: the 'hflip' step cannot transform a cuboid_3d (asset 00000000-0000-0000-0000-00000000b006 carries one). Remove the step, or export a release without cuboid_3d labels",
+    "mask": "d2dccef545d650cf56ef9abd2069ba1c2088761b683ebba1ece62b48e09d7dca",
+    "obb": "3b4b5f047b39aad62b1aee36d64185e16e186fd8900d0e76e8da03999afb666f",
+    "polygon": "879c3f2762e14159bf2ed56ed65e1ade37e6da7bd69ce51369c95d5b8a9af3f0",
+    "polyline": "refused PreprocessingStepUnsupportedGeometry: the 'rot90' step cannot transform a polyline (asset 00000000-0000-0000-0000-00000000b004 carries one). Remove the step, or export a release without polyline labels",
+    "polyline_3d": "refused PreprocessingStepUnsupportedGeometry: the 'hflip' step cannot transform a polyline_3d (asset 00000000-0000-0000-0000-00000000b007 carries one). Remove the step, or export a release without polyline_3d labels"
+   },
+   "hash": "b28880cf6b7d69238a62f39288b176d9050bafdea460c89b3aa90901875e3f70",
+   "pixels": {
+    "0": "PNG:RGB:37x23:716a23fd20769b6edcd276d01efe233c563327ab82865717860eb08667ffddbf",
+    "1": "PNG:RGB:23x37:613d385a14e91605103ddfbc0ab57b872f8ad071d16ea14684b48114c028eb68",
+    "2": "PNG:RGB:23x37:de2d58b55c4e645a77593264bad614d8f3c051e1a353d34fff486d0a7c358c78",
+    "3": "PNG:RGB:23x37:aa130d2c65ccf668bbc0ac46bdd997c9d3e67065b91fb4a9fbb39701eb6419a1",
+    "4": "PNG:RGB:37x23:3d8148ff7d81a41a34bd6c05091f52e9d48b2a7af79512de400132cab443926f",
+    "5": "PNG:RGB:23x37:62c1abc923a4986ba976982d7c1619a3afb32cde96994ab675fb663885959cb8",
+    "6": "PNG:RGB:23x37:a058f2e92659b78f4befa5ab64ed23a4edff4c21864474b91f1e653d7632712f",
+    "7": "PNG:RGB:37x23:cc2eb2a028cff9430a0334a0e4adce0f1541acd7ebfb078ffabc79904e314290",
+    "8": "PNG:RGB:23x37:f1053556f64dffc62bd1d513ce023ee41e2b3c4f0e64ea97ab0334f88b6dc9f2",
+    "showcase": "PNG:RGB:23x37:7dfa1d44826f32c53b17f2c4644adf009c75e169c3ea26d2cfb4633ab225e406"
+   },
+   "wire": "{\"steps\": [{\"amount\": 0.2, \"kind\": \"augment\", \"op\": \"hflip\"}, {\"amount\": 0.2, \"kind\": \"augment\", \"op\": \"brightness_contrast\"}, {\"amount\": 0.2, \"kind\": \"augment\", \"op\": \"rot90\"}], \"target\": null, \"variants_per_asset\": 8}"
+  },
+  "bc-0.05": {
+   "canonical": "{\"steps\":[{\"amount\":0.05,\"kind\":\"augment\",\"op\":\"brightness_contrast\"}],\"target\":null,\"variants_per_asset\":2}",
+   "document": {
+    "steps": [
+     {
+      "amount": 0.05,
+      "kind": "augment",
+      "op": "brightness_contrast"
+     }
+    ],
+    "target": null,
+    "variants_per_asset": 2
+   },
+   "draws": [
+    {
+     "brightness_contrast": [
+      "0x1.0ad827cd4ad82p+0",
+      "0x1.066dc11b933a9p+0"
+     ],
+     "content_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+     "k": 1,
+     "rot90": 3,
+     "seed": "b5720aaeec718e04c0498b13b5d7bb077baef66f460a1f3a39516d70d2d5f88c"
+    },
+    {
+     "brightness_contrast": [
+      "0x1.05faedef5f948p+0",
+      "0x1.0608caaeac6f3p+0"
+     ],
+     "content_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+     "k": 2,
+     "rot90": 1,
+     "seed": "c5d224f0bbcd4b59bc57ead2f13b0c1e8028730378ca2265309417d913a5f75b"
+    },
+    {
+     "brightness_contrast": [
+      "0x1.01b661f074e99p+0",
+      "0x1.0288728a75bbap+0"
+     ],
+     "content_hash": "3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f",
+     "k": 1,
+     "rot90": 1,
+     "seed": "c3972604911fd36499547968cf7ecb8ea1ea833ffd4ab906bc2a7a70b67a86b6"
+    },
+    {
+     "brightness_contrast": [
+      "0x1.08f9d5b862937p+0",
+      "0x1.f8185a0b78185p-1"
+     ],
+     "content_hash": "3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f",
+     "k": 2,
+     "rot90": 3,
+     "seed": "c8fde147d9c259335879c239b5a7e80705b0fa96052bff8e6e6f3fd5e2ee39e0"
+    }
+   ],
+   "geometry": {
+    "bbox": "ac51381f57a3e325233d040981d8b7ac0d81c951a21fe0e1a3f7f742e5c6befa",
+    "classification_tag": "e12b46b1dc25e06ad0c6a4140c8ca1db1b4de9976d7a97afdc5b773e251b01f7",
+    "cuboid_3d": "112a1756b87de85b8cb134450f331fb8fc9ebad8a2acbff9ebf27e87b5fde54c",
+    "mask": "c644d37c6307be62fb832da215b8621f02a7457e1fa117b3949d3cf548b78400",
+    "obb": "ed4baad35a050c455f69ead5e7e37f6383abcd1ee35bcf286bf8681d51fde0c1",
+    "polygon": "de81b996e0e8287190f16dc06a22617b7f46d0dc95a2a6f49cde7a42fa3ad86f",
+    "polyline": "0c29a7fab68d4e617a2206990e8463ffa7ad26611cbbeb89e87ac1689ace6e68",
+    "polyline_3d": "a5c383a73804fb82e427b44227ed7d0bb66c25095ef54c9ecd6108de4c2567dd"
+   },
+   "geometry_showcase": {
+    "bbox": "ac51381f57a3e325233d040981d8b7ac0d81c951a21fe0e1a3f7f742e5c6befa",
+    "classification_tag": "e12b46b1dc25e06ad0c6a4140c8ca1db1b4de9976d7a97afdc5b773e251b01f7",
+    "cuboid_3d": "112a1756b87de85b8cb134450f331fb8fc9ebad8a2acbff9ebf27e87b5fde54c",
+    "mask": "c644d37c6307be62fb832da215b8621f02a7457e1fa117b3949d3cf548b78400",
+    "obb": "ed4baad35a050c455f69ead5e7e37f6383abcd1ee35bcf286bf8681d51fde0c1",
+    "polygon": "de81b996e0e8287190f16dc06a22617b7f46d0dc95a2a6f49cde7a42fa3ad86f",
+    "polyline": "0c29a7fab68d4e617a2206990e8463ffa7ad26611cbbeb89e87ac1689ace6e68",
+    "polyline_3d": "a5c383a73804fb82e427b44227ed7d0bb66c25095ef54c9ecd6108de4c2567dd"
+   },
+   "hash": "5b6013095b3f10027d78311d99d947a6a0ccff60f73c8dc3c8d86099de9718bc",
+   "pixels": {
+    "0": "PNG:RGB:37x23:716a23fd20769b6edcd276d01efe233c563327ab82865717860eb08667ffddbf",
+    "1": "PNG:RGB:37x23:07d698f6993b3e93e15dc812b15daafff7e0df37104dc6133ba39ccb5264c1f2",
+    "2": "PNG:RGB:37x23:306107202a37738f0d40436d68f1cf9448c72c82df74f6e2a2b271544183b107",
+    "showcase": "PNG:RGB:37x23:880fcf3611c4da86b3c3271c4691fe26d45e6b86f0f2fb6921159198c3114a79"
+   },
+   "wire": "{\"steps\": [{\"amount\": 0.05, \"kind\": \"augment\", \"op\": \"brightness_contrast\"}], \"target\": null, \"variants_per_asset\": 2}"
+  },
+  "bc-0.2": {
+   "canonical": "{\"steps\":[{\"amount\":0.2,\"kind\":\"augment\",\"op\":\"brightness_contrast\"}],\"target\":null,\"variants_per_asset\":2}",
+   "document": {
+    "steps": [
+     {
+      "amount": 0.2,
+      "kind": "augment",
+      "op": "brightness_contrast"
+     }
+    ],
+    "target": null,
+    "variants_per_asset": 2
+   },
+   "draws": [
+    {
+     "brightness_contrast": [
+      "0x1.ecca262053309p-1",
+      "0x1.2fd28debfc9f6p+0"
+     ],
+     "content_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+     "k": 1,
+     "rot90": 3,
+     "seed": "2ee9cb0967fcafa8f78e62cd9cd49c6fcb4ee5c3ee9e845280673993499c18c3"
+    },
+    {
+     "brightness_contrast": [
+      "0x1.fc257dab95bf2p-1",
+      "0x1.160642d37c6cbp+0"
+     ],
+     "content_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+     "k": 2,
+     "rot90": 2,
+     "seed": "d24301b37b2edd16b70fa710957278f2298dff52ccf2dff3c51f5f37d88c37f4"
+    },
+    {
+     "brightness_contrast": [
+      "0x1.104300d5dd0fdp+0",
+      "0x1.1c3d927cb5d73p+0"
+     ],
+     "content_hash": "3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f",
+     "k": 1,
+     "rot90": 3,
+     "seed": "6fffb252a8a78216c699ee378a3459dd83de79d8e3ee949e0ae7be1e13abfe34"
+    },
+    {
+     "brightness_contrast": [
+      "0x1.23cef0c3f09bcp+0",
+      "0x1.dfdb43d6aca82p-1"
+     ],
+     "content_hash": "3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f",
+     "k": 2,
+     "rot90": 1,
+     "seed": "e9e0750ed98559e957d214cc736e5b4771293c96026a8f8e0708713f75cbf703"
+    }
+   ],
+   "geometry": {
+    "bbox": "ac51381f57a3e325233d040981d8b7ac0d81c951a21fe0e1a3f7f742e5c6befa",
+    "classification_tag": "e12b46b1dc25e06ad0c6a4140c8ca1db1b4de9976d7a97afdc5b773e251b01f7",
+    "cuboid_3d": "112a1756b87de85b8cb134450f331fb8fc9ebad8a2acbff9ebf27e87b5fde54c",
+    "mask": "c644d37c6307be62fb832da215b8621f02a7457e1fa117b3949d3cf548b78400",
+    "obb": "ed4baad35a050c455f69ead5e7e37f6383abcd1ee35bcf286bf8681d51fde0c1",
+    "polygon": "de81b996e0e8287190f16dc06a22617b7f46d0dc95a2a6f49cde7a42fa3ad86f",
+    "polyline": "0c29a7fab68d4e617a2206990e8463ffa7ad26611cbbeb89e87ac1689ace6e68",
+    "polyline_3d": "a5c383a73804fb82e427b44227ed7d0bb66c25095ef54c9ecd6108de4c2567dd"
+   },
+   "geometry_showcase": {
+    "bbox": "ac51381f57a3e325233d040981d8b7ac0d81c951a21fe0e1a3f7f742e5c6befa",
+    "classification_tag": "e12b46b1dc25e06ad0c6a4140c8ca1db1b4de9976d7a97afdc5b773e251b01f7",
+    "cuboid_3d": "112a1756b87de85b8cb134450f331fb8fc9ebad8a2acbff9ebf27e87b5fde54c",
+    "mask": "c644d37c6307be62fb832da215b8621f02a7457e1fa117b3949d3cf548b78400",
+    "obb": "ed4baad35a050c455f69ead5e7e37f6383abcd1ee35bcf286bf8681d51fde0c1",
+    "polygon": "de81b996e0e8287190f16dc06a22617b7f46d0dc95a2a6f49cde7a42fa3ad86f",
+    "polyline": "0c29a7fab68d4e617a2206990e8463ffa7ad26611cbbeb89e87ac1689ace6e68",
+    "polyline_3d": "a5c383a73804fb82e427b44227ed7d0bb66c25095ef54c9ecd6108de4c2567dd"
+   },
+   "hash": "303f6ca884dec19d543b6fbf3ebb4664b6c7e29caaa4f522c1bad209c96efb4a",
+   "pixels": {
+    "0": "PNG:RGB:37x23:716a23fd20769b6edcd276d01efe233c563327ab82865717860eb08667ffddbf",
+    "1": "PNG:RGB:37x23:6c65ecea753391e0e10b0479a1c7e7ad07d0b71003a95afc54af1adba76b2487",
+    "2": "PNG:RGB:37x23:9f7855b3d73135af3d3662d3f52e148cc6ec0f8de80bfda3bd3880318e4b2fb7",
+    "showcase": "PNG:RGB:37x23:527a2d7becc1805d33de0cdbc53a2ba45541b76924611c7004f4b363b30ba784"
+   },
+   "wire": "{\"steps\": [{\"amount\": 0.2, \"kind\": \"augment\", \"op\": \"brightness_contrast\"}], \"target\": null, \"variants_per_asset\": 2}"
+  },
+  "bc-0.25": {
+   "canonical": "{\"steps\":[{\"amount\":0.25,\"kind\":\"augment\",\"op\":\"brightness_contrast\"}],\"target\":null,\"variants_per_asset\":2}",
+   "document": {
+    "steps": [
+     {
+      "amount": 0.25,
+      "kind": "augment",
+      "op": "brightness_contrast"
+     }
+    ],
+    "target": null,
+    "variants_per_asset": 2
+   },
+   "draws": [
+    {
+     "brightness_contrast": [
+      "0x1.ada14cb32da15p-1",
+      "0x1.adcfc2e32dcfcp-1"
+     ],
+     "content_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+     "k": 1,
+     "rot90": 2,
+     "seed": "ce5852a52da14cb32dcfc2e3ccc53ccb765af1768c8890cf0a3ab0d79b441f0e"
+    },
+    {
+     "brightness_contrast": [
+      "0x1.a27f7855227f8p-1",
+      "0x1.f2a5e53572a5ep-1"
+     ],
+     "content_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+     "k": 2,
+     "rot90": 2,
+     "seed": "23c3e767227f785572a5e5352ffef18035c1525f5071e611c229bfca0a9c4152"
+    },
+    {
+     "brightness_contrast": [
+      "0x1.e936438a69364p-1",
+      "0x1.eb9bc0cc6b9bcp-1"
+     ],
+     "content_hash": "3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f",
+     "k": 1,
+     "rot90": 1,
+     "seed": "332eefb26936438a6b9bc0cce7a4222ac5fd762243c36b44798ea19c3aec0d65"
+    },
+    {
+     "brightness_contrast": [
+      "0x1.e3bc776563bc8p-1",
+      "0x1.fdf2d1a27df2dp-1"
+     ],
+     "content_hash": "3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f",
+     "k": 2,
+     "rot90": 2,
+     "seed": "2f7d440163bc77657df2d1a290e1deb2c2361b84dfe2db86eacefb635305fe91"
+    }
+   ],
+   "geometry": {
+    "bbox": "ac51381f57a3e325233d040981d8b7ac0d81c951a21fe0e1a3f7f742e5c6befa",
+    "classification_tag": "e12b46b1dc25e06ad0c6a4140c8ca1db1b4de9976d7a97afdc5b773e251b01f7",
+    "cuboid_3d": "112a1756b87de85b8cb134450f331fb8fc9ebad8a2acbff9ebf27e87b5fde54c",
+    "mask": "c644d37c6307be62fb832da215b8621f02a7457e1fa117b3949d3cf548b78400",
+    "obb": "ed4baad35a050c455f69ead5e7e37f6383abcd1ee35bcf286bf8681d51fde0c1",
+    "polygon": "de81b996e0e8287190f16dc06a22617b7f46d0dc95a2a6f49cde7a42fa3ad86f",
+    "polyline": "0c29a7fab68d4e617a2206990e8463ffa7ad26611cbbeb89e87ac1689ace6e68",
+    "polyline_3d": "a5c383a73804fb82e427b44227ed7d0bb66c25095ef54c9ecd6108de4c2567dd"
+   },
+   "geometry_showcase": {
+    "bbox": "ac51381f57a3e325233d040981d8b7ac0d81c951a21fe0e1a3f7f742e5c6befa",
+    "classification_tag": "e12b46b1dc25e06ad0c6a4140c8ca1db1b4de9976d7a97afdc5b773e251b01f7",
+    "cuboid_3d": "112a1756b87de85b8cb134450f331fb8fc9ebad8a2acbff9ebf27e87b5fde54c",
+    "mask": "c644d37c6307be62fb832da215b8621f02a7457e1fa117b3949d3cf548b78400",
+    "obb": "ed4baad35a050c455f69ead5e7e37f6383abcd1ee35bcf286bf8681d51fde0c1",
+    "polygon": "de81b996e0e8287190f16dc06a22617b7f46d0dc95a2a6f49cde7a42fa3ad86f",
+    "polyline": "0c29a7fab68d4e617a2206990e8463ffa7ad26611cbbeb89e87ac1689ace6e68",
+    "polyline_3d": "a5c383a73804fb82e427b44227ed7d0bb66c25095ef54c9ecd6108de4c2567dd"
+   },
+   "hash": "af927257f992ec2191b964b8812b7d8d46a7fb65908fceb50771459fb8544659",
+   "pixels": {
+    "0": "PNG:RGB:37x23:716a23fd20769b6edcd276d01efe233c563327ab82865717860eb08667ffddbf",
+    "1": "PNG:RGB:37x23:2317a82692d88dac4b33be42839193beea0523c320f65ea42f74236cff655b6c",
+    "2": "PNG:RGB:37x23:902df4a967c80651e84673f42729e0bd119055f89cb94b24a07ff824419ba402",
+    "showcase": "PNG:RGB:37x23:3dc7a9d7ce80b55126572f8e091b75d1feba89726b3fa477fc1dff73792f582c"
+   },
+   "wire": "{\"steps\": [{\"amount\": 0.25, \"kind\": \"augment\", \"op\": \"brightness_contrast\"}], \"target\": null, \"variants_per_asset\": 2}"
+  },
+  "bc-0.333": {
+   "canonical": "{\"steps\":[{\"amount\":0.333,\"kind\":\"augment\",\"op\":\"brightness_contrast\"}],\"target\":null,\"variants_per_asset\":2}",
+   "document": {
+    "steps": [
+     {
+      "amount": 0.333,
+      "kind": "augment",
+      "op": "brightness_contrast"
+     }
+    ],
+    "target": null,
+    "variants_per_asset": 2
+   },
+   "draws": [
+    {
+     "brightness_contrast": [
+      "0x1.94c1d25ba5a74p-1",
+      "0x1.15b06c7e8612cp+0"
+     ],
+     "content_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+     "k": 1,
+     "rot90": 1,
+     "seed": "b73fbff22f7cc14aa090f901e3f8bfc0a48288d38b1fbbd05b9359203fbcd94a"
+    },
+    {
+     "brightness_contrast": [
+      "0x1.c130bd1db6704p-1",
+      "0x1.febf377de39c7p-1"
+     ],
+     "content_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+     "k": 2,
+     "rot90": 2,
+     "seed": "d700f04550d87b877f0f2bf7cce49370e2cf59a418025a204598e48951b29196"
+    },
+    {
+     "brightness_contrast": [
+      "0x1.ff6a9de71b93ap-1",
+      "0x1.fbf3282f36d48p-1"
+     ],
+     "content_hash": "3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f",
+     "k": 1,
+     "rot90": 3,
+     "seed": "59f6a4587f8fd9b77cf596dd6cb8033d908fa5eee337e271e613eaf856314588"
+    },
+    {
+     "brightness_contrast": [
+      "0x1.2c996dda34891p+0",
+      "0x1.2c269ab43a3b2p+0"
+     ],
+     "content_hash": "3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f",
+     "k": 2,
+     "rot90": 2,
+     "seed": "62b999a6c2f74975c24ae099ecc33770c3d87a86d6b03ae29e4227e20fc50690"
+    }
+   ],
+   "geometry": {
+    "bbox": "ac51381f57a3e325233d040981d8b7ac0d81c951a21fe0e1a3f7f742e5c6befa",
+    "classification_tag": "e12b46b1dc25e06ad0c6a4140c8ca1db1b4de9976d7a97afdc5b773e251b01f7",
+    "cuboid_3d": "112a1756b87de85b8cb134450f331fb8fc9ebad8a2acbff9ebf27e87b5fde54c",
+    "mask": "c644d37c6307be62fb832da215b8621f02a7457e1fa117b3949d3cf548b78400",
+    "obb": "ed4baad35a050c455f69ead5e7e37f6383abcd1ee35bcf286bf8681d51fde0c1",
+    "polygon": "de81b996e0e8287190f16dc06a22617b7f46d0dc95a2a6f49cde7a42fa3ad86f",
+    "polyline": "0c29a7fab68d4e617a2206990e8463ffa7ad26611cbbeb89e87ac1689ace6e68",
+    "polyline_3d": "a5c383a73804fb82e427b44227ed7d0bb66c25095ef54c9ecd6108de4c2567dd"
+   },
+   "geometry_showcase": {
+    "bbox": "ac51381f57a3e325233d040981d8b7ac0d81c951a21fe0e1a3f7f742e5c6befa",
+    "classification_tag": "e12b46b1dc25e06ad0c6a4140c8ca1db1b4de9976d7a97afdc5b773e251b01f7",
+    "cuboid_3d": "112a1756b87de85b8cb134450f331fb8fc9ebad8a2acbff9ebf27e87b5fde54c",
+    "mask": "c644d37c6307be62fb832da215b8621f02a7457e1fa117b3949d3cf548b78400",
+    "obb": "ed4baad35a050c455f69ead5e7e37f6383abcd1ee35bcf286bf8681d51fde0c1",
+    "polygon": "de81b996e0e8287190f16dc06a22617b7f46d0dc95a2a6f49cde7a42fa3ad86f",
+    "polyline": "0c29a7fab68d4e617a2206990e8463ffa7ad26611cbbeb89e87ac1689ace6e68",
+    "polyline_3d": "a5c383a73804fb82e427b44227ed7d0bb66c25095ef54c9ecd6108de4c2567dd"
+   },
+   "hash": "92cedc3e7e26f100e5c10ddfc5f99a14c728ea9618123d5898e2b39961bf813b",
+   "pixels": {
+    "0": "PNG:RGB:37x23:716a23fd20769b6edcd276d01efe233c563327ab82865717860eb08667ffddbf",
+    "1": "PNG:RGB:37x23:5f8d9f7136a31ac9b7186d1fc27adeaa3974cd257ae4c1bfe2c95329eaf2e6f2",
+    "2": "PNG:RGB:37x23:2ac3722c1cc416ee0673d0f1b8e06e6d41f0dc92924c52dcda501aff2ef58ad8",
+    "showcase": "PNG:RGB:37x23:115b67eec04c5f31492373130d2a34ad14dc9828c9859dd39c264376819c7904"
+   },
+   "wire": "{\"steps\": [{\"amount\": 0.333, \"kind\": \"augment\", \"op\": \"brightness_contrast\"}], \"target\": null, \"variants_per_asset\": 2}"
+  },
+  "bc-0.5": {
+   "canonical": "{\"steps\":[{\"amount\":0.5,\"kind\":\"augment\",\"op\":\"brightness_contrast\"}],\"target\":null,\"variants_per_asset\":2}",
+   "document": {
+    "steps": [
+     {
+      "amount": 0.5,
+      "kind": "augment",
+      "op": "brightness_contrast"
+     }
+    ],
+    "target": null,
+    "variants_per_asset": 2
+   },
+   "draws": [
+    {
+     "brightness_contrast": [
+      "0x1.39a83411b9a84p+0",
+      "0x1.b47a9ca6b47aap-1"
+     ],
+     "content_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+     "k": 1,
+     "rot90": 3,
+     "seed": "54aa9460b9a834115a3d4e534a0f1db22edbc7599dee604da55ef5712bc8a4eb"
+    },
+    {
+     "brightness_contrast": [
+      "0x1.7cbe33d4fcbe3p+0",
+      "0x1.358cb1a2b58cbp+0"
+     ],
+     "content_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+     "k": 2,
+     "rot90": 2,
+     "seed": "5deabc0efcbe33d4b58cb1a2e16ecddff9a11ee4f272e8c917da5a308c3d7bd9"
+    },
+    {
+     "brightness_contrast": [
+      "0x1.9a1e1dbe9a1e2p-1",
+      "0x1.7a1ceb147a1cfp-1"
+     ],
+     "content_hash": "3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f",
+     "k": 1,
+     "rot90": 1,
+     "seed": "e42812414d0f0edf3d0e758a336770b8b178b4cf995e68e790b3c11aae78d5a0"
+    },
+    {
+     "brightness_contrast": [
+      "0x1.60dfe42ae0dfep+0",
+      "0x1.70421f9c70422p-1"
+     ],
+     "content_hash": "3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f",
+     "k": 2,
+     "rot90": 1,
+     "seed": "245e668ce0dfe42a38210fceb2eeb78e895547f7f0b7856b447456ec201b5416"
+    }
+   ],
+   "geometry": {
+    "bbox": "ac51381f57a3e325233d040981d8b7ac0d81c951a21fe0e1a3f7f742e5c6befa",
+    "classification_tag": "e12b46b1dc25e06ad0c6a4140c8ca1db1b4de9976d7a97afdc5b773e251b01f7",
+    "cuboid_3d": "112a1756b87de85b8cb134450f331fb8fc9ebad8a2acbff9ebf27e87b5fde54c",
+    "mask": "c644d37c6307be62fb832da215b8621f02a7457e1fa117b3949d3cf548b78400",
+    "obb": "ed4baad35a050c455f69ead5e7e37f6383abcd1ee35bcf286bf8681d51fde0c1",
+    "polygon": "de81b996e0e8287190f16dc06a22617b7f46d0dc95a2a6f49cde7a42fa3ad86f",
+    "polyline": "0c29a7fab68d4e617a2206990e8463ffa7ad26611cbbeb89e87ac1689ace6e68",
+    "polyline_3d": "a5c383a73804fb82e427b44227ed7d0bb66c25095ef54c9ecd6108de4c2567dd"
+   },
+   "geometry_showcase": {
+    "bbox": "ac51381f57a3e325233d040981d8b7ac0d81c951a21fe0e1a3f7f742e5c6befa",
+    "classification_tag": "e12b46b1dc25e06ad0c6a4140c8ca1db1b4de9976d7a97afdc5b773e251b01f7",
+    "cuboid_3d": "112a1756b87de85b8cb134450f331fb8fc9ebad8a2acbff9ebf27e87b5fde54c",
+    "mask": "c644d37c6307be62fb832da215b8621f02a7457e1fa117b3949d3cf548b78400",
+    "obb": "ed4baad35a050c455f69ead5e7e37f6383abcd1ee35bcf286bf8681d51fde0c1",
+    "polygon": "de81b996e0e8287190f16dc06a22617b7f46d0dc95a2a6f49cde7a42fa3ad86f",
+    "polyline": "0c29a7fab68d4e617a2206990e8463ffa7ad26611cbbeb89e87ac1689ace6e68",
+    "polyline_3d": "a5c383a73804fb82e427b44227ed7d0bb66c25095ef54c9ecd6108de4c2567dd"
+   },
+   "hash": "6f7bfd74fdfeb7a125ea1079efcf471421e328f75c8f494099ab1e474f5ee5fe",
+   "pixels": {
+    "0": "PNG:RGB:37x23:716a23fd20769b6edcd276d01efe233c563327ab82865717860eb08667ffddbf",
+    "1": "PNG:RGB:37x23:ddfd9b1959481f7b8ac69f6271a2e0d74186013e819b0aa68049bbd227c6ecbb",
+    "2": "PNG:RGB:37x23:b7acd86f564ce8e4eac44053bb40f62b43370112c30f9572ad77acda6d9fc047",
+    "showcase": "PNG:RGB:37x23:9ec5063d0a0d9748702e98e8ca82913b8c56471d6f5af8289d647e225c104479"
+   },
+   "wire": "{\"steps\": [{\"amount\": 0.5, \"kind\": \"augment\", \"op\": \"brightness_contrast\"}], \"target\": null, \"variants_per_asset\": 2}"
+  },
+  "bc-default": {
+   "canonical": "{\"steps\":[{\"amount\":0.2,\"kind\":\"augment\",\"op\":\"brightness_contrast\"}],\"target\":null,\"variants_per_asset\":2}",
+   "document": {
+    "steps": [
+     {
+      "kind": "augment",
+      "op": "brightness_contrast"
+     }
+    ],
+    "target": null,
+    "variants_per_asset": 2
+   },
+   "draws": [
+    {
+     "brightness_contrast": [
+      "0x1.ecca262053309p-1",
+      "0x1.2fd28debfc9f6p+0"
+     ],
+     "content_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+     "k": 1,
+     "rot90": 3,
+     "seed": "2ee9cb0967fcafa8f78e62cd9cd49c6fcb4ee5c3ee9e845280673993499c18c3"
+    },
+    {
+     "brightness_contrast": [
+      "0x1.fc257dab95bf2p-1",
+      "0x1.160642d37c6cbp+0"
+     ],
+     "content_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+     "k": 2,
+     "rot90": 2,
+     "seed": "d24301b37b2edd16b70fa710957278f2298dff52ccf2dff3c51f5f37d88c37f4"
+    },
+    {
+     "brightness_contrast": [
+      "0x1.104300d5dd0fdp+0",
+      "0x1.1c3d927cb5d73p+0"
+     ],
+     "content_hash": "3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f",
+     "k": 1,
+     "rot90": 3,
+     "seed": "6fffb252a8a78216c699ee378a3459dd83de79d8e3ee949e0ae7be1e13abfe34"
+    },
+    {
+     "brightness_contrast": [
+      "0x1.23cef0c3f09bcp+0",
+      "0x1.dfdb43d6aca82p-1"
+     ],
+     "content_hash": "3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f",
+     "k": 2,
+     "rot90": 1,
+     "seed": "e9e0750ed98559e957d214cc736e5b4771293c96026a8f8e0708713f75cbf703"
+    }
+   ],
+   "geometry": {
+    "bbox": "ac51381f57a3e325233d040981d8b7ac0d81c951a21fe0e1a3f7f742e5c6befa",
+    "classification_tag": "e12b46b1dc25e06ad0c6a4140c8ca1db1b4de9976d7a97afdc5b773e251b01f7",
+    "cuboid_3d": "112a1756b87de85b8cb134450f331fb8fc9ebad8a2acbff9ebf27e87b5fde54c",
+    "mask": "c644d37c6307be62fb832da215b8621f02a7457e1fa117b3949d3cf548b78400",
+    "obb": "ed4baad35a050c455f69ead5e7e37f6383abcd1ee35bcf286bf8681d51fde0c1",
+    "polygon": "de81b996e0e8287190f16dc06a22617b7f46d0dc95a2a6f49cde7a42fa3ad86f",
+    "polyline": "0c29a7fab68d4e617a2206990e8463ffa7ad26611cbbeb89e87ac1689ace6e68",
+    "polyline_3d": "a5c383a73804fb82e427b44227ed7d0bb66c25095ef54c9ecd6108de4c2567dd"
+   },
+   "geometry_showcase": {
+    "bbox": "ac51381f57a3e325233d040981d8b7ac0d81c951a21fe0e1a3f7f742e5c6befa",
+    "classification_tag": "e12b46b1dc25e06ad0c6a4140c8ca1db1b4de9976d7a97afdc5b773e251b01f7",
+    "cuboid_3d": "112a1756b87de85b8cb134450f331fb8fc9ebad8a2acbff9ebf27e87b5fde54c",
+    "mask": "c644d37c6307be62fb832da215b8621f02a7457e1fa117b3949d3cf548b78400",
+    "obb": "ed4baad35a050c455f69ead5e7e37f6383abcd1ee35bcf286bf8681d51fde0c1",
+    "polygon": "de81b996e0e8287190f16dc06a22617b7f46d0dc95a2a6f49cde7a42fa3ad86f",
+    "polyline": "0c29a7fab68d4e617a2206990e8463ffa7ad26611cbbeb89e87ac1689ace6e68",
+    "polyline_3d": "a5c383a73804fb82e427b44227ed7d0bb66c25095ef54c9ecd6108de4c2567dd"
+   },
+   "hash": "303f6ca884dec19d543b6fbf3ebb4664b6c7e29caaa4f522c1bad209c96efb4a",
+   "pixels": {
+    "0": "PNG:RGB:37x23:716a23fd20769b6edcd276d01efe233c563327ab82865717860eb08667ffddbf",
+    "1": "PNG:RGB:37x23:6c65ecea753391e0e10b0479a1c7e7ad07d0b71003a95afc54af1adba76b2487",
+    "2": "PNG:RGB:37x23:9f7855b3d73135af3d3662d3f52e148cc6ec0f8de80bfda3bd3880318e4b2fb7",
+    "showcase": "PNG:RGB:37x23:527a2d7becc1805d33de0cdbc53a2ba45541b76924611c7004f4b363b30ba784"
+   },
+   "wire": "{\"steps\": [{\"amount\": 0.2, \"kind\": \"augment\", \"op\": \"brightness_contrast\"}], \"target\": null, \"variants_per_asset\": 2}"
+  },
+  "bc-rot90": {
+   "canonical": "{\"steps\":[{\"amount\":0.3,\"kind\":\"augment\",\"op\":\"brightness_contrast\"},{\"amount\":0.2,\"kind\":\"augment\",\"op\":\"rot90\"}],\"target\":null,\"variants_per_asset\":2}",
+   "document": {
+    "steps": [
+     {
+      "amount": 0.3,
+      "kind": "augment",
+      "op": "brightness_contrast"
+     },
+     {
+      "kind": "augment",
+      "op": "rot90"
+     }
+    ],
+    "target": null,
+    "variants_per_asset": 2
+   },
+   "draws": [
+    {
+     "brightness_contrast": [
+      "0x1.e3636b6a1696ap-1",
+      "0x1.c72e3d7193fb0p-1"
+     ],
+     "content_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+     "k": 1,
+     "rot90": 1,
+     "seed": "c846c0a968282ed850a688899d753ae54e092e57d014e27cabd5fc560720a356"
+    },
+    {
+     "brightness_contrast": [
+      "0x1.25996e25a5996p+0",
+      "0x1.c493e6c32afa4p-1"
+     ],
+     "content_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+     "k": 2,
+     "rot90": 2,
+     "seed": "ea7194edbeaa623e4e7b404d644cf7768bef7e318adbdd264f54015ea3600a3c"
+    },
+    {
+     "brightness_contrast": [
+      "0x1.22689dad6f356p+0",
+      "0x1.3f94e7358c61bp+0"
+     ],
+     "content_hash": "3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f",
+     "k": 1,
+     "rot90": 1,
+     "seed": "88b87654b95906cbe9f82c034359cd86221b021b635b8753b954967e24456989"
+    },
+    {
+     "brightness_contrast": [
+      "0x1.4ab27b63977f4p+0",
+      "0x1.70e51f0670e52p-1"
+     ],
+     "content_hash": "3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f",
+     "k": 2,
+     "rot90": 1,
+     "seed": "9eea0994fc7ecda508beef30d2c8b11312b4a948c90b19a2a862137de3233f08"
+    }
+   ],
+   "geometry": {
+    "bbox": "256db13bc5db51e19a21ea8837fff697146c005ba57ae56d66612f326e71f653",
+    "classification_tag": "27103c7516f31b7efd4b6caa5cb7e23f6cb55dcab46c0116b0b1a8375e801fad",
+    "cuboid_3d": "refused PreprocessingStepUnsupportedGeometry: the 'rot90' step cannot transform a cuboid_3d (asset 00000000-0000-0000-0000-00000000b006 carries one). Remove the step, or export a release without cuboid_3d labels",
+    "mask": "637845b3b4124db5fcb9a7be4bb3c266e5371d5d1af1e107bb7fdf53d1b03f11",
+    "obb": "05538fb7a788ee17d005c632c0c3a431956cc659f8d289ebe194cd1532d5b6e7",
+    "polygon": "84a1c637c1f8a249afeb0db56914319ba29aeb2cf0fd05cf774d215916d9c8a5",
+    "polyline": "refused PreprocessingStepUnsupportedGeometry: the 'rot90' step cannot transform a polyline (asset 00000000-0000-0000-0000-00000000b004 carries one). Remove the step, or export a release without polyline labels",
+    "polyline_3d": "refused PreprocessingStepUnsupportedGeometry: the 'rot90' step cannot transform a polyline_3d (asset 00000000-0000-0000-0000-00000000b007 carries one). Remove the step, or export a release without polyline_3d labels"
+   },
+   "geometry_showcase": {
+    "bbox": "256db13bc5db51e19a21ea8837fff697146c005ba57ae56d66612f326e71f653",
+    "classification_tag": "27103c7516f31b7efd4b6caa5cb7e23f6cb55dcab46c0116b0b1a8375e801fad",
+    "cuboid_3d": "refused PreprocessingStepUnsupportedGeometry: the 'rot90' step cannot transform a cuboid_3d (asset 00000000-0000-0000-0000-00000000b006 carries one). Remove the step, or export a release without cuboid_3d labels",
+    "mask": "637845b3b4124db5fcb9a7be4bb3c266e5371d5d1af1e107bb7fdf53d1b03f11",
+    "obb": "05538fb7a788ee17d005c632c0c3a431956cc659f8d289ebe194cd1532d5b6e7",
+    "polygon": "84a1c637c1f8a249afeb0db56914319ba29aeb2cf0fd05cf774d215916d9c8a5",
+    "polyline": "refused PreprocessingStepUnsupportedGeometry: the 'rot90' step cannot transform a polyline (asset 00000000-0000-0000-0000-00000000b004 carries one). Remove the step, or export a release without polyline labels",
+    "polyline_3d": "refused PreprocessingStepUnsupportedGeometry: the 'rot90' step cannot transform a polyline_3d (asset 00000000-0000-0000-0000-00000000b007 carries one). Remove the step, or export a release without polyline_3d labels"
+   },
+   "hash": "6451a5552b2d5d79dc550da09d262ac2928d6357a8333713098b2c9ef1f9dcd2",
+   "pixels": {
+    "0": "PNG:RGB:37x23:716a23fd20769b6edcd276d01efe233c563327ab82865717860eb08667ffddbf",
+    "1": "PNG:RGB:37x23:b98c3c72007a70cabddd729e146011fe76b0462f6366e9d82eed93f0ad932476",
+    "2": "PNG:RGB:23x37:d1049684db808db3e9a3f429652194739e758b60a9b512d96174b07b37698bfc",
+    "showcase": "PNG:RGB:23x37:12d879cd888f8a5635fa99679a36b4d3410fcff0c641e281970f8d05b9bf884d"
+   },
+   "wire": "{\"steps\": [{\"amount\": 0.3, \"kind\": \"augment\", \"op\": \"brightness_contrast\"}, {\"amount\": 0.2, \"kind\": \"augment\", \"op\": \"rot90\"}], \"target\": null, \"variants_per_asset\": 2}"
+  },
+  "empty": {
+   "canonical": "{\"steps\":[],\"target\":null,\"variants_per_asset\":0}",
+   "document": {
+    "steps": [],
+    "target": null,
+    "variants_per_asset": 0
+   },
+   "draws": [],
+   "geometry": {
+    "bbox": "5219c67880b6a0c79151f8d096ec5b4addfa98319d06f0dd3a5c8a2d98197d57",
+    "classification_tag": "ac6881f523d3f928c5a5cc8774b98b297be0e9dbe59c34bb4afab83ea327d962",
+    "cuboid_3d": "36c5bb0bc42740798f6e53f2fae040bf6c6148ea9994b887ea5704f8fc49e115",
+    "mask": "69775275004f962a30b0577f7e6d9a4f41d51e8514b967124638bf3ff401d513",
+    "obb": "c266400eb40686162d69df0f1c5445de93957b173b4b28cbaa80110351bd60ab",
+    "polygon": "579c11bb55ad0840cd8081d3fc2fa8267953f2632970b92dd1b5442339901eb4",
+    "polyline": "279cdd603f56bf4fe13a5c09921729ba89d37675df5ef6128f465e3fd12679b5",
+    "polyline_3d": "489e4bd19f8476c3508fb3a7940754300add5be52dad106b32935ea952af75ff"
+   },
+   "geometry_showcase": {},
+   "hash": "aae494d6daf5ad403216ea434545425cb82efba126bf88cc293fdb9bfe30ff6a",
+   "pixels": {
+    "0": "PNG:RGB:37x23:716a23fd20769b6edcd276d01efe233c563327ab82865717860eb08667ffddbf"
+   },
+   "wire": "{\"steps\": [], \"target\": null, \"variants_per_asset\": 0}"
+  },
+  "hflip": {
+   "canonical": "{\"steps\":[{\"amount\":0.2,\"kind\":\"augment\",\"op\":\"hflip\"}],\"target\":null,\"variants_per_asset\":1}",
+   "document": {
+    "steps": [
+     {
+      "kind": "augment",
+      "op": "hflip"
+     }
+    ],
+    "target": null,
+    "variants_per_asset": 1
+   },
+   "draws": [
+    {
+     "content_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+     "k": 1,
+     "rot90": 1,
+     "seed": "b05b6eca34857a59d7edcbf1abb4f0512d1d4b35709724a24754effbcce0324a"
+    },
+    {
+     "content_hash": "3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f",
+     "k": 1,
+     "rot90": 3,
+     "seed": "20545a8accd16d6eb1c520572e6e9338173feb0ab6fe47c987c094a64cdc55d2"
+    }
+   ],
+   "geometry": {
+    "bbox": "8af224df6b4d4bcaff0940ad2986014183ec22805f7d0f42295346af0049f054",
+    "classification_tag": "b68685b67803fab50a220309ae70050225dd43420967c2ecbad38d75b9a1f29a",
+    "cuboid_3d": "refused PreprocessingStepUnsupportedGeometry: the 'hflip' step cannot transform a cuboid_3d (asset 00000000-0000-0000-0000-00000000b006 carries one). Remove the step, or export a release without cuboid_3d labels",
+    "mask": "1a29cb15859a101c76b4e470d3b9cdebeb9bef7fdb9d1ccbd5dda92706404714",
+    "obb": "5d44c3941fe3c77b83a81e8f17c1eed6982fe507f4f7b7b47f1dfa083c4b4476",
+    "polygon": "b1e1f4cb14702da6db3875c5dd69c4bc1e9e848ef75d6402bc52f4eb594f65a3",
+    "polyline": "44a84406d4a8cd455dd21a0189d6639330648e3627d0c08f05d8a9639003baf5",
+    "polyline_3d": "refused PreprocessingStepUnsupportedGeometry: the 'hflip' step cannot transform a polyline_3d (asset 00000000-0000-0000-0000-00000000b007 carries one). Remove the step, or export a release without polyline_3d labels"
+   },
+   "geometry_showcase": {
+    "bbox": "8af224df6b4d4bcaff0940ad2986014183ec22805f7d0f42295346af0049f054",
+    "classification_tag": "b68685b67803fab50a220309ae70050225dd43420967c2ecbad38d75b9a1f29a",
+    "cuboid_3d": "refused PreprocessingStepUnsupportedGeometry: the 'hflip' step cannot transform a cuboid_3d (asset 00000000-0000-0000-0000-00000000b006 carries one). Remove the step, or export a release without cuboid_3d labels",
+    "mask": "1a29cb15859a101c76b4e470d3b9cdebeb9bef7fdb9d1ccbd5dda92706404714",
+    "obb": "5d44c3941fe3c77b83a81e8f17c1eed6982fe507f4f7b7b47f1dfa083c4b4476",
+    "polygon": "b1e1f4cb14702da6db3875c5dd69c4bc1e9e848ef75d6402bc52f4eb594f65a3",
+    "polyline": "44a84406d4a8cd455dd21a0189d6639330648e3627d0c08f05d8a9639003baf5",
+    "polyline_3d": "refused PreprocessingStepUnsupportedGeometry: the 'hflip' step cannot transform a polyline_3d (asset 00000000-0000-0000-0000-00000000b007 carries one). Remove the step, or export a release without polyline_3d labels"
+   },
+   "hash": "26954ab4089eb2a44beaa1ad13beb573a13c5e31a221b39060cce4cc8d246aed",
+   "pixels": {
+    "0": "PNG:RGB:37x23:716a23fd20769b6edcd276d01efe233c563327ab82865717860eb08667ffddbf",
+    "1": "PNG:RGB:37x23:a2cd7fff8ee8d020ae58e6a33d14995b21770b0691ea3f57d3b60fcbed9515e9",
+    "showcase": "PNG:RGB:37x23:a2cd7fff8ee8d020ae58e6a33d14995b21770b0691ea3f57d3b60fcbed9515e9"
+   },
+   "wire": "{\"steps\": [{\"amount\": 0.2, \"kind\": \"augment\", \"op\": \"hflip\"}], \"target\": null, \"variants_per_asset\": 1}"
+  },
+  "hflip-amount": {
+   "canonical": "{\"steps\":[{\"amount\":0.45,\"kind\":\"augment\",\"op\":\"hflip\"}],\"target\":null,\"variants_per_asset\":2}",
+   "document": {
+    "steps": [
+     {
+      "amount": 0.45,
+      "kind": "augment",
+      "op": "hflip"
+     }
+    ],
+    "target": null,
+    "variants_per_asset": 2
+   },
+   "draws": [
+    {
+     "content_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+     "k": 1,
+     "rot90": 2,
+     "seed": "7956c70220f5a036dc8a80edb5f68da2774bed8d85723128a7019c4f572a5759"
+    },
+    {
+     "content_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+     "k": 2,
+     "rot90": 1,
+     "seed": "e47f97236894981ae856c316d98148415014ab980d762baf7f4f91b33585e4e2"
+    },
+    {
+     "content_hash": "3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f",
+     "k": 1,
+     "rot90": 3,
+     "seed": "32d531bad2837411cff996b8b2bb24037de2cf5046441d303fde0c1fca1293bd"
+    },
+    {
+     "content_hash": "3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f",
+     "k": 2,
+     "rot90": 1,
+     "seed": "20e55ddab6afc12075ffaf0e3f3e5ad97ae65d2bfff2b63cbd281c7681b4c30a"
+    }
+   ],
+   "geometry": {
+    "bbox": "6c12cb3ae8102b0c4ddba8cb6319f809c8fa5e0afa7308ab0632cc1c6a9e9ce6",
+    "classification_tag": "e12b46b1dc25e06ad0c6a4140c8ca1db1b4de9976d7a97afdc5b773e251b01f7",
+    "cuboid_3d": "refused PreprocessingStepUnsupportedGeometry: the 'hflip' step cannot transform a cuboid_3d (asset 00000000-0000-0000-0000-00000000b006 carries one). Remove the step, or export a release without cuboid_3d labels",
+    "mask": "d092b5cdda2afe3981e8d9b0b09f07db606e2e915975c25b8a2afb5eaff7536c",
+    "obb": "e040087bdc00b0ade4786817141d8ee9362a320f655ffc59c07c11d65d8e06c6",
+    "polygon": "c748eaed86a8c9b59bd45fec880f513643017774b9abd31a35eefa38f5560d56",
+    "polyline": "39b6ce1a806f5a6b54761ddad4e89b57d6fa8108ffc6e53b881823ba3a06117d",
+    "polyline_3d": "refused PreprocessingStepUnsupportedGeometry: the 'hflip' step cannot transform a polyline_3d (asset 00000000-0000-0000-0000-00000000b007 carries one). Remove the step, or export a release without polyline_3d labels"
+   },
+   "geometry_showcase": {
+    "bbox": "6c12cb3ae8102b0c4ddba8cb6319f809c8fa5e0afa7308ab0632cc1c6a9e9ce6",
+    "classification_tag": "e12b46b1dc25e06ad0c6a4140c8ca1db1b4de9976d7a97afdc5b773e251b01f7",
+    "cuboid_3d": "refused PreprocessingStepUnsupportedGeometry: the 'hflip' step cannot transform a cuboid_3d (asset 00000000-0000-0000-0000-00000000b006 carries one). Remove the step, or export a release without cuboid_3d labels",
+    "mask": "d092b5cdda2afe3981e8d9b0b09f07db606e2e915975c25b8a2afb5eaff7536c",
+    "obb": "e040087bdc00b0ade4786817141d8ee9362a320f655ffc59c07c11d65d8e06c6",
+    "polygon": "c748eaed86a8c9b59bd45fec880f513643017774b9abd31a35eefa38f5560d56",
+    "polyline": "39b6ce1a806f5a6b54761ddad4e89b57d6fa8108ffc6e53b881823ba3a06117d",
+    "polyline_3d": "refused PreprocessingStepUnsupportedGeometry: the 'hflip' step cannot transform a polyline_3d (asset 00000000-0000-0000-0000-00000000b007 carries one). Remove the step, or export a release without polyline_3d labels"
+   },
+   "hash": "b07f92053de41b27f34daa8b0a42fdf5133106cfa2579fc0c5e0f03b60186299",
+   "pixels": {
+    "0": "PNG:RGB:37x23:716a23fd20769b6edcd276d01efe233c563327ab82865717860eb08667ffddbf",
+    "1": "PNG:RGB:37x23:a2cd7fff8ee8d020ae58e6a33d14995b21770b0691ea3f57d3b60fcbed9515e9",
+    "2": "PNG:RGB:37x23:a2cd7fff8ee8d020ae58e6a33d14995b21770b0691ea3f57d3b60fcbed9515e9",
+    "showcase": "PNG:RGB:37x23:a2cd7fff8ee8d020ae58e6a33d14995b21770b0691ea3f57d3b60fcbed9515e9"
+   },
+   "wire": "{\"steps\": [{\"amount\": 0.45, \"kind\": \"augment\", \"op\": \"hflip\"}], \"target\": null, \"variants_per_asset\": 2}"
+  },
+  "hflip-rot90": {
+   "canonical": "{\"steps\":[{\"amount\":0.2,\"kind\":\"augment\",\"op\":\"hflip\"},{\"amount\":0.2,\"kind\":\"augment\",\"op\":\"rot90\"}],\"target\":null,\"variants_per_asset\":4}",
+   "document": {
+    "steps": [
+     {
+      "kind": "augment",
+      "op": "hflip"
+     },
+     {
+      "kind": "augment",
+      "op": "rot90"
+     }
+    ],
+    "target": null,
+    "variants_per_asset": 4
+   },
+   "draws": [
+    {
+     "content_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+     "k": 1,
+     "rot90": 3,
+     "seed": "98589908f1aa550b2e3c8610855d6646be2f172f3fad26ef0561cb03745eb729"
+    },
+    {
+     "content_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+     "k": 2,
+     "rot90": 3,
+     "seed": "2471533c77ba31bd4ce91a1c6f49235cbd1b6c47d4afd7b2af325bbe69b21a37"
+    },
+    {
+     "content_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+     "k": 3,
+     "rot90": 2,
+     "seed": "726be4cdbb472d02b188bee30ffd8c4cf55ac16113e583acf1ab5cc5301406f6"
+    },
+    {
+     "content_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+     "k": 4,
+     "rot90": 1,
+     "seed": "5ac9fe2ab63f2276055cea1a15e2b603930060ebda7ca62c03c8898064b4ef5b"
+    },
+    {
+     "content_hash": "3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f",
+     "k": 1,
+     "rot90": 1,
+     "seed": "8d4b3fff02bda936acaef2183a0e8b355b450580734b7a8aa0acddb36dbcc787"
+    },
+    {
+     "content_hash": "3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f",
+     "k": 2,
+     "rot90": 2,
+     "seed": "e2462f96cf5121fab2157d4e172fd44c0e32979477d1152bb8c7e125124677b1"
+    },
+    {
+     "content_hash": "3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f",
+     "k": 3,
+     "rot90": 3,
+     "seed": "58298dfb22909b35a3aaf77fcf8442c51fe7c9d729d249bb231024aa4aace2c9"
+    },
+    {
+     "content_hash": "3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f",
+     "k": 4,
+     "rot90": 3,
+     "seed": "7cbbf3022306108e144f3430310cc721b10b07fe639a8fe5f729e17b19d2c006"
+    }
+   ],
+   "geometry": {
+    "bbox": "f2f61e89a1c3004a7a03b3a0a5f3d2f5f7a0351ba148590829b2cd507aeb2e09",
+    "classification_tag": "df210bf42d8f0cd332b2b58ee775dbffab4d028defbe93ed921e22ac18f9e807",
+    "cuboid_3d": "refused PreprocessingStepUnsupportedGeometry: the 'hflip' step cannot transform a cuboid_3d (asset 00000000-0000-0000-0000-00000000b006 carries one). Remove the step, or export a release without cuboid_3d labels",
+    "mask": "da3011e82dc902c4e90b591583b3422a90170ea986e80310e7d0950d5812d27c",
+    "obb": "2636483a12cfe695f94006293342d9a456dbc8a62d445f5268c42ffe7afb481d",
+    "polygon": "f92c55843b2d1a0e73cd40ba8d1692a0141967d8558896d42d51e5e4c357437b",
+    "polyline": "refused PreprocessingStepUnsupportedGeometry: the 'rot90' step cannot transform a polyline (asset 00000000-0000-0000-0000-00000000b004 carries one). Remove the step, or export a release without polyline labels",
+    "polyline_3d": "refused PreprocessingStepUnsupportedGeometry: the 'hflip' step cannot transform a polyline_3d (asset 00000000-0000-0000-0000-00000000b007 carries one). Remove the step, or export a release without polyline_3d labels"
+   },
+   "geometry_showcase": {
+    "bbox": "3efda9adda8290e7359368da1a1e53f13c6065eeeb86ada188e14b3371585f48",
+    "classification_tag": "22ebc8ce76029f250c5591a215821b2c1a92bd0af11f6c9fe14b8dedcd50b6a0",
+    "cuboid_3d": "refused PreprocessingStepUnsupportedGeometry: the 'hflip' step cannot transform a cuboid_3d (asset 00000000-0000-0000-0000-00000000b006 carries one). Remove the step, or export a release without cuboid_3d labels",
+    "mask": "c9dd0874803878248e7e65e550bcfd9f51f01def5cf9083afa28c4824f917d39",
+    "obb": "e25d4c4b7bb0b3821948009aaa988f34f728b351a4d36f83719f0324d0ec7474",
+    "polygon": "7e1088627c2606c188253babe1ca82c78722705d8191b0545ce9df6d552916f3",
+    "polyline": "refused PreprocessingStepUnsupportedGeometry: the 'rot90' step cannot transform a polyline (asset 00000000-0000-0000-0000-00000000b004 carries one). Remove the step, or export a release without polyline labels",
+    "polyline_3d": "refused PreprocessingStepUnsupportedGeometry: the 'hflip' step cannot transform a polyline_3d (asset 00000000-0000-0000-0000-00000000b007 carries one). Remove the step, or export a release without polyline_3d labels"
+   },
+   "hash": "397286daacfa8b380d26b2fe813b694e87982de764007d49609c60f23aeb2c4a",
+   "pixels": {
+    "0": "PNG:RGB:37x23:716a23fd20769b6edcd276d01efe233c563327ab82865717860eb08667ffddbf",
+    "1": "PNG:RGB:23x37:dce3b0684b5e3843b7f62b90ddb931c8a0bd0d36061a9f5aa089492e2396bd03",
+    "2": "PNG:RGB:23x37:04314fa7f9b29a865f8158fcdb9573ecbb37a3daaccd9ad889addc230dee69ab",
+    "3": "PNG:RGB:23x37:04314fa7f9b29a865f8158fcdb9573ecbb37a3daaccd9ad889addc230dee69ab",
+    "4": "PNG:RGB:23x37:dce3b0684b5e3843b7f62b90ddb931c8a0bd0d36061a9f5aa089492e2396bd03",
+    "showcase": "PNG:RGB:23x37:04314fa7f9b29a865f8158fcdb9573ecbb37a3daaccd9ad889addc230dee69ab"
+   },
+   "wire": "{\"steps\": [{\"amount\": 0.2, \"kind\": \"augment\", \"op\": \"hflip\"}, {\"amount\": 0.2, \"kind\": \"augment\", \"op\": \"rot90\"}], \"target\": null, \"variants_per_asset\": 4}"
+  },
+  "resize-center_crop": {
+   "canonical": "{\"steps\":[{\"height\":48,\"kind\":\"resize\",\"pad_value\":114,\"strategy\":\"center_crop\",\"width\":64}],\"target\":null,\"variants_per_asset\":0}",
+   "document": {
+    "steps": [
+     {
+      "height": 48,
+      "kind": "resize",
+      "strategy": "center_crop",
+      "width": 64
+     }
+    ],
+    "target": null,
+    "variants_per_asset": 0
+   },
+   "draws": [],
+   "geometry": {
+    "bbox": "d48938cb15afaf3577675aa1582fb5bceb5a6f65fe645ec0b216956601927cb5",
+    "classification_tag": "c25ee64be65c1a6671e6a7043a19b6008b2c80f0ea18b0f5d804d574df4fcdfc",
+    "cuboid_3d": "refused PreprocessingStepUnsupportedGeometry: the 'resize' step cannot transform a cuboid_3d (asset 00000000-0000-0000-0000-00000000b006 carries one). Remove the step, or export a release without cuboid_3d labels",
+    "mask": "refused PreprocessingStepUnsupportedGeometry: the 'resize' step cannot transform a mask (asset 00000000-0000-0000-0000-00000000b003 carries one). Remove the step, or export a release without mask labels",
+    "obb": "refused PreprocessingStepUnsupportedGeometry: the 'resize' step cannot transform a obb (asset 00000000-0000-0000-0000-00000000b001 carries one). Remove the step, or export a release without obb labels",
+    "polygon": "61e274f52952e8e530898477d428fb72b0c179246d5b7a6c8daa114d31bd01a4",
+    "polyline": "refused PreprocessingStepUnsupportedGeometry: the 'resize' step cannot transform a polyline (asset 00000000-0000-0000-0000-00000000b004 carries one). Remove the step, or export a release without polyline labels",
+    "polyline_3d": "refused PreprocessingStepUnsupportedGeometry: the 'resize' step cannot transform a polyline_3d (asset 00000000-0000-0000-0000-00000000b007 carries one). Remove the step, or export a release without polyline_3d labels"
+   },
+   "geometry_showcase": {},
+   "hash": "379ef29b8dd205ab5364fe2cd9f5efb33856bc6e0c16172ec00189058a652005",
+   "pixels": {
+    "0": "PNG:RGB:64x48:2e590b10f135fe35ea055909c6d4a915a1524dbbbed70945c4319aec6caf80d9"
+   },
+   "wire": "{\"steps\": [{\"height\": 48, \"kind\": \"resize\", \"pad_value\": 114, \"strategy\": \"center_crop\", \"width\": 64}], \"target\": null, \"variants_per_asset\": 0}"
+  },
+  "resize-center_crop-all": {
+   "canonical": "{\"steps\":[{\"height\":64,\"kind\":\"resize\",\"pad_value\":7,\"strategy\":\"center_crop\",\"width\":48},{\"amount\":0.2,\"kind\":\"augment\",\"op\":\"rot90\"},{\"amount\":0.4,\"kind\":\"augment\",\"op\":\"brightness_contrast\"},{\"amount\":0.2,\"kind\":\"augment\",\"op\":\"hflip\"}],\"target\":\"ultralytics\",\"variants_per_asset\":2}",
+   "document": {
+    "steps": [
+     {
+      "height": 64,
+      "kind": "resize",
+      "pad_value": 7,
+      "strategy": "center_crop",
+      "width": 48
+     },
+     {
+      "kind": "augment",
+      "op": "rot90"
+     },
+     {
+      "amount": 0.4,
+      "kind": "augment",
+      "op": "brightness_contrast"
+     },
+     {
+      "kind": "augment",
+      "op": "hflip"
+     }
+    ],
+    "target": "ultralytics",
+    "variants_per_asset": 2
+   },
+   "draws": [
+    {
+     "brightness_contrast": [
+      "0x1.38e9c5a56c1d0p+0",
+      "0x1.63937d77fd2d2p+0"
+     ],
+     "content_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+     "k": 1,
+     "rot90": 2,
+     "seed": "a2bc8074c724370efc785cd533802b2bd5e0d882f043d34a30af670d10a81162"
+    },
+    {
+     "brightness_contrast": [
+      "0x1.8c5d3d938c5d4p-1",
+      "0x1.6f74bb483c418p-1"
+     ],
+     "content_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+     "k": 2,
+     "rot90": 1,
+     "seed": "5aa1f17b37ba467c25a8f50dedf92f528e799c2002c43568f324814579bb4fc6"
+    },
+    {
+     "brightness_contrast": [
+      "0x1.452e24f6452e2p+0",
+      "0x1.c05f3a6ef3926p-1"
+     ],
+     "content_hash": "3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f",
+     "k": 1,
+     "rot90": 2,
+     "seed": "740fe678d679ae33583b8485830857a539e739daf0f20c039f1e34d5647771e3"
+    },
+    {
+     "brightness_contrast": [
+      "0x1.2add49c95e108p+0",
+      "0x1.125dd2fadf2aap+0"
+     ],
+     "content_hash": "3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f",
+     "k": 2,
+     "rot90": 2,
+     "seed": "338ad31eb5949c3b96f547b957ff41c251754d728496c0b06f862d8f53622d4d"
+    }
+   ],
+   "geometry": {
+    "bbox": "0aefc602004c79e635d73804f19323a62a03513f03307b0c1f3fa8cb481fe3dc",
+    "classification_tag": "ca9ba7e9f3b47e34de22c12a62777895a20cda8f01f23e576a13d9199b4bc477",
+    "cuboid_3d": "refused PreprocessingStepUnsupportedGeometry: the 'resize' step cannot transform a cuboid_3d (asset 00000000-0000-0000-0000-00000000b006 carries one). Remove the step, or export a release without cuboid_3d labels",
+    "mask": "refused PreprocessingStepUnsupportedGeometry: the 'resize' step cannot transform a mask (asset 00000000-0000-0000-0000-00000000b003 carries one). Remove the step, or export a release without mask labels",
+    "obb": "refused PreprocessingStepUnsupportedGeometry: the 'resize' step cannot transform a obb (asset 00000000-0000-0000-0000-00000000b001 carries one). Remove the step, or export a release without obb labels",
+    "polygon": "e67294ec357d2c26c9edab95f70f4067bfe4331ca154037f49574b0fc1197c38",
+    "polyline": "refused PreprocessingStepUnsupportedGeometry: the 'resize' step cannot transform a polyline (asset 00000000-0000-0000-0000-00000000b004 carries one). Remove the step, or export a release without polyline labels",
+    "polyline_3d": "refused PreprocessingStepUnsupportedGeometry: the 'resize' step cannot transform a polyline_3d (asset 00000000-0000-0000-0000-00000000b007 carries one). Remove the step, or export a release without polyline_3d labels"
+   },
+   "geometry_showcase": {
+    "bbox": "50518dbb74779b2744b7a364362624f37b450f53491a9d58909b8b2ed28bf43d",
+    "classification_tag": "5ca99525cb9bc8b02c71feab6a2d8ac5470e88640a95df083b8794726587b535",
+    "cuboid_3d": "refused PreprocessingStepUnsupportedGeometry: the 'resize' step cannot transform a cuboid_3d (asset 00000000-0000-0000-0000-00000000b006 carries one). Remove the step, or export a release without cuboid_3d labels",
+    "mask": "refused PreprocessingStepUnsupportedGeometry: the 'resize' step cannot transform a mask (asset 00000000-0000-0000-0000-00000000b003 carries one). Remove the step, or export a release without mask labels",
+    "obb": "refused PreprocessingStepUnsupportedGeometry: the 'resize' step cannot transform a obb (asset 00000000-0000-0000-0000-00000000b001 carries one). Remove the step, or export a release without obb labels",
+    "polygon": "4e8cd239f80c97c31c47f7191c4d01615427d53938335072b4b40470a5570159",
+    "polyline": "refused PreprocessingStepUnsupportedGeometry: the 'resize' step cannot transform a polyline (asset 00000000-0000-0000-0000-00000000b004 carries one). Remove the step, or export a release without polyline labels",
+    "polyline_3d": "refused PreprocessingStepUnsupportedGeometry: the 'resize' step cannot transform a polyline_3d (asset 00000000-0000-0000-0000-00000000b007 carries one). Remove the step, or export a release without polyline_3d labels"
+   },
+   "hash": "f9b79a301ced16c525cd5216d445879b5fe5c6dcc86e90524cf6c0b80649dd67",
+   "pixels": {
+    "0": "PNG:RGB:48x64:2869c77cdb1ba34c72a8feb7ce5c657cf2783820713948cbb1e5d9a94184b1ec",
+    "1": "PNG:RGB:64x48:9ce2436881eba55719b9200ba082c318bfd2176f1c0989f095568073da3979ed",
+    "2": "PNG:RGB:64x48:91e7cc13450f1f407cca8a579919f4302b1decf493f66b650afe483938d2d0e6",
+    "showcase": "PNG:RGB:64x48:e88b1aace12c4df921e6b8179913f92d2130e69414142116a26f6c704cf876e5"
+   },
+   "wire": "{\"steps\": [{\"height\": 64, \"kind\": \"resize\", \"pad_value\": 7, \"strategy\": \"center_crop\", \"width\": 48}, {\"amount\": 0.2, \"kind\": \"augment\", \"op\": \"rot90\"}, {\"amount\": 0.4, \"kind\": \"augment\", \"op\": \"brightness_contrast\"}, {\"amount\": 0.2, \"kind\": \"augment\", \"op\": \"hflip\"}], \"target\": \"ultralytics\", \"variants_per_asset\": 2}"
+  },
+  "resize-fill": {
+   "canonical": "{\"steps\":[{\"height\":48,\"kind\":\"resize\",\"pad_value\":114,\"strategy\":\"fill\",\"width\":64}],\"target\":null,\"variants_per_asset\":0}",
+   "document": {
+    "steps": [
+     {
+      "height": 48,
+      "kind": "resize",
+      "strategy": "fill",
+      "width": 64
+     }
+    ],
+    "target": null,
+    "variants_per_asset": 0
+   },
+   "draws": [],
+   "geometry": {
+    "bbox": "884ae01a2749db5d4d0a1c8268ac8899bbc34c369ee4263ef5a81e8d598e50d4",
+    "classification_tag": "c25ee64be65c1a6671e6a7043a19b6008b2c80f0ea18b0f5d804d574df4fcdfc",
+    "cuboid_3d": "refused PreprocessingStepUnsupportedGeometry: the 'resize' step cannot transform a cuboid_3d (asset 00000000-0000-0000-0000-00000000b006 carries one). Remove the step, or export a release without cuboid_3d labels",
+    "mask": "refused PreprocessingStepUnsupportedGeometry: the 'resize' step cannot transform a mask (asset 00000000-0000-0000-0000-00000000b003 carries one). Remove the step, or export a release without mask labels",
+    "obb": "refused PreprocessingStepUnsupportedGeometry: the 'resize' step cannot transform a obb (asset 00000000-0000-0000-0000-00000000b001 carries one). Remove the step, or export a release without obb labels",
+    "polygon": "40e85e7eac3c8fcc408668c874407976b39cae2c35b7f499759616cea47fe886",
+    "polyline": "refused PreprocessingStepUnsupportedGeometry: the 'resize' step cannot transform a polyline (asset 00000000-0000-0000-0000-00000000b004 carries one). Remove the step, or export a release without polyline labels",
+    "polyline_3d": "refused PreprocessingStepUnsupportedGeometry: the 'resize' step cannot transform a polyline_3d (asset 00000000-0000-0000-0000-00000000b007 carries one). Remove the step, or export a release without polyline_3d labels"
+   },
+   "geometry_showcase": {},
+   "hash": "eee76114f21c894919e23dda26a924db799011f94b115e782b472aa77f2dd0d7",
+   "pixels": {
+    "0": "PNG:RGB:64x48:5a6741a28687ec6d196385a01391c791a2bc896e4f2e415b3c7a719556c781ed"
+   },
+   "wire": "{\"steps\": [{\"height\": 48, \"kind\": \"resize\", \"pad_value\": 114, \"strategy\": \"fill\", \"width\": 64}], \"target\": null, \"variants_per_asset\": 0}"
+  },
+  "resize-fill-all": {
+   "canonical": "{\"steps\":[{\"height\":64,\"kind\":\"resize\",\"pad_value\":7,\"strategy\":\"fill\",\"width\":48},{\"amount\":0.2,\"kind\":\"augment\",\"op\":\"rot90\"},{\"amount\":0.4,\"kind\":\"augment\",\"op\":\"brightness_contrast\"},{\"amount\":0.2,\"kind\":\"augment\",\"op\":\"hflip\"}],\"target\":\"ultralytics\",\"variants_per_asset\":2}",
+   "document": {
+    "steps": [
+     {
+      "height": 64,
+      "kind": "resize",
+      "pad_value": 7,
+      "strategy": "fill",
+      "width": 48
+     },
+     {
+      "kind": "augment",
+      "op": "rot90"
+     },
+     {
+      "amount": 0.4,
+      "kind": "augment",
+      "op": "brightness_contrast"
+     },
+     {
+      "kind": "augment",
+      "op": "hflip"
+     }
+    ],
+    "target": "ultralytics",
+    "variants_per_asset": 2
+   },
+   "draws": [
+    {
+     "brightness_contrast": [
+      "0x1.26278ada26279p+0",
+      "0x1.da3616df0d695p-1"
+     ],
+     "content_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+     "k": 1,
+     "rot90": 1,
+     "seed": "13a13b04afb16d906861ce4bddea3b9ec239daa14b3c8b972561ce65c8a4b1b7"
+    },
+    {
+     "brightness_contrast": [
+      "0x1.a94ec68542e86p-1",
+      "0x1.51461844eadfbp-1"
+     ],
+     "content_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+     "k": 2,
+     "rot90": 1,
+     "seed": "b911f07d49d13c1312cbcf2b58ce257798b2cec07c15113f306dfe005cdc68d7"
+    },
+    {
+     "brightness_contrast": [
+      "0x1.e25979c0af264p-1",
+      "0x1.968d2263968d2p-1"
+     ],
+     "content_hash": "3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f",
+     "k": 1,
+     "rot90": 3,
+     "seed": "d76e87816d77ec183e18357e6315e2a9ae65aa6a23e53c73d9a2a563238179cc"
+    },
+    {
+     "brightness_contrast": [
+      "0x1.c617ada22c7e1p-1",
+      "0x1.e8ed208f1c205p-1"
+     ],
+     "content_hash": "3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f",
+     "k": 2,
+     "rot90": 3,
+     "seed": "5149af315bcecc8571943459082abd9fbadef3995f03a0e262f097752495e326"
+    }
+   ],
+   "geometry": {
+    "bbox": "ba264e0b8b4d9ca302bb45ed4d91762a8ab46761efaf696f718d9c8a8fec7b5e",
+    "classification_tag": "5ca99525cb9bc8b02c71feab6a2d8ac5470e88640a95df083b8794726587b535",
+    "cuboid_3d": "refused PreprocessingStepUnsupportedGeometry: the 'resize' step cannot transform a cuboid_3d (asset 00000000-0000-0000-0000-00000000b006 carries one). Remove the step, or export a release without cuboid_3d labels",
+    "mask": "refused PreprocessingStepUnsupportedGeometry: the 'resize' step cannot transform a mask (asset 00000000-0000-0000-0000-00000000b003 carries one). Remove the step, or export a release without mask labels",
+    "obb": "refused PreprocessingStepUnsupportedGeometry: the 'resize' step cannot transform a obb (asset 00000000-0000-0000-0000-00000000b001 carries one). Remove the step, or export a release without obb labels",
+    "polygon": "d50a7714b9c38b987a25f7df110a7ed5af46073d88e1422097004bd6ebad4de9",
+    "polyline": "refused PreprocessingStepUnsupportedGeometry: the 'resize' step cannot transform a polyline (asset 00000000-0000-0000-0000-00000000b004 carries one). Remove the step, or export a release without polyline labels",
+    "polyline_3d": "refused PreprocessingStepUnsupportedGeometry: the 'resize' step cannot transform a polyline_3d (asset 00000000-0000-0000-0000-00000000b007 carries one). Remove the step, or export a release without polyline_3d labels"
+   },
+   "geometry_showcase": {
+    "bbox": "a5ee3827a397a608020d830250133c7545056783556733c4b4b232fdd57c83bd",
+    "classification_tag": "5ca99525cb9bc8b02c71feab6a2d8ac5470e88640a95df083b8794726587b535",
+    "cuboid_3d": "refused PreprocessingStepUnsupportedGeometry: the 'resize' step cannot transform a cuboid_3d (asset 00000000-0000-0000-0000-00000000b006 carries one). Remove the step, or export a release without cuboid_3d labels",
+    "mask": "refused PreprocessingStepUnsupportedGeometry: the 'resize' step cannot transform a mask (asset 00000000-0000-0000-0000-00000000b003 carries one). Remove the step, or export a release without mask labels",
+    "obb": "refused PreprocessingStepUnsupportedGeometry: the 'resize' step cannot transform a obb (asset 00000000-0000-0000-0000-00000000b001 carries one). Remove the step, or export a release without obb labels",
+    "polygon": "fc1c33f6acf55faec7b818717497e84088923bd92c6d0778ae39bf6fc993980f",
+    "polyline": "refused PreprocessingStepUnsupportedGeometry: the 'resize' step cannot transform a polyline (asset 00000000-0000-0000-0000-00000000b004 carries one). Remove the step, or export a release without polyline labels",
+    "polyline_3d": "refused PreprocessingStepUnsupportedGeometry: the 'resize' step cannot transform a polyline_3d (asset 00000000-0000-0000-0000-00000000b007 carries one). Remove the step, or export a release without polyline_3d labels"
+   },
+   "hash": "80152bd461e9f1829514a229819b98e0d8809546daf06c25ed1a13c711505be0",
+   "pixels": {
+    "0": "PNG:RGB:48x64:c2b6b12f6129cdb05133656c14636f8f39c5773332a0209e8116aedbf6d74295",
+    "1": "PNG:RGB:64x48:777f1d99954a9fd27e7830e24c51c608c0a7426b70bcda3366d6725885e430f3",
+    "2": "PNG:RGB:64x48:d6c6206e3cd1132e252cee2c7cc76540a047f5f7ff71e1cecf65ab60e94a8c2a",
+    "showcase": "PNG:RGB:64x48:70821ae2573eb6614b6b0b9677090ed441e05d09d233e1b290fe6f8176db26eb"
+   },
+   "wire": "{\"steps\": [{\"height\": 64, \"kind\": \"resize\", \"pad_value\": 7, \"strategy\": \"fill\", \"width\": 48}, {\"amount\": 0.2, \"kind\": \"augment\", \"op\": \"rot90\"}, {\"amount\": 0.4, \"kind\": \"augment\", \"op\": \"brightness_contrast\"}, {\"amount\": 0.2, \"kind\": \"augment\", \"op\": \"hflip\"}], \"target\": \"ultralytics\", \"variants_per_asset\": 2}"
+  },
+  "resize-letterbox": {
+   "canonical": "{\"steps\":[{\"height\":48,\"kind\":\"resize\",\"pad_value\":114,\"strategy\":\"letterbox\",\"width\":64}],\"target\":null,\"variants_per_asset\":0}",
+   "document": {
+    "steps": [
+     {
+      "height": 48,
+      "kind": "resize",
+      "strategy": "letterbox",
+      "width": 64
+     }
+    ],
+    "target": null,
+    "variants_per_asset": 0
+   },
+   "draws": [],
+   "geometry": {
+    "bbox": "884ae01a2749db5d4d0a1c8268ac8899bbc34c369ee4263ef5a81e8d598e50d4",
+    "classification_tag": "c25ee64be65c1a6671e6a7043a19b6008b2c80f0ea18b0f5d804d574df4fcdfc",
+    "cuboid_3d": "refused PreprocessingStepUnsupportedGeometry: the 'resize' step cannot transform a cuboid_3d (asset 00000000-0000-0000-0000-00000000b006 carries one). Remove the step, or export a release without cuboid_3d labels",
+    "mask": "refused PreprocessingStepUnsupportedGeometry: the 'resize' step cannot transform a mask (asset 00000000-0000-0000-0000-00000000b003 carries one). Remove the step, or export a release without mask labels",
+    "obb": "273def3e5a5a107f1af3e97a4f8978b6e0ccd5f76cd0e7f4e52f10bfc55149a6",
+    "polygon": "40e85e7eac3c8fcc408668c874407976b39cae2c35b7f499759616cea47fe886",
+    "polyline": "736ec01dedafebd95f38869a0967d8fae103cabc36db745382f410afcdad0629",
+    "polyline_3d": "refused PreprocessingStepUnsupportedGeometry: the 'resize' step cannot transform a polyline_3d (asset 00000000-0000-0000-0000-00000000b007 carries one). Remove the step, or export a release without polyline_3d labels"
+   },
+   "geometry_showcase": {},
+   "hash": "7a69cc634f7fb50b29cb2272e88c08fc5b0bc705399c3a1cad86140167007c5f",
+   "pixels": {
+    "0": "PNG:RGB:64x48:1cd07e5e54c7fbeb06bc8655bac4907ed89acc892256a11c59900756ab900ece"
+   },
+   "wire": "{\"steps\": [{\"height\": 48, \"kind\": \"resize\", \"pad_value\": 114, \"strategy\": \"letterbox\", \"width\": 64}], \"target\": null, \"variants_per_asset\": 0}"
+  },
+  "resize-letterbox-all": {
+   "canonical": "{\"steps\":[{\"height\":64,\"kind\":\"resize\",\"pad_value\":7,\"strategy\":\"letterbox\",\"width\":48},{\"amount\":0.2,\"kind\":\"augment\",\"op\":\"rot90\"},{\"amount\":0.4,\"kind\":\"augment\",\"op\":\"brightness_contrast\"},{\"amount\":0.2,\"kind\":\"augment\",\"op\":\"hflip\"}],\"target\":\"ultralytics\",\"variants_per_asset\":2}",
+   "document": {
+    "steps": [
+     {
+      "height": 64,
+      "kind": "resize",
+      "pad_value": 7,
+      "strategy": "letterbox",
+      "width": 48
+     },
+     {
+      "kind": "augment",
+      "op": "rot90"
+     },
+     {
+      "amount": 0.4,
+      "kind": "augment",
+      "op": "brightness_contrast"
+     },
+     {
+      "kind": "augment",
+      "op": "hflip"
+     }
+    ],
+    "target": "ultralytics",
+    "variants_per_asset": 2
+   },
+   "draws": [
+    {
+     "brightness_contrast": [
+      "0x1.6c5f1a936c5f2p-1",
+      "0x1.045698286abd0p+0"
+     ],
+     "content_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+     "k": 1,
+     "rot90": 1,
+     "seed": "8efb123d23bb709c856c3e32cb30b4493e6ccb3d7dec0efe9ccc7516fd951da3"
+    },
+    {
+     "brightness_contrast": [
+      "0x1.0d71b29540a4ep+0",
+      "0x1.42dd8234a943ep+0"
+     ],
+     "content_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+     "k": 2,
+     "rot90": 2,
+     "seed": "865e380390ce1f3ad394e2c18aee85b387bda5b0eaabe5a67b96521cc5b9cefd"
+    },
+    {
+     "brightness_contrast": [
+      "0x1.6c99aff36c99bp-1",
+      "0x1.7864c9c9decb3p-1"
+     ],
+     "content_hash": "3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f",
+     "k": 1,
+     "rot90": 1,
+     "seed": "e1623f9023e00df82b3efe1ef4456d3acc3e1f4b44fa60de41e7f93f4b07ee5b"
+    },
+    {
+     "brightness_contrast": [
+      "0x1.5d179341904acp+0",
+      "0x1.5653470b56534p-1"
+     ],
+     "content_hash": "3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f",
+     "k": 2,
+     "rot90": 3,
+     "seed": "9adc4226f45d781115f40c675fa955f1c4573dcca76b18f83ca18052571d9f2e"
+    }
+   ],
+   "geometry": {
+    "bbox": "b31867edfd141fc7c44c1b7c50ff0e4ffc2aecf10218327f2f6c2a01cf7c7f78",
+    "classification_tag": "5ca99525cb9bc8b02c71feab6a2d8ac5470e88640a95df083b8794726587b535",
+    "cuboid_3d": "refused PreprocessingStepUnsupportedGeometry: the 'resize' step cannot transform a cuboid_3d (asset 00000000-0000-0000-0000-00000000b006 carries one). Remove the step, or export a release without cuboid_3d labels",
+    "mask": "refused PreprocessingStepUnsupportedGeometry: the 'resize' step cannot transform a mask (asset 00000000-0000-0000-0000-00000000b003 carries one). Remove the step, or export a release without mask labels",
+    "obb": "fdecc3a39df4edbc710904d9c5ad20c88e2c914d97977b8308af031e2596bfec",
+    "polygon": "b61f46585fe24287facd9d27a72da45069a6ec027f9d94e82734ac8e2540b4ca",
+    "polyline": "refused PreprocessingStepUnsupportedGeometry: the 'rot90' step cannot transform a polyline (asset 00000000-0000-0000-0000-00000000b004 carries one). Remove the step, or export a release without polyline labels",
+    "polyline_3d": "refused PreprocessingStepUnsupportedGeometry: the 'resize' step cannot transform a polyline_3d (asset 00000000-0000-0000-0000-00000000b007 carries one). Remove the step, or export a release without polyline_3d labels"
+   },
+   "geometry_showcase": {
+    "bbox": "7bb5d134a35c0a7011c3e4bb8672ad7248e4c20e93134859a20f33eedf22e812",
+    "classification_tag": "5ca99525cb9bc8b02c71feab6a2d8ac5470e88640a95df083b8794726587b535",
+    "cuboid_3d": "refused PreprocessingStepUnsupportedGeometry: the 'resize' step cannot transform a cuboid_3d (asset 00000000-0000-0000-0000-00000000b006 carries one). Remove the step, or export a release without cuboid_3d labels",
+    "mask": "refused PreprocessingStepUnsupportedGeometry: the 'resize' step cannot transform a mask (asset 00000000-0000-0000-0000-00000000b003 carries one). Remove the step, or export a release without mask labels",
+    "obb": "59012c6178533900cb807a9573d32f8c9a8fdc3dd3eeec7b70161da22188d90b",
+    "polygon": "196ed30cc2117b1e391e4e1948d9389b4757997126284e7a7be7e7dfff41ca1b",
+    "polyline": "refused PreprocessingStepUnsupportedGeometry: the 'rot90' step cannot transform a polyline (asset 00000000-0000-0000-0000-00000000b004 carries one). Remove the step, or export a release without polyline labels",
+    "polyline_3d": "refused PreprocessingStepUnsupportedGeometry: the 'resize' step cannot transform a polyline_3d (asset 00000000-0000-0000-0000-00000000b007 carries one). Remove the step, or export a release without polyline_3d labels"
+   },
+   "hash": "5d814b01acad6855ce16e79209ab31762a0e367ddc603faa35b0f4c833084777",
+   "pixels": {
+    "0": "PNG:RGB:48x64:6afa5cc95f03ae3425e945ae8465d24af8c5d8ff3762345ded7bbadb71ddbefd",
+    "1": "PNG:RGB:64x48:c7c19a2f6532a8d7a136be38afb41d494312640dc606531e5390757e57075747",
+    "2": "PNG:RGB:48x64:3b9ebd51d5a85df8300cd07a3299e9ddec1ba174f69fd4cd4b3d7c5d451355ec",
+    "showcase": "PNG:RGB:64x48:31aeb0d9b343abf4c4496c7443af788ed9223af20d72fc4d14a564e3cc8bf1f4"
+   },
+   "wire": "{\"steps\": [{\"height\": 64, \"kind\": \"resize\", \"pad_value\": 7, \"strategy\": \"letterbox\", \"width\": 48}, {\"amount\": 0.2, \"kind\": \"augment\", \"op\": \"rot90\"}, {\"amount\": 0.4, \"kind\": \"augment\", \"op\": \"brightness_contrast\"}, {\"amount\": 0.2, \"kind\": \"augment\", \"op\": \"hflip\"}], \"target\": \"ultralytics\", \"variants_per_asset\": 2}"
+  },
+  "resize-stretch": {
+   "canonical": "{\"steps\":[{\"height\":48,\"kind\":\"resize\",\"pad_value\":114,\"strategy\":\"stretch\",\"width\":64}],\"target\":null,\"variants_per_asset\":0}",
+   "document": {
+    "steps": [
+     {
+      "height": 48,
+      "kind": "resize",
+      "strategy": "stretch",
+      "width": 64
+     }
+    ],
+    "target": null,
+    "variants_per_asset": 0
+   },
+   "draws": [],
+   "geometry": {
+    "bbox": "884ae01a2749db5d4d0a1c8268ac8899bbc34c369ee4263ef5a81e8d598e50d4",
+    "classification_tag": "c25ee64be65c1a6671e6a7043a19b6008b2c80f0ea18b0f5d804d574df4fcdfc",
+    "cuboid_3d": "refused PreprocessingStepUnsupportedGeometry: the 'resize' step cannot transform a cuboid_3d (asset 00000000-0000-0000-0000-00000000b006 carries one). Remove the step, or export a release without cuboid_3d labels",
+    "mask": "refused PreprocessingStepUnsupportedGeometry: the 'resize' step cannot transform a mask (asset 00000000-0000-0000-0000-00000000b003 carries one). Remove the step, or export a release without mask labels",
+    "obb": "refused PreprocessingStepUnsupportedGeometry: the 'resize' step cannot transform a obb (asset 00000000-0000-0000-0000-00000000b001 carries one). Remove the step, or export a release without obb labels",
+    "polygon": "40e85e7eac3c8fcc408668c874407976b39cae2c35b7f499759616cea47fe886",
+    "polyline": "736ec01dedafebd95f38869a0967d8fae103cabc36db745382f410afcdad0629",
+    "polyline_3d": "refused PreprocessingStepUnsupportedGeometry: the 'resize' step cannot transform a polyline_3d (asset 00000000-0000-0000-0000-00000000b007 carries one). Remove the step, or export a release without polyline_3d labels"
+   },
+   "geometry_showcase": {},
+   "hash": "576d14d474d31c84ea5fc18707527878e51971e41d43de47140121b8a08f27cd",
+   "pixels": {
+    "0": "PNG:RGB:64x48:bd95455a8562726a2dbc3a6a51549a7ccdee98d9141aef6d12fee5a3fa3cca61"
+   },
+   "wire": "{\"steps\": [{\"height\": 48, \"kind\": \"resize\", \"pad_value\": 114, \"strategy\": \"stretch\", \"width\": 64}], \"target\": null, \"variants_per_asset\": 0}"
+  },
+  "resize-stretch-all": {
+   "canonical": "{\"steps\":[{\"height\":64,\"kind\":\"resize\",\"pad_value\":7,\"strategy\":\"stretch\",\"width\":48},{\"amount\":0.2,\"kind\":\"augment\",\"op\":\"rot90\"},{\"amount\":0.4,\"kind\":\"augment\",\"op\":\"brightness_contrast\"},{\"amount\":0.2,\"kind\":\"augment\",\"op\":\"hflip\"}],\"target\":\"ultralytics\",\"variants_per_asset\":2}",
+   "document": {
+    "steps": [
+     {
+      "height": 64,
+      "kind": "resize",
+      "pad_value": 7,
+      "strategy": "stretch",
+      "width": 48
+     },
+     {
+      "kind": "augment",
+      "op": "rot90"
+     },
+     {
+      "amount": 0.4,
+      "kind": "augment",
+      "op": "brightness_contrast"
+     },
+     {
+      "kind": "augment",
+      "op": "hflip"
+     }
+    ],
+    "target": "ultralytics",
+    "variants_per_asset": 2
+   },
+   "draws": [
+    {
+     "brightness_contrast": [
+      "0x1.e611ecb8b2decp-1",
+      "0x1.919d5096c4d08p-1"
+     ],
+     "content_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+     "k": 1,
+     "rot90": 1,
+     "seed": "f4be95326fcb33f33b02525e47d58acd85037cedefd33d8121c6d1b32b978a1d"
+    },
+    {
+     "brightness_contrast": [
+      "0x1.3aa020623aa02p+0",
+      "0x1.3aed24b3d486cp+0"
+     ],
+     "content_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+     "k": 2,
+     "rot90": 2,
+     "seed": "f342c7adc948287ac9a86de0533730f79b07998b6774f3dc6eea6d748eb3f5bf"
+    },
+    {
+     "brightness_contrast": [
+      "0x1.4d24f2b980582p+0",
+      "0x1.1dc97d1fb7632p+0"
+     ],
+     "content_hash": "3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f",
+     "k": 1,
+     "rot90": 2,
+     "seed": "99e22bebe06e2f67a53bdc6780bf0a7d10a5fa8fcc578cacc85e150570235669"
+    },
+    {
+     "brightness_contrast": [
+      "0x1.6ab4a0a837817p-1",
+      "0x1.1e9df8daeb6acp+0"
+     ],
+     "content_hash": "3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f",
+     "k": 2,
+     "rot90": 3,
+     "seed": "08209c6822b0e469a6457711aaa602183a6d649a180949b6bd320d23de0822f8"
+    }
+   ],
+   "geometry": {
+    "bbox": "1905482b157326b416483dcc64c338a59d98d1291af0b9bcbc3a09d20ce8358a",
+    "classification_tag": "ff53319c0df64b4ffc516f2110904420ee7328e6ae79e72754b66ae1a2bca6b9",
+    "cuboid_3d": "refused PreprocessingStepUnsupportedGeometry: the 'resize' step cannot transform a cuboid_3d (asset 00000000-0000-0000-0000-00000000b006 carries one). Remove the step, or export a release without cuboid_3d labels",
+    "mask": "refused PreprocessingStepUnsupportedGeometry: the 'resize' step cannot transform a mask (asset 00000000-0000-0000-0000-00000000b003 carries one). Remove the step, or export a release without mask labels",
+    "obb": "refused PreprocessingStepUnsupportedGeometry: the 'resize' step cannot transform a obb (asset 00000000-0000-0000-0000-00000000b001 carries one). Remove the step, or export a release without obb labels",
+    "polygon": "147762ec9696b98044978d523c725baaf883f10f088d7069032f71880e05ba6b",
+    "polyline": "refused PreprocessingStepUnsupportedGeometry: the 'rot90' step cannot transform a polyline (asset 00000000-0000-0000-0000-00000000b004 carries one). Remove the step, or export a release without polyline labels",
+    "polyline_3d": "refused PreprocessingStepUnsupportedGeometry: the 'resize' step cannot transform a polyline_3d (asset 00000000-0000-0000-0000-00000000b007 carries one). Remove the step, or export a release without polyline_3d labels"
+   },
+   "geometry_showcase": {
+    "bbox": "c3e9b7324330b59f3e79ebd105fc4b8dfbe498a187396d32a37b164deb0af92a",
+    "classification_tag": "5ca99525cb9bc8b02c71feab6a2d8ac5470e88640a95df083b8794726587b535",
+    "cuboid_3d": "refused PreprocessingStepUnsupportedGeometry: the 'resize' step cannot transform a cuboid_3d (asset 00000000-0000-0000-0000-00000000b006 carries one). Remove the step, or export a release without cuboid_3d labels",
+    "mask": "refused PreprocessingStepUnsupportedGeometry: the 'resize' step cannot transform a mask (asset 00000000-0000-0000-0000-00000000b003 carries one). Remove the step, or export a release without mask labels",
+    "obb": "refused PreprocessingStepUnsupportedGeometry: the 'resize' step cannot transform a obb (asset 00000000-0000-0000-0000-00000000b001 carries one). Remove the step, or export a release without obb labels",
+    "polygon": "e3dfdef064c39d3cc1ede421e84a2eadd63ee65002aa4f0325afddb9dac19f42",
+    "polyline": "refused PreprocessingStepUnsupportedGeometry: the 'rot90' step cannot transform a polyline (asset 00000000-0000-0000-0000-00000000b004 carries one). Remove the step, or export a release without polyline labels",
+    "polyline_3d": "refused PreprocessingStepUnsupportedGeometry: the 'resize' step cannot transform a polyline_3d (asset 00000000-0000-0000-0000-00000000b007 carries one). Remove the step, or export a release without polyline_3d labels"
+   },
+   "hash": "23038271919222a67e0f6af4eceb536680217926cb695d471afdb68a63d10dd0",
+   "pixels": {
+    "0": "PNG:RGB:48x64:55714cefdc368cba872ede1783f97bb6782d18a72b1a71f1c98e444645b8cb99",
+    "1": "PNG:RGB:48x64:c62af665a7ce9bf791a16029fae10f86d7e5c07898d36a29e4fa4097104d5ac0",
+    "2": "PNG:RGB:64x48:cbb836eb2855054d58ef23a6a2b776dbf0e981875301802f04e15b724e7c32e6",
+    "showcase": "PNG:RGB:64x48:25ee83e36887c4b5c665175653cd3dd707f3b8df2c2a0b02386909a999a58b58"
+   },
+   "wire": "{\"steps\": [{\"height\": 64, \"kind\": \"resize\", \"pad_value\": 7, \"strategy\": \"stretch\", \"width\": 48}, {\"amount\": 0.2, \"kind\": \"augment\", \"op\": \"rot90\"}, {\"amount\": 0.4, \"kind\": \"augment\", \"op\": \"brightness_contrast\"}, {\"amount\": 0.2, \"kind\": \"augment\", \"op\": \"hflip\"}], \"target\": \"ultralytics\", \"variants_per_asset\": 2}"
+  },
+  "rot90": {
+   "canonical": "{\"steps\":[{\"amount\":0.2,\"kind\":\"augment\",\"op\":\"rot90\"}],\"target\":null,\"variants_per_asset\":3}",
+   "document": {
+    "steps": [
+     {
+      "kind": "augment",
+      "op": "rot90"
+     }
+    ],
+    "target": null,
+    "variants_per_asset": 3
+   },
+   "draws": [
+    {
+     "content_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+     "k": 1,
+     "rot90": 3,
+     "seed": "5c378461a16e1b65e4937e9e6c2647220e0c77e18a371d654135e9443915b216"
+    },
+    {
+     "content_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+     "k": 2,
+     "rot90": 1,
+     "seed": "55aeb31f48a3f64ff40d1198bfec140cd0d565f6e79e46e494f7a61fec720abe"
+    },
+    {
+     "content_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+     "k": 3,
+     "rot90": 1,
+     "seed": "4266e67c874138b74b9e432948b54df370e8f8878f3efe7bbfa8e4f2e3e7b8ef"
+    },
+    {
+     "content_hash": "3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f",
+     "k": 1,
+     "rot90": 2,
+     "seed": "7dff7397fa31cf3ed0ad60c0a801bfd63064f0fd80256a3e0e6b339c98356134"
+    },
+    {
+     "content_hash": "3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f",
+     "k": 2,
+     "rot90": 1,
+     "seed": "a89d0ccd946a5632881968c900908fd0d21d2e5b7292f961befdf5c36f51a5be"
+    },
+    {
+     "content_hash": "3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f",
+     "k": 3,
+     "rot90": 2,
+     "seed": "04dd3d253aa16fc1d6bf304999dbe2a50ef23ec51d0dc5a9e522294934adb259"
+    }
+   ],
+   "geometry": {
+    "bbox": "a1c7665180fd4e7afd98f33dc3cda6c8e23750d7fbd675a75835eeb493693b26",
+    "classification_tag": "6510c3de99f95952f6492f6fb982cdb5c82a12dd5df1e4eef048ecb0baaf42f9",
+    "cuboid_3d": "refused PreprocessingStepUnsupportedGeometry: the 'rot90' step cannot transform a cuboid_3d (asset 00000000-0000-0000-0000-00000000b006 carries one). Remove the step, or export a release without cuboid_3d labels",
+    "mask": "857af1775d20a5ca7df2dafee4fe88f98d4f8d1c89ee160824d8f44ed043737f",
+    "obb": "15776bddead8d3bef4331345b6048a5ca3f8be4e610397975992ceb99dcb4f40",
+    "polygon": "5f6339b88088c6ee0e1f2ee9ce393dd5ba0bc50f39b8d60efe2b4fa936568dcd",
+    "polyline": "refused PreprocessingStepUnsupportedGeometry: the 'rot90' step cannot transform a polyline (asset 00000000-0000-0000-0000-00000000b004 carries one). Remove the step, or export a release without polyline labels",
+    "polyline_3d": "refused PreprocessingStepUnsupportedGeometry: the 'rot90' step cannot transform a polyline_3d (asset 00000000-0000-0000-0000-00000000b007 carries one). Remove the step, or export a release without polyline_3d labels"
+   },
+   "geometry_showcase": {
+    "bbox": "e2aee6a77fab5e232f3214d9d0aefc3b919f650bb0737251da37f0aa1372fcd2",
+    "classification_tag": "f1d064651437ec11e52fef03fb5f09821755127e88385148b79045fadc1106af",
+    "cuboid_3d": "refused PreprocessingStepUnsupportedGeometry: the 'rot90' step cannot transform a cuboid_3d (asset 00000000-0000-0000-0000-00000000b006 carries one). Remove the step, or export a release without cuboid_3d labels",
+    "mask": "de828fc6b1cf39095732359f68c10aa9fe6dd6e8ea462b3e4e5e34fb78fb3986",
+    "obb": "209e098847c84f1c71fd562dedd3c362b50255d15a2925af797d114bda1a01c7",
+    "polygon": "dc04d7605b51b26124b2eb295041effd133e43fec154a982c45fd36b2bab1630",
+    "polyline": "refused PreprocessingStepUnsupportedGeometry: the 'rot90' step cannot transform a polyline (asset 00000000-0000-0000-0000-00000000b004 carries one). Remove the step, or export a release without polyline labels",
+    "polyline_3d": "refused PreprocessingStepUnsupportedGeometry: the 'rot90' step cannot transform a polyline_3d (asset 00000000-0000-0000-0000-00000000b007 carries one). Remove the step, or export a release without polyline_3d labels"
+   },
+   "hash": "02e2117eb462d8ea23f40d16a89a28fae86bef63051921ca0b9a543a6df334e7",
+   "pixels": {
+    "0": "PNG:RGB:37x23:716a23fd20769b6edcd276d01efe233c563327ab82865717860eb08667ffddbf",
+    "1": "PNG:RGB:23x37:c7f5a6911e3f3c12ae9a7611d20d792303b75003eab8148548543ebc51c29c32",
+    "2": "PNG:RGB:23x37:c7f5a6911e3f3c12ae9a7611d20d792303b75003eab8148548543ebc51c29c32",
+    "3": "PNG:RGB:23x37:df4f605c0d137097b6c4ebfde6444cb1b798b1fc54ae3830830b34d0136ae77f",
+    "showcase": "PNG:RGB:23x37:c7f5a6911e3f3c12ae9a7611d20d792303b75003eab8148548543ebc51c29c32"
+   },
+   "wire": "{\"steps\": [{\"amount\": 0.2, \"kind\": \"augment\", \"op\": \"rot90\"}], \"target\": null, \"variants_per_asset\": 3}"
+  },
+  "rot90-amount": {
+   "canonical": "{\"steps\":[{\"amount\":0.1,\"kind\":\"augment\",\"op\":\"rot90\"}],\"target\":null,\"variants_per_asset\":1}",
+   "document": {
+    "steps": [
+     {
+      "amount": 0.1,
+      "kind": "augment",
+      "op": "rot90"
+     }
+    ],
+    "target": null,
+    "variants_per_asset": 1
+   },
+   "draws": [
+    {
+     "content_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+     "k": 1,
+     "rot90": 3,
+     "seed": "523c03cbcba37f10be0e6f6dffbb846423e1f795c21737ca794d11770780c3b3"
+    },
+    {
+     "content_hash": "3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f",
+     "k": 1,
+     "rot90": 3,
+     "seed": "36a1211a81aec8ecd05835f0bb060ae7ef6c2b2d175cdc3a5e8b697e9966299d"
+    }
+   ],
+   "geometry": {
+    "bbox": "3c789e17929136fd06464bf2cfd66c13626c2fadcf7facac837e023975d2b5ae",
+    "classification_tag": "0e5abe1e6d47e8804c317035e88729363c39f188aec877122620fa88e6e891c3",
+    "cuboid_3d": "refused PreprocessingStepUnsupportedGeometry: the 'rot90' step cannot transform a cuboid_3d (asset 00000000-0000-0000-0000-00000000b006 carries one). Remove the step, or export a release without cuboid_3d labels",
+    "mask": "d11f1e96ec1b27aee875060790cee62be222b4d1276499a0bb5ae77c75fd76f2",
+    "obb": "45e54d315fd610c5c42b778201b47de7b3dc6acd60b0682232cc456281fadb7c",
+    "polygon": "1a5005601a951eab479aed8abd88a88a1359a0b85092d139f71e5e796da3101b",
+    "polyline": "refused PreprocessingStepUnsupportedGeometry: the 'rot90' step cannot transform a polyline (asset 00000000-0000-0000-0000-00000000b004 carries one). Remove the step, or export a release without polyline labels",
+    "polyline_3d": "refused PreprocessingStepUnsupportedGeometry: the 'rot90' step cannot transform a polyline_3d (asset 00000000-0000-0000-0000-00000000b007 carries one). Remove the step, or export a release without polyline_3d labels"
+   },
+   "geometry_showcase": {
+    "bbox": "a61db069e54a919bfcad544108c97359b811452146bc4bb5fb48d75218ec4337",
+    "classification_tag": "0e5abe1e6d47e8804c317035e88729363c39f188aec877122620fa88e6e891c3",
+    "cuboid_3d": "refused PreprocessingStepUnsupportedGeometry: the 'rot90' step cannot transform a cuboid_3d (asset 00000000-0000-0000-0000-00000000b006 carries one). Remove the step, or export a release without cuboid_3d labels",
+    "mask": "de6ee58f9c3e1b6d747351ced1a101874139a8e9c3de3ccf4fb011a3f489fec9",
+    "obb": "d0a97c5a5bc648410cbe624c3c9a1e902c9a04e4df40bb096f3af5246d622647",
+    "polygon": "28013eaa050204e66da3d7021cd5c2483012f20598d396a58cc5d792dd4518c3",
+    "polyline": "refused PreprocessingStepUnsupportedGeometry: the 'rot90' step cannot transform a polyline (asset 00000000-0000-0000-0000-00000000b004 carries one). Remove the step, or export a release without polyline labels",
+    "polyline_3d": "refused PreprocessingStepUnsupportedGeometry: the 'rot90' step cannot transform a polyline_3d (asset 00000000-0000-0000-0000-00000000b007 carries one). Remove the step, or export a release without polyline_3d labels"
+   },
+   "hash": "6b1eb069d7a46095112af9e6de8d11f6a5187f44ddf9aefbb234ac49f0b4595f",
+   "pixels": {
+    "0": "PNG:RGB:37x23:716a23fd20769b6edcd276d01efe233c563327ab82865717860eb08667ffddbf",
+    "1": "PNG:RGB:37x23:ae975197e69bc453ead285baca833f290a9dfb9552cbae7c2ec84a941f0db659",
+    "showcase": "PNG:RGB:23x37:c7f5a6911e3f3c12ae9a7611d20d792303b75003eab8148548543ebc51c29c32"
+   },
+   "wire": "{\"steps\": [{\"amount\": 0.1, \"kind\": \"augment\", \"op\": \"rot90\"}], \"target\": null, \"variants_per_asset\": 1}"
+  },
+  "rot90-hflip": {
+   "canonical": "{\"steps\":[{\"amount\":0.2,\"kind\":\"augment\",\"op\":\"rot90\"},{\"amount\":0.2,\"kind\":\"augment\",\"op\":\"hflip\"}],\"target\":null,\"variants_per_asset\":4}",
+   "document": {
+    "steps": [
+     {
+      "kind": "augment",
+      "op": "rot90"
+     },
+     {
+      "kind": "augment",
+      "op": "hflip"
+     }
+    ],
+    "target": null,
+    "variants_per_asset": 4
+   },
+   "draws": [
+    {
+     "content_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+     "k": 1,
+     "rot90": 3,
+     "seed": "ebeece45274a7f14a10d6ad2654a8e753bb8ca90a3262f77ab488fb4d943ee8b"
+    },
+    {
+     "content_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+     "k": 2,
+     "rot90": 3,
+     "seed": "0c0e35feb3bd1d626c1afd4164959236ae40a83b809dd6efb518bd9d6236f851"
+    },
+    {
+     "content_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+     "k": 3,
+     "rot90": 3,
+     "seed": "b924cd210d40fd59bab815037c994b4954e0af0c3167a508a7ce1b0889a87e33"
+    },
+    {
+     "content_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+     "k": 4,
+     "rot90": 3,
+     "seed": "71b2e2597869f3fee5a665b7a5a160f6fd924a6b2573563fab4d5c10ec49c2f7"
+    },
+    {
+     "content_hash": "3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f",
+     "k": 1,
+     "rot90": 2,
+     "seed": "3a7a6512c8f7639d295628830278c73a8e0e4e763fb5688099546051c7ae2718"
+    },
+    {
+     "content_hash": "3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f",
+     "k": 2,
+     "rot90": 3,
+     "seed": "2f61535be7d86a4a39cc1a8c5fe5cf1df1ca394968c552e01e65f018e325ccd9"
+    },
+    {
+     "content_hash": "3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f",
+     "k": 3,
+     "rot90": 2,
+     "seed": "4f499d024a886c3df1292255de8e6bd6c11f6b92affe1f78d3b85b6416a7e095"
+    },
+    {
+     "content_hash": "3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f",
+     "k": 4,
+     "rot90": 2,
+     "seed": "d64ca7a28d427efd943609801208fd37d7c508e3ac4e238fde2ceee4eb9624f0"
+    }
+   ],
+   "geometry": {
+    "bbox": "a7917c200a8472916cb6e86494f1dc5e3317c2dbbfe78e7bc0af89417bfecbda",
+    "classification_tag": "a41c6c8e6524d2f4fa5fc0ef1f19781fd2800ad4572f2793c8ac8a55bc206102",
+    "cuboid_3d": "refused PreprocessingStepUnsupportedGeometry: the 'rot90' step cannot transform a cuboid_3d (asset 00000000-0000-0000-0000-00000000b006 carries one). Remove the step, or export a release without cuboid_3d labels",
+    "mask": "9058403476076b9b74f3273f94ca2218328eb709980a0ddd9989bec1444ce246",
+    "obb": "4952d47b16b559df922fd0778807642dc6e654913765547e5386936cf9d4fb6f",
+    "polygon": "cd6accca175c43390dbc0826957dc37acfe72263a1c706feb239dfd5a5b2fb1d",
+    "polyline": "refused PreprocessingStepUnsupportedGeometry: the 'rot90' step cannot transform a polyline (asset 00000000-0000-0000-0000-00000000b004 carries one). Remove the step, or export a release without polyline labels",
+    "polyline_3d": "refused PreprocessingStepUnsupportedGeometry: the 'rot90' step cannot transform a polyline_3d (asset 00000000-0000-0000-0000-00000000b007 carries one). Remove the step, or export a release without polyline_3d labels"
+   },
+   "geometry_showcase": {
+    "bbox": "5aa50e16bc9e77992830c87a08b638478268b2769c13328f9c24cf3609eb51ae",
+    "classification_tag": "22ebc8ce76029f250c5591a215821b2c1a92bd0af11f6c9fe14b8dedcd50b6a0",
+    "cuboid_3d": "refused PreprocessingStepUnsupportedGeometry: the 'rot90' step cannot transform a cuboid_3d (asset 00000000-0000-0000-0000-00000000b006 carries one). Remove the step, or export a release without cuboid_3d labels",
+    "mask": "73e2b2099261e2a2cf4998b3f4f31c1e958269c1f0292ee2d21f36bc7cb0674b",
+    "obb": "04d489c6e7712b061351258687c55c21e14797c11cd7d0d040c20f6b1afe2c73",
+    "polygon": "c4906c6901d25341ab2cd2fe2b863e10dfb6962ec55c56b4b447881e41089fdc",
+    "polyline": "refused PreprocessingStepUnsupportedGeometry: the 'rot90' step cannot transform a polyline (asset 00000000-0000-0000-0000-00000000b004 carries one). Remove the step, or export a release without polyline labels",
+    "polyline_3d": "refused PreprocessingStepUnsupportedGeometry: the 'rot90' step cannot transform a polyline_3d (asset 00000000-0000-0000-0000-00000000b007 carries one). Remove the step, or export a release without polyline_3d labels"
+   },
+   "hash": "95c5ac1d3cca30ff3dd55ea67f91fcea3988e3d540e1457d4a645493a207f10f",
+   "pixels": {
+    "0": "PNG:RGB:37x23:716a23fd20769b6edcd276d01efe233c563327ab82865717860eb08667ffddbf",
+    "1": "PNG:RGB:37x23:ea5e4c9c7ee8e73f9241ec0e34c1e33e3ae618f980cd5c48bd00677d5a3b81e9",
+    "2": "PNG:RGB:23x37:04314fa7f9b29a865f8158fcdb9573ecbb37a3daaccd9ad889addc230dee69ab",
+    "3": "PNG:RGB:23x37:04314fa7f9b29a865f8158fcdb9573ecbb37a3daaccd9ad889addc230dee69ab",
+    "4": "PNG:RGB:23x37:dce3b0684b5e3843b7f62b90ddb931c8a0bd0d36061a9f5aa089492e2396bd03",
+    "showcase": "PNG:RGB:23x37:dce3b0684b5e3843b7f62b90ddb931c8a0bd0d36061a9f5aa089492e2396bd03"
+   },
+   "wire": "{\"steps\": [{\"amount\": 0.2, \"kind\": \"augment\", \"op\": \"rot90\"}, {\"amount\": 0.2, \"kind\": \"augment\", \"op\": \"hflip\"}], \"target\": null, \"variants_per_asset\": 4}"
+  },
+  "target-coco-resize": {
+   "canonical": "{\"steps\":[{\"height\":640,\"kind\":\"resize\",\"pad_value\":114,\"strategy\":\"letterbox\",\"width\":640}],\"target\":\"coco\",\"variants_per_asset\":0}",
+   "document": {
+    "steps": [
+     {
+      "height": 640,
+      "kind": "resize",
+      "strategy": "letterbox",
+      "width": 640
+     }
+    ],
+    "target": "coco",
+    "variants_per_asset": 0
+   },
+   "draws": [],
+   "geometry": {
+    "bbox": "241f5ba91a0e639627e17259bf8499ec475ac58b0bd9d0a5d43f8fb415e9d364",
+    "classification_tag": "915893ead43812d78972d15bbff58cc7086c72869f5fef0d8d2a7cd7bf78847a",
+    "cuboid_3d": "refused PreprocessingStepUnsupportedGeometry: the 'resize' step cannot transform a cuboid_3d (asset 00000000-0000-0000-0000-00000000b006 carries one). Remove the step, or export a release without cuboid_3d labels",
+    "mask": "refused PreprocessingStepUnsupportedGeometry: the 'resize' step cannot transform a mask (asset 00000000-0000-0000-0000-00000000b003 carries one). Remove the step, or export a release without mask labels",
+    "obb": "10cc389cf9e109b2381377b27f4ceb3567bfb50aaa973d3d340f985ec69e75e0",
+    "polygon": "04e3382ccc7840b5e3c8fef43e49ce328a300667ffaa68fce7308a01975ea539",
+    "polyline": "d9c0ed176391852e169d94e9f25fa17e92b272cc313469245658b8510b203fa4",
+    "polyline_3d": "refused PreprocessingStepUnsupportedGeometry: the 'resize' step cannot transform a polyline_3d (asset 00000000-0000-0000-0000-00000000b007 carries one). Remove the step, or export a release without polyline_3d labels"
+   },
+   "geometry_showcase": {},
+   "hash": "d452e0f8751c786c2bfe4d62245de9a89b301d079e13613b02cf3d6920c481df",
+   "pixels": {
+    "0": "PNG:RGB:640x640:b70baa4a77d55cf1b3ca55ff0eeeae8902b8b3a7f2d6fceedebcc46844c6a109"
+   },
+   "wire": "{\"steps\": [{\"height\": 640, \"kind\": \"resize\", \"pad_value\": 114, \"strategy\": \"letterbox\", \"width\": 640}], \"target\": \"coco\", \"variants_per_asset\": 0}"
+  },
+  "target-yolo": {
+   "canonical": "{\"steps\":[{\"amount\":0.2,\"kind\":\"augment\",\"op\":\"hflip\"}],\"target\":\"ultralytics\",\"variants_per_asset\":1}",
+   "document": {
+    "steps": [
+     {
+      "kind": "augment",
+      "op": "hflip"
+     }
+    ],
+    "target": "ultralytics",
+    "variants_per_asset": 1
+   },
+   "draws": [
+    {
+     "content_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+     "k": 1,
+     "rot90": 2,
+     "seed": "6a33f2b6531ea31a911fac6d916562143c7e8d45b58b0d6be234a6d2c96ac4a6"
+    },
+    {
+     "content_hash": "3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f",
+     "k": 1,
+     "rot90": 2,
+     "seed": "58bfe37619fa63b4a87d6ea61f1987ec31f51db315dedef1833dec8785a41c8e"
+    }
+   ],
+   "geometry": {
+    "bbox": "8af224df6b4d4bcaff0940ad2986014183ec22805f7d0f42295346af0049f054",
+    "classification_tag": "b68685b67803fab50a220309ae70050225dd43420967c2ecbad38d75b9a1f29a",
+    "cuboid_3d": "refused PreprocessingStepUnsupportedGeometry: the 'hflip' step cannot transform a cuboid_3d (asset 00000000-0000-0000-0000-00000000b006 carries one). Remove the step, or export a release without cuboid_3d labels",
+    "mask": "1a29cb15859a101c76b4e470d3b9cdebeb9bef7fdb9d1ccbd5dda92706404714",
+    "obb": "5d44c3941fe3c77b83a81e8f17c1eed6982fe507f4f7b7b47f1dfa083c4b4476",
+    "polygon": "b1e1f4cb14702da6db3875c5dd69c4bc1e9e848ef75d6402bc52f4eb594f65a3",
+    "polyline": "44a84406d4a8cd455dd21a0189d6639330648e3627d0c08f05d8a9639003baf5",
+    "polyline_3d": "refused PreprocessingStepUnsupportedGeometry: the 'hflip' step cannot transform a polyline_3d (asset 00000000-0000-0000-0000-00000000b007 carries one). Remove the step, or export a release without polyline_3d labels"
+   },
+   "geometry_showcase": {
+    "bbox": "8af224df6b4d4bcaff0940ad2986014183ec22805f7d0f42295346af0049f054",
+    "classification_tag": "b68685b67803fab50a220309ae70050225dd43420967c2ecbad38d75b9a1f29a",
+    "cuboid_3d": "refused PreprocessingStepUnsupportedGeometry: the 'hflip' step cannot transform a cuboid_3d (asset 00000000-0000-0000-0000-00000000b006 carries one). Remove the step, or export a release without cuboid_3d labels",
+    "mask": "1a29cb15859a101c76b4e470d3b9cdebeb9bef7fdb9d1ccbd5dda92706404714",
+    "obb": "5d44c3941fe3c77b83a81e8f17c1eed6982fe507f4f7b7b47f1dfa083c4b4476",
+    "polygon": "b1e1f4cb14702da6db3875c5dd69c4bc1e9e848ef75d6402bc52f4eb594f65a3",
+    "polyline": "44a84406d4a8cd455dd21a0189d6639330648e3627d0c08f05d8a9639003baf5",
+    "polyline_3d": "refused PreprocessingStepUnsupportedGeometry: the 'hflip' step cannot transform a polyline_3d (asset 00000000-0000-0000-0000-00000000b007 carries one). Remove the step, or export a release without polyline_3d labels"
+   },
+   "hash": "38254da278eb7441bcd00b136f804bc9b19b2adecae259164899b0c4f0a65f41",
+   "pixels": {
+    "0": "PNG:RGB:37x23:716a23fd20769b6edcd276d01efe233c563327ab82865717860eb08667ffddbf",
+    "1": "PNG:RGB:37x23:a2cd7fff8ee8d020ae58e6a33d14995b21770b0691ea3f57d3b60fcbed9515e9",
+    "showcase": "PNG:RGB:37x23:a2cd7fff8ee8d020ae58e6a33d14995b21770b0691ea3f57d3b60fcbed9515e9"
+   },
+   "wire": "{\"steps\": [{\"amount\": 0.2, \"kind\": \"augment\", \"op\": \"hflip\"}], \"target\": \"ultralytics\", \"variants_per_asset\": 1}"
+  }
+ },
+ "showcase": {
+  "brightness_contrast": {
+   "0.05": [
+    "0x1.0cccccccccccdp+0",
+    "0x1.0cccccccccccdp+0"
+   ],
+   "0.2": [
+    "0x1.3333333333333p+0",
+    "0x1.3333333333333p+0"
+   ],
+   "0.5": [
+    "0x1.8000000000000p+0",
+    "0x1.8000000000000p+0"
+   ]
+  },
+  "rot90": 1
+ },
+ "source_image": "PNG:RGB:37x23:716a23fd20769b6edcd276d01efe233c563327ab82865717860eb08667ffddbf"
+}
