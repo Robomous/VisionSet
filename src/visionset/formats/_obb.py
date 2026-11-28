@@ -10,16 +10,20 @@ fitted to the nearest rectangle. Rounding to a file's decimals moves a corner
 off its rectangle, and DOTA's corners are drawn by hand on whole pixels of the
 source picture, so a real box is seldom a rectangle. The fit is kept when every
 corner lies within :data:`FIT_TOLERANCE`, a sixth of the fit's shorter side, of
-its fitted corner, or within one whole unit of the row's last decimal on each
-axis, for a box too small to tell rounding from shape. The caller counts a kept
-fit as a degraded geometry. Farther than that, the corners are refused and the
-caller counts a lost label.
+its fitted corner, or within two units of the row's last significant digit on
+each axis, for a box too small to tell rounding from shape. The caller counts a
+kept fit as a degraded geometry. Farther than that, the corners are refused and
+the caller counts a lost label.
 
-A sixth is chosen from data. On the 133 rows of Ultralytics' DOTA8, the
+Both bounds are chosen from data. On the 133 rows of Ultralytics' DOTA8, the
 farthest corner lies at most 0.131 of the shorter side from the fit (median
 0.035, 99th percentile 0.107), while a clear trapezoid lies at 0.30, a
 parallelogram skewed 30 degrees at 0.20 to 0.32, a kite at 0.35 or more, a
-dart at 0.85 and a bow-tie has no fit at all.
+dart at 0.85 and a bow-tie has no fit at all. On the 280,196 whole-pixel rows
+of DOTA v1.5 train and val, a hand-drawn corner lies about 1.5 pixels from the
+fit whatever the box's size, so the ratio grows as the box shrinks (99th
+percentile 0.29 below 8 pixels, 0.11 from 40); two units refuse 0.44% of rows,
+where one refused 2.53%.
 
 Corners are written with enough digits that a box reads back within that
 tolerance, and never clamped into the image: clamping one corner bends the
@@ -64,9 +68,16 @@ def decimal(value: float, digits: int) -> str:
     return "0" if text in ("", "-0") else text
 
 
-def half_unit(tokens: list[str]) -> float:
-    """Half a unit of the last decimal any of ``tokens`` spells: how far rounding moved them."""
-    exponents = (Decimal(token).as_tuple().exponent for token in tokens)
+def half_unit(tokens: list[str], *, significant: bool = False) -> float:
+    """Half a unit of the last decimal any of ``tokens`` spells: how far rounding moved them.
+
+    ``significant`` ignores trailing zeros, for a file that pads whole numbers
+    such as ``76.0`` and so claims a tenth it never measured.
+    """
+    exponents = (
+        (Decimal(token).normalize() if significant else Decimal(token)).as_tuple().exponent
+        for token in tokens
+    )
     decimals = max((-exponent for exponent in exponents if isinstance(exponent, int)), default=0)
     return 0.5 * 10.0 ** -max(decimals, 0)
 
@@ -96,7 +107,7 @@ def read_corners(
     except ValueError:
         pass
     floor = OBB_CORNER_TOLERANCE * scale
-    allowance = (max(2 * quantum[0], floor), max(2 * quantum[1], floor))
+    allowance = (max(4 * quantum[0], floor), max(4 * quantum[1], floor))
     fitted = nearest_rectangle(points)
     if fitted is None:
         return None, NOT_A_RECTANGLE

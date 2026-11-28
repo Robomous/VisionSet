@@ -520,10 +520,25 @@ no unit, so it judges a 10-pixel ship and a 300-pixel ground track field alike. 
 farthest corner lies 0.035 of the shorter side from the fit at the median and 0.131 at worst; a
 clear trapezoid lies at 0.30, a parallelogram skewed 30 degrees at 0.20 to 0.32 depending on its
 proportions, a kite at 0.35 or more and a dart at 0.85, and a bow-tie has no fit at all. A box too
-small for its shape to tell from its rounding is also kept when every corner lies within **one
-unit of the row's last decimal** of the fit on each axis; the precision is read per row, from the
-most decimals any of its eight coordinates spells, so `34` and `34.0` are different claims. A kept
-fit is a `geometry` loss, `its four corners are only near a rectangle; the nearest rectangle is
+small for its shape to tell from its rounding is also kept when every corner lies within **two
+units of the row's last significant digit** of the fit on each axis. The precision is read per
+row, from the most decimals any of its eight coordinates spells. `dota` ignores trailing zeros,
+because DOTA pads whole pixels as `76.0` without measuring a tenth, so `34` and `34.0` allow 2
+pixels and `34.25` allows 0.02; `yolo-obb` takes its normalized coordinates as spelled.
+
+The two-unit allowance is measured on DOTA v1.5 train and val, 280,196 rows in 1,869 label files,
+all on whole pixels. A hand-drawn corner lies about 1.5 pixels from the fit at the median whatever
+the box's size, so relative to the shorter side the error grows as the box shrinks: the farthest
+corner lies 0.10 of it at the median below 8 pixels, 0.066 from 8 to 12, 0.046 from 12 to 20,
+0.037 from 20 to 40 and 0.019 from 40 (99th percentiles 0.29, 0.19, 0.16, 0.16 and 0.11). Reading
+`76.0` as a tenth refused 5.90% of rows, mostly small vehicles under 8 pixels; reading it as a
+whole pixel with one unit refused 2.53%; two units refuse 0.44%, 1,230 rows whose farthest corner
+lies 2.8 pixels or more from the fit at the median, 67 of them 0.4 of the shorter side or more.
+The cost is that at about 6 pixels a trapezoid at 0.30 - 1.8 pixels off - is kept, since at that
+size it cannot be told from a hand's error. Only v1.5 was measured; its classes and small objects
+are a superset of v1.0's.
+
+A kept fit is a `geometry` loss, `its four corners are only near a rectangle; the nearest rectangle is
 kept`, counted once per row. Farther than that - a trapezoid, a strongly skewed parallelogram, a
 kite, a bow-tie - the row is a `label` loss, never kept as a polygon.
 `yolo-obb` corners are scaled by the picture's EXIF-oriented size and not rounded; a class

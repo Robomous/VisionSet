@@ -22,7 +22,7 @@ from tests.formats.test_yolo_obb import (
     same_box,
 )
 
-from visionset.formats._obb import FITTED
+from visionset.formats._obb import FITTED, NOT_A_RECTANGLE
 from visionset.formats.dota import DIFFICULT, DotaExporter, DotaImporter, category_tokens
 from visionset.formats.registry import exporters, importers
 from visionset.kernel import ExportSourceUnreadable, ImportSourceUnreadable
@@ -291,6 +291,10 @@ def test_a_row_is_a_canonical_box_of_the_class_its_category_names(tmp_path: Path
         ("20 10 60 10 54 20 26 20 ship 0", "ship", "not a rectangle"),
         ("20 10 60 10 66 20 26 20 ship 0", "ship", "not a rectangle"),
         ("10 10 20 10 30 10 40 10 ship 0", "ship", "no area"),
+        ("0 0 60 0 44 45 16 45 ship 0", "ship", "not a rectangle"),
+        ("0.0 0.0 40.0 0.0 63.0 40.0 23.0 40.0 ship 0", "ship", "not a rectangle"),
+        ("41 18 62 25 59 32 34 25 ship 0", "ship", "not a rectangle"),
+        ("41.0 18.0 62.0 25.0 59.0 32.0 34.0 25.0 ship 0", "ship", "not a rectangle"),
         ("530 510 562 534 556 542 524 518 ship 0", "ship", "wholly outside"),
         ("30 10 62 34 56 42 24 abc ship 0", "ship", "not finite"),
         ("30 10 62 34 56 42 24 1e999 ship 0", "ship", "not finite"),
@@ -302,6 +306,10 @@ def test_a_row_is_a_canonical_box_of_the_class_its_category_names(tmp_path: Path
         "trapezoid",
         "parallelogram",
         "collinear",
+        "trapezoid-45-pixels",
+        "parallelogram-30-degrees",
+        "small-box-corner-4-pixels-off",
+        "small-box-corner-4-pixels-off-padded",
         "wholly-outside",
         "not-a-number",
         "overflow",
@@ -350,16 +358,34 @@ def test_whole_pixel_corners_off_a_rectangle_are_its_nearest_rectangle_and_degra
     assert claimed.images[0].labels[0].geometry == fitted
 
 
-def test_a_box_too_small_to_judge_by_shape_is_judged_by_the_rows_precision(
-    tmp_path: Path,
-) -> None:
-    whole = _read(_source(tmp_path, "20 10 24 10 24 12 21 12 ship 0\n"))
-    tenths = _read(_source(tmp_path / "tenths", "20.0 10.0 24.0 10.0 24.0 12.0 21.0 12.0 ship 0\n"))
+#: A 7 by 22 pixel vehicle drawn on whole pixels, its farthest corner 1.49 pixels from the fit.
+VEHICLE = ((41, 18), (62, 26), (58, 31), (37, 25))
 
-    assert _losses(whole) == [(ImportLossKind.GEOMETRY, "ship", FITTED, 1)]
-    assert [(kind, why) for kind, _, why, _ in _losses(tenths)] == [
-        (ImportLossKind.LABEL, "its four corners are not a rectangle")
-    ]
+
+def _spelled(points: Any, spelling: str) -> str:
+    return " ".join(spelling.format(value) for point in points for value in point)
+
+
+@pytest.mark.parametrize(
+    "spelling", ["{}", "{:.1f}", "{:.2f}"], ids=["whole", "padded-tenth", "padded-hundredth"]
+)
+def test_a_small_box_on_whole_pixels_is_kept_however_its_zeros_are_padded(
+    tmp_path: Path, spelling: str
+) -> None:
+    dataset = _read(_source(tmp_path, f"{_spelled(VEHICLE, spelling)} small-vehicle 0\n"))
+
+    assert _losses(dataset) == [(ImportLossKind.GEOMETRY, "small-vehicle", FITTED, 1)]
+    (label,) = dataset.images[0].labels
+    fitted = label.geometry
+    assert isinstance(fitted, ObbGeometry)
+    assert sorted((fitted.width, fitted.height)) == pytest.approx([7.07, 22.09], abs=0.01)
+
+
+def test_a_small_box_whose_row_claims_finer_precision_is_judged_by_it(tmp_path: Path) -> None:
+    quarters = [(x + 0.25, y + 0.25) for x, y in VEHICLE]
+    dataset = _read(_source(tmp_path, f"{_spelled(quarters, '{}')} small-vehicle 0\n"))
+
+    assert _losses(dataset) == [(ImportLossKind.LABEL, "small-vehicle", NOT_A_RECTANGLE, 1)]
 
 
 def test_a_difficult_flag_of_0_or_1_is_the_boolean_attribute_and_no_flag_is_none(
