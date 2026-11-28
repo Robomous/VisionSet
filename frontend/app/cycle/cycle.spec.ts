@@ -1579,7 +1579,7 @@ test("the whole cycle, from opening the app to a downloaded export", async ({ pa
     // counts, in the kernel's order, not the browser's.
     await page.getByTestId("export-submit").click();
     const consent = page.getByTestId("lossy-consent");
-    await expect(consent).toContainText("YOLO11 accepts boxes, tags and polygons");
+    await expect(consent).toContainText("YOLO11 accepts boxes, tags, keypoints and polygons");
     await expect(consent).toContainText("1 polyline would be dropped");
     await expect(consent).toContainText("1 tag would be dropped");
     await expect(consent.getByTestId("lossy-classes")).toContainText("centerline");
