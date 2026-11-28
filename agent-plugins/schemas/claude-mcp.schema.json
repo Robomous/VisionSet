@@ -1,0 +1,45 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$comment": "Hand-written for the fields this bundle emits, from https://code.claude.com/docs/en/plugins/manifest-reference (read 2026-11-27). Claude Code substitutes ${CLAUDE_PLUGIN_ROOT} in command, args and env. Both clients accepted a PEP 440 version during the 2026-11-27 install check; the semver pattern is this bundle's own rule.",
+  "type": "object",
+  "required": [
+    "mcpServers"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "mcpServers": {
+      "type": "object",
+      "additionalProperties": {
+        "$ref": "#/$defs/stdioServer"
+      }
+    }
+  },
+  "$defs": {
+    "stdioServer": {
+      "type": "object",
+      "required": [
+        "command",
+        "args"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "command": {
+          "type": "string",
+          "minLength": 1
+        },
+        "args": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "env": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  }
+}

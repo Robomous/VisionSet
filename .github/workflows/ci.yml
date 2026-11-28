@@ -85,6 +85,7 @@ jobs:
       frontend: ${{ steps.filter.outputs.frontend }}
       docker: ${{ steps.filter.outputs.docker }}
       docs: ${{ steps.filter.outputs.docs }}
+      agent-plugins: ${{ steps.filter.outputs['agent-plugins'] }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -185,6 +186,36 @@ jobs:
       - name: Ingest end-to-end example
         if: needs.changes.result != 'success' || needs.changes.outputs.python == 'true'
         run: uv run python examples/ingest_end_to_end.py
+
+  # The agent-plugin bundle under `agent-plugins/`. Its own job rather than steps in
+  # `python`, because the bundle's contract is that it needs nothing the distribution
+  # installs: the tests run on a bare Python 3.11 with no site packages (`-I -S`), the
+  # floor the runtime declares. Ruff and mypy come from the locked environment.
+  agent-plugins:
+    name: agent plugins
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: changes
+    if: always()
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Install uv
+        if: needs.changes.result != 'success' || needs.changes.outputs['agent-plugins'] == 'true'
+        uses: astral-sh/setup-uv@v7
+        with:
+          version: "0.12.3"
+          enable-cache: true
+
+      - name: Sync environment
+        if: needs.changes.result != 'success' || needs.changes.outputs['agent-plugins'] == 'true'
+        run: uv sync --locked
+
+      - name: Agent-plugin gates
+        if: needs.changes.result != 'success' || needs.changes.outputs['agent-plugins'] == 'true'
+        run: bash scripts/check.sh agent-plugins
 
   # M3's exit criterion: the same cycle — ingest, annotate, release — driven three
   # ways from outside the process. One job per surface rather than three steps in

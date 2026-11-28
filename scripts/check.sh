@@ -11,10 +11,11 @@
 # impossible here, so nobody has to remember the rule at the call site.
 #
 # Usage:
-#   bash scripts/check.sh                 # python, frontend, generated, browser
+#   bash scripts/check.sh                 # python, agent-plugins, frontend, generated, browser
 #   bash scripts/check.sh --fast          # the same minus the browser suites
 #   bash scripts/check.sh browser         # one group (or several, space-separated)
 #   bash scripts/check.sh docs            # the documentation site (opt-in)
+#   bash scripts/check.sh agent-plugins   # the agent-plugin bundle
 #   pnpm check                            # the same thing, from the other half
 #
 # `docs` is the one group the default run does not include, and the verdict line
@@ -212,6 +213,27 @@ run_browser() {
   step "browser inference runtime (chromium)" inference_e2e
 }
 
+# The agent-plugin bundle. Its contract tests run on a bare Python 3.11 with no site
+# packages (`-I -S`), which is what proves the runtime needs only the standard library
+# at the floor it declares; ruff and mypy come from the project environment.
+floor_python() {
+  uv run --no-project --python 3.11 -- python "$@"
+}
+
+agent_plugins_tests() {
+  floor_python -I -S -m unittest discover -s agent-plugins/tests -t agent-plugins/tests
+}
+
+run_agent_plugins() {
+  step "agent-plugins contract tests (Python 3.11, stdlib only)" agent_plugins_tests
+  step "agent-plugins manifests current" floor_python agent-plugins/tools/render_manifests.py --check
+  step "agent-plugins manifests valid" floor_python agent-plugins/tools/validate_manifests.py
+  step "agent-plugins ruff (lint)" uv run ruff check agent-plugins
+  step "agent-plugins ruff (format)" uv run ruff format --check agent-plugins
+  step "agent-plugins mypy (strict)" uv run mypy --strict \
+    agent-plugins/tools agent-plugins/tests agent-plugins/packages/visionset/runtime
+}
+
 # The documentation site — not in the default set (see the header). It is a
 # separate workspace root with its own install, so `require_node_modules` says
 # nothing about it and this has to check for itself.
@@ -254,7 +276,7 @@ run_docs() {
 # verdict line below measures coverage against, and what
 # `tests/scripts/check_stages.test.mjs` holds the dispatch `case` to — a group
 # that loses its arm, or an arm with no group, is a silently shortened run.
-declare -a ALL_GROUPS=(python frontend generated browser docs)
+declare -a ALL_GROUPS=(python agent-plugins frontend generated browser docs)
 
 # What actually *completed*, comma-joined — never what was asked for. A string
 # rather than an array because macOS still ships bash **3.2**, where an empty
@@ -327,7 +349,7 @@ done
 # The full run is the default and `--fast` is the exception. A default that is
 # silently the fast one is how a browser suite stops being run at all.
 if [[ ${#groups[@]} -eq 0 ]]; then
-  groups=(python frontend generated)
+  groups=(python agent-plugins frontend generated)
   [[ $fast -eq 1 ]] || groups+=(browser)
 elif [[ $fast -eq 1 && " ${groups[*]} " == *" browser "* ]]; then
   # Refused rather than resolved. Either answer would be a guess about which
@@ -339,8 +361,8 @@ fi
 # Verified here rather than inside the groups that need it, and that placement is
 # the point: `python` runs first and takes minutes, so a check living beside
 # `require_node_modules` would let a wrong-version run reach the frontend suites
-# several minutes in and fail there, looking like a code defect. `python` is the
-# one group that needs no Node, so a run asking only for it is left alone.
+# several minutes in and fail there, looking like a code defect. `python` and
+# `agent-plugins` need no Node, so a run asking only for them is left alone.
 for group in "${groups[@]}"; do
   case "$group" in
     frontend | generated | browser | docs)
@@ -353,12 +375,13 @@ done
 for group in "${groups[@]}"; do
   case "$group" in
     python) run_python ;;
+    agent-plugins) run_agent_plugins ;;
     frontend) run_frontend ;;
     generated) run_generated ;;
     browser) run_browser ;;
     docs) run_docs ;;
     *)
-      echo "error: unknown group '$group' (want: python, frontend, generated, browser, docs)" >&2
+      echo "error: unknown group '$group' (want: python, agent-plugins, frontend, generated, browser, docs)" >&2
       exit 2
       ;;
   esac

@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "visionset": {
+      "command": "python3",
+      "args": [
+        "${CLAUDE_PLUGIN_ROOT}/runtime/launch.py"
+      ]
+    }
+  }
+}

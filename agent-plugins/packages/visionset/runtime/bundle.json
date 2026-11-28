@@ -1,0 +1,7 @@
+{
+  "distribution": "visionset",
+  "console_script": "visionset",
+  "version": "0.0.1b4",
+  "compatibility": "==0.0.1b4",
+  "requires_python": ">=3.11"
+}

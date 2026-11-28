@@ -280,10 +280,21 @@ artifacts = ["src/visionset/_static/**"]
 [tool.hatch.build.targets.wheel]
 packages = ["src/visionset"]
 
+# The agent-plugin bundle is distributed from the repository, never with the Python package.
+[tool.hatch.build.targets.sdist]
+exclude = ["/agent-plugins"]
+
 # --- Ruff ---
 [tool.ruff]
 line-length = 100
-src = ["src", "tests", "scripts"]
+src = [
+    "src",
+    "tests",
+    "scripts",
+    "agent-plugins/tools",
+    "agent-plugins/tests",
+    "agent-plugins/packages/visionset/runtime",
+]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "SIM"]

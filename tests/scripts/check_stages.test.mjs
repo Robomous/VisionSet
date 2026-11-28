@@ -14,7 +14,7 @@
  * So there is now one last line on stdout, from a `trap … EXIT` so no path out can
  * skip it:
  *
- *     check.sh: PASSED  ran=python,frontend,generated,browser  skipped=docs
+ *     check.sh: PASSED  ran=python,agent-plugins,frontend,generated,browser  skipped=docs
  *
  * Two halves are held here, and they fail differently. The **behavioural** half
  * runs the real script against a copied tree with no `node_modules` — the issue's
@@ -44,7 +44,7 @@ const SCRIPT = path.join(REPO, "scripts", "check.sh");
 const SOURCE = readFileSync(SCRIPT, "utf8");
 
 /** Every group the script knows. The roster the assertions below are measured in. */
-const GROUPS = ["python", "frontend", "generated", "browser", "docs"];
+const GROUPS = ["python", "agent-plugins", "frontend", "generated", "browser", "docs"];
 
 /**
  * The script, run against a directory that is only the script and its own pin.
@@ -95,7 +95,7 @@ test("a run that stops before its groups says so on stdout, not only in the exit
   assert.match(result.stderr, /node_modules is missing/);
   assert.equal(
     verdictLine(result),
-    "check.sh: INCOMPLETE  ran=none  skipped=python,frontend,generated,browser,docs",
+    "check.sh: INCOMPLETE  ran=none  skipped=python,agent-plugins,frontend,generated,browser,docs",
   );
 });
 
@@ -108,7 +108,7 @@ test("INCOMPLETE and FAILED are different news, and the line tells them apart", 
   assert.equal(result.status, 1);
   assert.equal(
     verdictLine(result),
-    "check.sh: FAILED  ran=python  skipped=frontend,generated,browser,docs",
+    "check.sh: FAILED  ran=python  skipped=agent-plugins,frontend,generated,browser,docs",
   );
 });
 
@@ -119,7 +119,7 @@ test("a usage error is a verdict too, rather than a bare exit code", () => {
   assert.match(result.stderr, /unknown group 'nope'/);
   assert.equal(
     verdictLine(result),
-    "check.sh: INCOMPLETE  ran=none  skipped=python,frontend,generated,browser,docs",
+    "check.sh: INCOMPLETE  ran=none  skipped=python,agent-plugins,frontend,generated,browser,docs",
   );
 });
 
@@ -137,7 +137,7 @@ test("the banner follows what ran, not what was asked for", () => {
   // second one stays silent — which is the case it matters most in.
   const result = runCopied("python", "browser");
 
-  assert.equal(verdictLine(result), "check.sh: FAILED  ran=python  skipped=frontend,generated,browser,docs");
+  assert.equal(verdictLine(result), "check.sh: FAILED  ran=python  skipped=agent-plugins,frontend,generated,browser,docs");
   assert.match(result.stderr, /THE BROWSER SUITES DID NOT RUN/);
 });
 
@@ -152,7 +152,7 @@ test("every group the script knows is dispatched, and every arm belongs to a gro
 
   const dispatch = SOURCE.match(/for group in "\$\{groups\[@\]\}"; do\n\s*case "\$group" in\n([\s\S]*?)\n\s*\*\)/);
   assert.ok(dispatch, "the group loop dispatches through a case");
-  const arms = [...dispatch[1].matchAll(/^\s*(\w+)\)/gm)].map((match) => match[1]);
+  const arms = [...dispatch[1].matchAll(/^\s*([\w-]+)\)/gm)].map((match) => match[1]);
   assert.deepEqual(arms, GROUPS);
 });
 
@@ -160,7 +160,7 @@ test("the default run is every group, and --fast is that minus the browser", () 
   // Two literals rather than one, because they are two decisions: what a bare
   // invocation covers, and what the documented shortcut gives up. A silent edit to
   // either is a shortened run nobody asked for.
-  assert.match(SOURCE, /groups=\(python frontend generated\)/);
+  assert.match(SOURCE, /groups=\(python agent-plugins frontend generated\)/);
   assert.match(SOURCE, /\[\[ \$fast -eq 1 \]\] \|\| groups\+=\(browser\)/);
 });
 
@@ -205,7 +205,7 @@ test("a wrong Node major stops the run before any group, naming both versions", 
   assert.doesNotMatch(result.stderr, /node_modules is missing/);
   assert.equal(
     verdictLine(result),
-    "check.sh: INCOMPLETE  ran=none  skipped=python,frontend,generated,browser,docs",
+    "check.sh: INCOMPLETE  ran=none  skipped=python,agent-plugins,frontend,generated,browser,docs",
   );
 });
 
@@ -227,7 +227,7 @@ test("the group that needs no Node is not held to the pin", () => {
   assert.doesNotMatch(result.stderr, /pinned to Node/);
   assert.equal(
     verdictLine(result),
-    "check.sh: FAILED  ran=python  skipped=frontend,generated,browser,docs",
+    "check.sh: FAILED  ran=python  skipped=agent-plugins,frontend,generated,browser,docs",
   );
 });
 

@@ -1,0 +1,54 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$comment": "Hand-written for the fields this bundle emits, from https://developers.openai.com/plugins/build/plugins (read 2026-11-27). Codex substitutes no variable in an MCP server entry and resolves cwd against its cached plugin root. Both clients accepted a PEP 440 version during the 2026-11-27 install check; the semver pattern is this bundle's own rule.",
+  "type": "object",
+  "required": [
+    "mcpServers"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "mcpServers": {
+      "type": "object",
+      "additionalProperties": {
+        "$ref": "#/$defs/stdioServer"
+      }
+    }
+  },
+  "$defs": {
+    "stdioServer": {
+      "type": "object",
+      "required": [
+        "command",
+        "args",
+        "cwd"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "command": {
+          "type": "string",
+          "minLength": 1
+        },
+        "args": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "env": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "cwd": {
+          "type": "string",
+          "pattern": "^\\.(/[^.][^/]*)*$"
+        },
+        "startup_timeout_sec": {
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    }
+  }
+}
