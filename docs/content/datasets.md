@@ -1,13 +1,11 @@
 # Datasets
 
-A project's Dataset is its **curated trunk**: the current answer to "which of our assets are
-training data?" Every project has exactly one, created with it and named after it. See
-[projects.md](projects.md). `DatasetService` is what fills it and what curates it.
+A project's dataset, or *trunk*, is the curated collection of assets available for release.
+Each project starts with one empty dataset. Promote completed batches to add eligible assets,
+and remove assets individually as you curate the collection.
 
-The Dataset is mutable by design. Completed batches add assets, and curators can remove them.
-The **change log**, rather than immutability, makes these changes traceable: every mutation
-appends an entry that nobody can edit or remove. `ReleaseService` captures the trunk as an
-immutable artifact. See [releases.md](releases.md).
+`DatasetService` records membership changes in an append-only log. Use
+[releases](releases.md) to freeze a snapshot of the trunk and its labels.
 
 ```python
 from visionset.kernel.services import DatasetService, ProjectService, WorkspaceService

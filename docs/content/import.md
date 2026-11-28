@@ -1,16 +1,13 @@
 # Import
 
-An import brings a dataset that already has labels - a COCO export from another tool, say, or
-KITTI or nuScenes lidar scans with their boxes - into a project. The images or scans become assets, the dataset's classes become the project's schema when it has
-none, and every label is written with `import` provenance into one batch, which is then approved.
-The import stops there. A person reviews the labels and promotes them as with any other batch,
-because a label from outside is third-party truth. The rule is
-[an import is a labeled batch](architecture/decisions/an-import-is-a-labeled-batch.md).
+Use import to bring an existing labeled dataset into VisionSet. An import reads a format such
+as COCO, KITTI, or nuScenes, creates assets for the media, and stores the annotations with
+`import` provenance. It creates a schema if the project has none and opens the work as an
+approved batch. Start the batch to review or correct the labels before promoting it. See
+[the labeled-batch import decision](architecture/decisions/an-import-is-a-labeled-batch.md).
 
-**Stated limit:** an import reads a directory on the machine VisionSet runs on, so it is a CLI and
-MCP operation. REST has no route that takes a server-side path, for the reason given in
-[sources.md](sources.md#over-http-a-directory-is-an-upload-a-clip-is-never-one), and there is no
-upload variant yet. [surfaces.md](surfaces.md) shows what each surface can do.
+Run the import through the SDK, CLI, or MCP with a directory accessible to that process.
+The [surface guide](surfaces.md) lists entry points for importing and ingesting media.
 
 ## What an import does
 

@@ -1,12 +1,9 @@
 # Jobs
 
-A job assigns an annotator a segment of an approved batch and records progress for each asset.
-`BatchService.approve` creates jobs, and `JobService` moves them through their lifecycle.
-
-The progress record is deliberately **not** the annotations. An asset can be *skipped*, a
-decision with no labels, or *annotated and sent back for rework*, which has labels but is not
-done. Neither state can be expressed through `Annotation` rows alone, so VisionSet tracks the
-work separately from its result.
+A job covers a subset of the assets in an approved batch and tracks each asset's progress.
+`BatchService.approve` creates the jobs. Use `JobService` to start a job, record progress, or
+complete it. The same labels can appear on an asset in multiple jobs. Each job keeps its own
+progress for that asset.
 
 ```python
 from visionset.kernel.domain import AssetProgress
@@ -46,7 +43,7 @@ Underneath it, each asset moves through `ASSET_PROGRESS_TRANSITIONS`:
 | `annotated` | `unannotated`, `skipped`, `review_pending` | Its last annotation was deleted; it was decided against after all; it was submitted. |
 | `skipped` | `unannotated` | The decision was reversed while the job is open. |
 | `review_pending` | `annotated`, `accepted` | A reviewer sent it back, or took it. |
-| `accepted` | *nothing* | Reversing it needs a reviewer, and there is no review surface yet. |
+| `accepted` | *nothing* | Acceptance ends the asset’s workflow in this job. |
 
 Anything outside the table raises `InvalidTransition`, naming what the asset *can* become.
 
@@ -272,9 +269,10 @@ which would be a lie: an `annotated` asset still has three moves left. What it d
 outstanding work. `unannotated` blocks because the labeling has not happened; `review_pending`
 blocks because the review has not.
 
-Review is **optional**, so the set is generous on purpose. Making it
-`{accepted, skipped}` would mean no job could ever finish without a reviewer, and there is no
-review surface yet.
+Review is optional. An `annotated` asset counts toward job completion. If you submit it for
+review, it must move back to `annotated` or forward to `accepted` before the job can complete.
+In the browser, the annotation page offers **Submit for review** or **Accept** when the asset
+allows the action.
 
 ## Completing a job does not complete its batch
 

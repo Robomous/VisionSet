@@ -1,12 +1,10 @@
 # Projects
 
-A project is the aggregate root. Each schema, source, asset, batch, task group, annotation,
-and dataset belongs to exactly one project. `ProjectService` owns the project lifecycle and is
-the **only** way to create one. `WorkspaceService` defines the naming rules but has no
-`create_project`, preventing a project from being created without a dataset.
+A project groups the assets, sources, annotation schemas, batches, and releases for one
+dataset. Creating a project also creates its empty [dataset](datasets.md), called the trunk.
+Publish an [annotation schema](schemas.md) before opening a batch for labeling.
 
-A new project has no annotation schema. Only `SchemaService` creates one. See
-[schemas.md](schemas.md).
+Use `ProjectService` to create, update, or delete a project.
 
 ```python
 from visionset.kernel.services import ProjectService, WorkspaceService

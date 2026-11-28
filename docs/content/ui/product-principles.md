@@ -1,12 +1,11 @@
 # Product UI principles
 
-VisionSet-specific product rules: how the interface behaves as a *dataset tool*, independent
-of the visual language. The visual foundations — colour, typography, spacing, materials,
-motion, accessibility — are [`DESIGN.md`](../../../DESIGN.md) at the repository root. This page
-owns the rules that would survive a restyle: what a screen must show, offer, and refuse.
+Use these rules when designing VisionSet screens for browsing data, authoring labels, and
+monitoring work. [DESIGN.md](../../../DESIGN.md) defines the visual foundation, including
+type, color, spacing, motion, and accessibility.
 
-Navigation behaviour is [navigation.md](navigation.md); the annotation workspace is
-[annotator.md](annotator.md); the data shell is [ui.md](../ui.md).
+See [Navigation](navigation.md), [The annotation workspace](annotator.md), and
+[The browser client](../ui.md) for screen-specific details.
 
 ## Principles
 

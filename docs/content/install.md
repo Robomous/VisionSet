@@ -1,128 +1,89 @@
 # Installing VisionSet
 
-One wheel contains the API, CLI, MCP server, and compiled browser application. Nothing else must
-be downloaded afterward, and there is no separate frontend to serve.
-
-## Requirements
-
-| | |
-| --- | --- |
-| **Python** | 3.11 or newer |
-| Disk | your images, plus a copy: assets are content-addressed into the workspace |
-
-Nothing else. No database server, no Node, no Docker, and no media binary — not even for
-video; see below. The metadata lives in one SQLite file inside the workspace, and the pixels
-live beside it.
+A VisionSet wheel includes the Python SDK, REST API, CLI, MCP server, and compiled browser app. The
+base install needs Python 3.11 or newer and disk space for the workspace database and stored copies
+of your assets. Use a browser to open the app or import video.
 
 ## Install
 
-VisionSet is not on PyPI yet - that lands with the first beta. Until then, install from a built
-wheel or straight from the repository:
+Install the published beta from [PyPI](https://pypi.org/project/visionset/):
 
 ```bash
-# from the repository, into an isolated environment (recommended)
-uv tool install "git+https://github.com/Robomous/VisionSet"
-
-# or into the current environment
-pip install "git+https://github.com/Robomous/VisionSet"
+uv tool install --prerelease allow visionset
 ```
 
-To build the wheel yourself - which is what CI does, and what publishing will ship:
+To install into an active Python environment, use `python -m pip install --pre visionset`.
+
+This documentation follows `main`, which includes changes after the published beta. To use the
+features documented here, build the wheel from the current checkout. The source build also needs
+`uv`, pnpm, and the Node version in [`.nvmrc`](../../.nvmrc).
 
 ```bash
-git clone https://github.com/Robomous/VisionSet && cd VisionSet
-uv sync && pnpm install
-bash scripts/build_dist.sh          # pnpm -r build → bundle:static → uv build
-pip install dist/visionset-*.whl
+git clone https://github.com/Robomous/VisionSet
+cd VisionSet
+uv sync --locked
+pnpm install --frozen-lockfile
+bash scripts/build_dist.sh
+uv tool install --reinstall dist/visionset-*.whl
 ```
 
-That order matters and the script enforces it: the compiled UI is copied into the package
-immediately before the wheel is built, so a wheel built out of order installs cleanly and then
-serves nothing. See [CONTRIBUTING.md](../../CONTRIBUTING.md#building-the-distribution).
+The [build script](../../scripts/build_dist.sh) compiles and bundles the browser app before building
+the Python wheel. See the [distribution build guide](../../CONTRIBUTING.md#building-the-distribution).
 
 ## Check it
 
 ```bash
-visionset --version         # the version, and nothing else
-visionset format list       # the formats this installation can write
+visionset --version
+visionset format list
 ```
 
-`format list` is the more useful of the two: it reads *installed* entry-point metadata, so a
-non-empty answer proves the wheel is properly installed rather than merely importable. Run it
-for the current set rather than trusting a list written down somewhere - third-party
-distributions register into the same entry-point group, so what a given installation can write
-is a property of that installation.
+`format list` reads installed entry points, including any third-party formats you have installed.
+To see the available training targets, run `visionset target list`.
 
 ## Video, and where it is decoded
 
-VisionSet needs no media binary at all, for images or for video. There is nothing to install and
-nothing this page can tell you to run.
-
-Importing a video is a **browser** capability: the browser demuxes and decodes it with its own
-built-in `WebCodecs` support and turns it into the image assets a project is made of before the
-server ever hears about it. There is no server-side decoder behind that, and no fallback - a
-browser that cannot decode a given codec says so, in the browser, rather than quietly handing the
-file to a server that would have decoded it instead. See [ingest.md](ingest.md).
+Video import uses WebCodecs in the browser. VisionSet sends the selected frames and their
+provenance to the server, while the original clip stays in the browser. Supported codecs depend
+on the browser and platform. See [ingest](ingest.md#in-the-browser).
 
 ## Running a model on this machine
 
-**Only for `local` inference connections**, and only when you have made one. VisionSet's
-auto-labeling feature is always present; what is optional is the runtime that executes a model
-*here*:
+For a `local` inference connection, install the `local-inference` extra in the same environment
+as VisionSet. For example, to install the published beta with local inference in an active Python
+environment:
 
 ```bash
-pip install "visionset[local-inference]"
+python -m pip install --pre 'visionset[local-inference]'
 ```
 
-That brings torch, torchvision, transformers, accelerate and huggingface_hub - roughly two
-gigabytes, most of it CUDA - which is exactly why it is not in the base install. It is the same
-command on every platform: the macOS wheels it installs carry Apple Silicon GPU support already,
-so a Mac needs no second index and no build flag to run a connection on `mps`. Without it you can still create a
-local connection, list it, and see what it is configured for; what you cannot do is fetch its
-weights or ask it to predict. Both refusals name the command above rather than simply saying
-"unavailable".
-
-**Installing it downloads no model.** Weights arrive when you run `visionset inference download`,
-never at install time, never at startup, and never on the way to anything else. They land inside
-the workspace, under `models/`, so a workspace you copy to another machine takes its model with
-it. See [inference.md](inference.md).
+This installs the inference runtime, including PyTorch and Transformers. Use
+`visionset inference download CONNECTION` to fetch the weights for a configured connection. VisionSet stores
+those weights in the workspace's `models/` directory. See [inference](inference.md) for model
+configuration, browser inference, and HTTP connections.
 
 ## Optional extras, for checking exports
 
-Neither is needed to *use* VisionSet; both are what the project's own tests use to prove an export
-is loadable by the tool it is aimed at.
-
-```bash
-uv sync --group yolo    # ultralytics — brings torch, roughly two gigabytes
-uv sync --group coco    # pycocotools
-```
-
-The `yolo` group has a wart worth knowing before you install it into a checkout: the
-`ultralytics` wheel ships a **top-level `tests` package**, which shadows this repository's own
-`tests/` directory. Run the format smoke tests and then `uv sync` again; see
-[CONTRIBUTING.md](../../CONTRIBUTING.md#checks-that-must-stay-green).
+Contributors can use the `yolo` and `coco` dependency groups to check exports with Ultralytics and
+pycocotools. See the [format smoke tests](../../CONTRIBUTING.md#checks-that-must-stay-green) for the
+locked commands and environment cleanup.
 
 ## Where your data goes
 
-Nowhere you did not name. A workspace is a directory you create:
+Create a workspace, then start the server from that directory:
 
 ```bash
 visionset init ~/datasets/road-signs
+cd ~/datasets/road-signs
+visionset server
 ```
 
-Inside it: `visionset.db` (metadata) and `blobs/` (content-addressed pixels), plus three
-directories that appear only once something puts them there — `uploads/` for bytes sent to the
-REST API, `exports/` for what an export wrote, and `models/` for weights you fetched. Nothing is
-uploaded, nothing phones home, and no path outside that directory is written except where you
-point an export. [workspaces.md](workspaces.md) has the whole layout.
-
-`init` is the only command that creates a workspace, and it refuses a directory that already holds
-something. Every other command *finds* one - `--workspace`, then `$VISIONSET_WORKSPACE`, then the
-nearest workspace at or above the working directory. The full precedence, and why only the last of
-those searches upward, is in [workspaces.md](workspaces.md).
+Open `http://127.0.0.1:8000/app`. The workspace holds `visionset.db` for metadata and `blobs/` for
+content-addressed media. VisionSet creates additional directories for uploads, exports, and model
+weights as needed. See [workspaces](workspaces.md) for the full layout and how VisionSet resolves
+`--workspace`, `VISIONSET_WORKSPACE`, and the working directory.
 
 ## Next
 
-- [tutorial.md](tutorial.md) - a first dataset, end to end, in about half an hour.
-- [cli.md](cli.md) - the whole cycle from a terminal.
-- [mcp.md](mcp.md) - pointing an agent at a workspace.
+- [Create your first dataset](tutorial.md).
+- [Use the command line](cli.md).
+- [Configure an MCP client](mcp.md).

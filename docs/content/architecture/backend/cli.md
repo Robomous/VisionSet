@@ -1,16 +1,17 @@
 # cli
 
 [`src/visionset/cli/`](../../../../src/visionset/cli/) is Typer over the kernel. Its
-claim is that the whole cycle - create a project, define a schema, ingest, approve,
-annotate, promote, publish, export - is reachable from a shell without touching
-Python.
+commands cover project and schema setup, ingest, batch and job management,
+promotion, publishing, and export. A command can record annotation progress or
+run model pre-labeling. Use the browser, REST API, or MCP to create or edit labels
+interactively.
 
 ## The shape of a command
 
 ```mermaid
 flowchart LR
     Argv["argv"] --> Cmd["command\nparses, resolves the workspace"]
-    Cmd --> Svc["one kernel service call"]
+    Cmd --> Svc["kernel service calls"]
     Svc --> Ok{"accepted?"}
     Ok -->|yes| Out["stdout: the datum\nstderr: the prose"]
     Ok -->|no| Err["_errors.py\nsentence on stderr, exit code\n--json: the refusal on stdout"]

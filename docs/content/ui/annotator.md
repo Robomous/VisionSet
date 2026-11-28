@@ -1,20 +1,17 @@
 # The annotation workspace
 
-The UX contract for the one screen somebody sits in for an hour. The data flow behind it —
-queries, saving, review moves, the suggest tool's server side — is
-[`docs/content/ui.md`](../ui.md); the kernel's rules for the labels themselves are
-[`docs/content/annotations.md`](../annotations.md); the visual foundations are
-[`DESIGN.md`](../../../DESIGN.md). This page describes the workspace as the current
-implementation renders it, using the current implementation's token names.
+Open an annotation job to label and review images or point-cloud scans. This page describes the
+layout, controls, and behavior of the editor.
+
+See [The browser client](../ui.md) for its API and save flow,
+[Annotations](../annotations.md) for label and tracking rules, and
+[DESIGN.md](../../../DESIGN.md) for the visual foundation.
 
 ## The workspace is self-sufficient
 
-No flow may force navigation out of the editor, and no exit may lose work. Back saves
-first; a class the schema lacks is created from the class list without leaving the page;
-looking at the job's other frames is an **overlay, not an exit** — the island's frame button opens a
-gallery over the workspace and the URL does not move. Every trip out of the editor is a
-trip back through a list, a tab and a scroll position to the frame you were looking at,
-which is why this rule is immovable.
+The editor saves before navigating back or moving between assets. Create missing classes from
+the class list. Use the frame button to open the job's gallery over the editor and return to
+the same frame or open another one.
 
 ## The layout
 
@@ -28,7 +25,7 @@ the hand. Nothing in a zone changes position from frame to frame.
 | Bar | back (heading the rail's column) · the batch's name `›` `Job · n frames` (`Job · n scans` for a job of scans) · pinned `v{n}` badge — then, at the far end, the job's progress · a hairline · the save state · the frame's review move · overflow `⋯` |
 | Rail | the tools, the hand; at the foot, hide/show all objects, then help. Absent on a scan, whose column the stage takes |
 | Stage | the tool's own bar (the active tool and the class it draws; while Suggest is armed, its options and its state) over the picture, on an image only; on the picture, the status tag and under it the object count and hint top-left, notices top-right, the island bottom-centre, zoom bottom-right |
-| Panel | the classes, tags and objects |
+| Panel | Classes, Tags, and Objects. Tracks also appears for assets with sequence occurrences. |
 
 **The bar says where you are and where the work stands, and nothing on it moves between
 frames.** The breadcrumb truncates before anything on the right gives way. Below a 56rem bar

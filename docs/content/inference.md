@@ -1,12 +1,11 @@
 # Inference connections
 
-VisionSet never downloads a model automatically. Predictions use a **connection** that you
-create. This workspace configuration identifies the model, its revision, and where it runs.
-Installing the package downloads no model data, and creating a connection only writes a row;
-it does not access the network.
+Create a workspace **connection** to run model-assisted labeling with a local model or an HTTP
+endpoint. The connection identifies a model and its revision. Fetch local weights explicitly
+when you are ready to use them.
 
-A new workspace has no connections and therefore cannot make predictions. Opening, upgrading,
-or leaving the workspace running does not create one.
+The annotation editor can also offer [browser inference](architecture/frontend/browser-inference.md)
+when its host supplies a browser runtime.
 
 Two kinds exist today:
 

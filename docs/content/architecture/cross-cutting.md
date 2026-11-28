@@ -1,26 +1,25 @@
 # Cross-cutting
 
-Three things run through every layer. Each has an authoritative home elsewhere;
-this page says what they are and points at it.
+These rules apply across VisionSet's Python SDK and its clients.
 
 ## The two machine-enforced boundaries
 
-Everything else in this repository is a convention. These two are checked, and a
-change that fights one is wrong - the boundary does not move to make a build pass.
+The checks below enforce the kernel and annotator boundaries. Keep both
+boundaries intact when changing the code.
 
 ### Kernel purity
 
 `visionset.kernel` never imports `visionset.server`, `visionset.cli`,
 `visionset.mcp`, `visionset.formats`, `visionset.wire`, `visionset.jobs`,
-`visionset.inference` or `visionset.preprocessing`, nor `fastapi`, `typer`, `mcp` or
-`uvicorn`.
+`visionset.inference`, `visionset.preprocessing`, or `visionset.tracking`.
+The same import contract forbids `fastapi`, `typer`, `mcp`, `uvicorn`, and `mlflow`.
 
 - **Contract** - `[[tool.importlinter.contracts]]` in
   [`pyproject.toml`](../../../pyproject.toml), run by `uv run lint-imports`.
 - **Second check** -
   [`tests/architecture/test_kernel_purity.py`](../../../tests/architecture/test_kernel_purity.py)
-  imports the kernel in a fresh interpreter and inspects `sys.modules`, which is
-  what a deferred import inside a function cannot satisfy.
+  imports the kernel in a fresh interpreter and inspects `sys.modules` for
+  modules loaded during initialization.
 - **Why it is drawn there** - [backend/kernel.md](backend/kernel.md).
 
 ### The headless annotator
@@ -60,16 +59,12 @@ decoder module is loaded and no decoder program is started, however the name was
 > Reusable VisionSet packages declare ports; the standalone application and other
 > hosts supply adapters.
 
-`@visionset/ui-core` is the sharpest example: it declares `VisionSetDataClient` for
-data and `VisionSetMediaRuntime` for browser video import, and knows the shape of
-each without ever knowing which transport, credential, materializer or storage
-target answers it (see [frontend/ui-core.md](frontend/ui-core.md)). `@visionset/app`
-is *a* host that implements both - the one this repository ships - not the only
-host either port permits. A managed host satisfies the identical ports with its own
-adapters, and neither `ui-core` nor `@visionset/media`'s core changes to allow that;
-[frontend/media.md](frontend/media.md) covers the equivalent split one level down,
-between the port `@visionset/media`'s core declares and the browser decoder its
-`./mediabunny` subpath adapts.
+`@visionset/ui-core` declares a required `VisionSetDataClient` and optional
+runtimes for video import and browser inference. The standalone app supplies
+the HTTP data client, connects the video materializer to a frame sink, and
+adapts the browser inference engine to interactive suggestions. See
+[UI core](frontend/ui-core.md) for the three ports and
+[Media](frontend/media.md) for the separate decoder entrypoint.
 
 ## The capabilities contract
 
@@ -120,7 +115,7 @@ Three state machines, and they do not cascade - each is derived separately.
 stateDiagram-v2
     direction LR
     [*] --> draft
-    draft --> approved: approve — freezes membership, pins the schema, cuts jobs
+    draft --> approved: approve — freezes membership, pins the schema, creates jobs
     approved --> in_annotation: start
     in_annotation --> completed: complete — derived, once every job is settled
     completed --> [*]

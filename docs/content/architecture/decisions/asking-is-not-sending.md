@@ -20,12 +20,11 @@ The request carries no connection id. That omission is the whole of the type's a
 an answer gets routed is the executor's own business, fixed when the executor is built, and the
 question being asked is the same question either way.
 
-`useServerSuggestionExecutor()` is the shipped implementation. It posts to `/inference/suggest`
-exactly as the editor used to, and it answers `null` when there is no usable connection -
-because "there is nowhere to send this" is a state
-[`usableConnection()`](../frontend/ui-core.md) already reports through its blocker, and the
-panel renders that blocker. An executor that existed only to refuse would put a second spelling
-of the same fact in front of the reader.
+`useServerSuggestionExecutor()` posts to `/inference/suggest`. With no usable
+connection it returns `null`, and the panel shows the blocker reported by
+[`usableConnection()`](../frontend/ui-core.md). For a ready browser target, the
+standalone host supplies an executor backed by its local runtime. Both use the
+same editor session.
 
 ## Why the editor cannot just call the route
 

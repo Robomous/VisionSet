@@ -1,8 +1,8 @@
 # Media
 
-Media must be decoded before it can be annotated, and the kernel must know what was decoded.
-`ImageProcessor` accepts bytes and either returns information about the image or rejects it with
-a message that names the stream.
+VisionSet probes media during ingest to record the information annotation and export need.
+The `ImageProcessor` interface reads still images, reports their dimensions, and generates
+JPEG previews. Point-cloud ingest has its own scanner for PCD and PLY files.
 
 ```python
 from visionset.kernel.services import WorkspaceService

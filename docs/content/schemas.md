@@ -1,13 +1,8 @@
 # Annotation schemas
 
-A schema is a project's ontology. It defines the classes being labeled, the geometries each
-class may be drawn as, and the additional information carried by a label. The previous system called this the
-"task type," but a task type remained fixed for the life of a project. A schema is
-**versioned**, and every version is immutable.
-
-`SchemaService` owns that lifecycle and is the **only** way to create a version.
-`ProjectService` deliberately does not seed one, so a project starts without an ontology and
-receives version 1 when somebody defines what it labels.
+A project's annotation schema defines the classes you can label, the geometries each class
+allows, and the attributes a label can carry. A project starts without a schema. Use
+`SchemaService` to publish version 1 and any later versions. Each published version is immutable.
 
 ```python
 from visionset.kernel.domain import Attribute, GeometryType, LabelClass

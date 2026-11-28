@@ -1,8 +1,8 @@
 # Workspaces
 
-A workspace is a directory and the stores it contains. Every kernel operation runs in the
-context of exactly one workspace, making `WorkspaceService` both the entry point and the
-**single composition point** for the default adapters.
+A workspace is a directory containing VisionSet's metadata and media. The CLI, browser app,
+and API operate on the workspace you open. SDK callers use `WorkspaceService` to open it and
+connect to its database and blob store.
 
 ```
 <root>/

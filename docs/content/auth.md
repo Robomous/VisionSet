@@ -1,287 +1,122 @@
 # Authentication
 
-A VisionSet workspace uses an **API token** scoped to that workspace. A valid token grants access
-to the entire workspace; VisionSet does not provide granular permissions.
+Each VisionSet server serves one workspace. A valid API token grants access to the whole workspace.
+For HTTP clients, create a named token with the CLI and send it in the bearer header:
 
-A second credential keeps people from having to handle the token directly. The server signs in
-the browser it serves by using a cookie that nobody needs to type. See
-[the browser session](#the-browser-session). The rest of this page describes API tokens.
-
-```
-visionset token create --name ci     # prints the secret once, on stdout
-visionset token list                 # names, created, revoked — never secrets
-visionset token revoke ci            # asks first, unless you pass --yes
+```http
+Authorization: Bearer <workspace-token>
 ```
 
-```
-Authorization: Bearer vst_hK3n...
-```
-
-Every REST endpoint except `/health` requires it. The CLI and the MCP server do not: they call
-the SDK in the same process, on a machine whose filesystem the caller already has.
+The browser app can also use a session cookie issued by the server. The CLI and the local stdio
+MCP server call the SDK directly and use the caller's filesystem access.
 
 ## The token
 
-| Field | |
-| --- | --- |
-| `name` | What an operator calls it. Unique per workspace, case-insensitively. |
-| `created_at` | When it was issued. |
-| `revoked_at` | When it was burned, or absent while it still works. |
+VisionSet generates a random 256-bit secret. The workspace stores its SHA-256 digest alongside
+the token's name, creation time, and optional revocation time. The secret is returned only when
+you create it. If it is lost, create a replacement.
 
-The secret itself is **not** stored - only its SHA-256 digest. `TokenService.create` returns the
-plaintext exactly once, in an `IssuedToken`, and nothing can recover it afterwards. The remedy
-for a lost token is a new token.
-
-> ### Why a digest and not a password KDF
->
-> A KDF (argon2, bcrypt) exists to make *low-entropy, human-chosen* input expensive to guess. A
-> VisionSet secret is 256 bits from `secrets.token_urlsafe`: there is no dictionary to run and no
-> guessing budget that terminates. Two more reasons make it the right call rather than merely a
-> defensible one. Verification runs on **every request** and compares the presentation against
-> every token the workspace holds, so a 100 ms KDF would cost N × 100 ms *per request* - the
-> opposite cost model to a login form, where the check runs once and rate limiting bounds it. And
-> `hashlib` is stdlib, where a KDF is a dependency taken on for no gain.
->
-> The accepted consequence, stated rather than hidden: the digest is unsalted and deterministic,
-> so two identical secrets hash identically. That requires drawing the same 256-bit value twice -
-> and it is exactly the property that lets verification be a digest comparison rather than N key
-> derivations.
-
-Names are unique per workspace so that `visionset token revoke ci` resolves to one credential.
-Uniqueness is enforced twice, the way project names are: `uq_token_workspace_name` (`COLLATE
-NOCASE`) is the guarantee, and `TokenService`'s pre-check is the error message.
+Token names are unique within a workspace, ignoring case. Revocation keeps the existing row and
+its name, so use a new name when issuing a replacement.
 
 ## Issuing and revoking
 
-`TokenService` is the one door. `AuthProvider` - the port all three surfaces authenticate through
- - stays a single method, `verify(token) -> bool`; minting and revoking are use cases, and widening
-the port would oblige every future provider to implement issuance it has no business doing.
+Use the `token` commands from the workspace directory or pass `--workspace` to the command:
 
-**Revocation is immediate and one-way.** `revoke` takes `confirm=True`, because it breaks every
-client holding that secret at the next request and there is no `unrevoke`: reinstating a secret
-somebody decided to burn is worse than issuing a fresh one, since the reason for burning it does
-not expire. Revoking twice is a no-op that keeps the first timestamp, so a retried command is
-safe. The row stays - it is the record that the credential existed and when it died - which is
-also why revocation does not free the name.
+```bash
+visionset token create --name ci
+visionset token list
+visionset token revoke ci
+```
 
-Nothing caches a verdict. "Revoked, therefore refused" has to mean *now*, so the provider reads
-the workspace on every call. That read is cheap: WAL readers never block a writer, and a
-read-only unit of work takes no lock at all.
+Revocation applies on the next request. If you revoke a token again, the CLI reports the original
+revocation time. Use `--yes` to confirm revocation in a script.
 
 ### At a terminal
 
-`ConfirmationRequired` exists because the kernel has no terminal and no user; each surface asks in
-its own idiom and passes the answer down. The CLI's idiom is a prompt, skipped by `--yes`:
+By default, `token create` prints only the secret on stdout. It writes the creation message and
+storage reminder to stderr. With `--json`, the response includes a `secret` field. Token listings
+show the name and timestamps in either output mode.
 
-```
-$ visionset token create --name ci
-Created token 'ci' in /srv/vision.                                   ← stderr
-vst_YnYwMfhwzqRqfg5VjaoHwvoUFb6bx42GVYeTaICVCwI                      ← stdout
-This secret is shown once and cannot be recovered. Store it now.     ← stderr
-
-$ visionset token list
-NAME  CREATED               REVOKED
-ci    2026-07-28T01:43:47Z  -
-
-$ visionset token revoke ci
-Revoke token 'ci'? Every client holding its secret stops working, and this cannot be undone. [y/N]:
-```
-
-**Stdout is data; stderr is everything a person reads.** The secret is the only thing on stdout, so
-`TOKEN=$(visionset token create --name ci)` is exactly the secret and the warning survives the
-redirection that most needs it. `token list` names its three columns one at a time rather than
-dumping the model, so neither the secret nor its digest can reach the terminal by accident - a
-digest is not a secret, but it verifies a guess offline.
-
-Revoking is resolved **by name**, which is why token names are unique case-insensitively. Revoking
-an already-revoked token exits 0, says when it died, and does not prompt: a retried command must be
-safe, and asking somebody to re-confirm a thing already done invites a "yes" that means nothing.
-A token that does not exist exits 1 with the kernel's own sentence.
-
-Exit codes are the whole error contract at a terminal: **0** success, **1** any domain refusal as
-one sentence on stderr, **2** a usage error Click raises itself. There is no per-error code - a
-shell branches on zero versus non-zero, and a person reads the sentence. That is the deliberate
-difference from the REST surface, where a client branches on `code` because it is a program.
+A refused operation exits with status 1 and writes a message to stderr. With `--json`, stdout
+also includes the structured error. Command-line usage errors exit with status 2. See
+[CLI output and errors](cli.md).
 
 ## The browser session
 
-Opening the app used to begin by asking for a token. For a local-first tool with no accounts,
-serving your own files off your own disk, that is ceremony with no threat model behind it - and it
-was the first thing anybody saw. So the server issues the page it served a credential of its own:
+Open the app on localhost after starting `visionset server`. The browser calls `GET /session`.
+When the request is eligible, the endpoint returns `{"issued": true}` and sets the
+`visionset_session` cookie. The session secret is stored in `<workspace>/.ui-session` with
+mode `0600` and persists across server restarts. Deleting that file invalidates outstanding
+cookies. An eligible browser can request a new session.
 
-```
-browser  ->  GET /session
-         <-  200 {"issued": true}
-             Set-Cookie: visionset_session=…; HttpOnly; SameSite=Strict; Path=/
-```
-
-`visionset server`, then a browser, and you are on the project list. Nothing typed and nothing
-copied.
-
-**The token is untouched.** `Authorization: Bearer` still authenticates every route, the SDK, the
-CLI, MCP and every third-party client are unaffected, and `AuthProvider.verify(token) -> bool` did
-not widen - only the number of places `require_token` is willing to look. The bearer header is
-tried first, so a credential somebody passed on purpose is never shadowed by a cookie.
-
-**It is not a token, and it is deliberately not a row in the token table.** It has no name, it
-never appears in `visionset token list`, and no agent or script should ever hold one. The secret
-lives at `<workspace>/.ui-session`, mode 0600, created on demand - server-owned workspace state
-like `uploads/` and `exports/`, so nothing in the kernel changed and there was no migration. A
-file rather than a process-local secret because `--reload` restarts the process on every edit, and
-a secret that died with it would sign a developer out every time they saved. **Deleting the file
-is how you revoke it**, and it takes effect on the next request.
+On protected requests the server checks the bearer token first. If no bearer token validates,
+it also checks any session cookie supplied with the request.
 
 ### Who is issued one
 
-`VISIONSET_UI_SESSION` - `auto` (the default), `always`, or `never`.
+Set `VISIONSET_UI_SESSION` to control session issuance:
 
-| | Issued to |
+| Value | Eligible request |
 | --- | --- |
-| `auto` | A request from a **loopback peer** that also **addressed this server as loopback** (`localhost`, a `127.0.0.0/8` or `::1` literal, or a `*.localhost` name). |
-| `always` | Everyone. |
-| `never` | Nobody. |
+| `auto` (default) | The peer is a loopback address and the request addresses the server as `localhost`, a loopback IP, or a `*.localhost` hostname. |
+| `always` | Any peer or hostname. Use this only behind a front door that restricts access to clients you trust with the entire workspace. |
+| `never` | No requests receive a session. Sign in with an API token. |
 
-`auto` is what makes `--host 0.0.0.0` safe without a second decision: a client on the LAN is not
-loopback, is issued nothing, and still needs a token somebody minted on purpose. An unrecognised
-value reads as `auto`, because this is evaluated while answering a request and a typo in an
-environment variable must narrow what the server hands out rather than take the server down.
-
-Both halves of `auto` are load-bearing, and the second one is easy to leave out. A page on
-`evil.example` can point that name at `127.0.0.1` and then make requests to it - DNS rebinding.
-The connection genuinely comes *from* loopback, so the peer check says yes; and because the
-browser believes the site is `evil.example` throughout, `SameSite=Strict` says yes too. The one
-thing that page cannot choose is the `Host` header, which is why a loopback server reached by any
-other name asks for a token.
-
-One consequence worth knowing, because it looks like a hole and is not: under `vite dev` the proxy
-sets `changeOrigin`, so the API sees `Host: 127.0.0.1:8000` and this check passes on the browser's
-behalf. Vite keeps its own host allow-list for exactly this reason, and that is the guard on that
-hop - the same one `docker/nginx.conf` documents from the other side.
-
-`always` gives up both checks, and exists for a deployment whose front door is a proxy - behind
-one, no request is ever from loopback, because the peer is the proxy. It is only safe when
-whoever can reach the port that reaches the server is somebody you would sign in. The compose
-stack sets it and publishes its front door on every interface, so a second device on the same
-network can open the dev stack - which means that stack trusts its network; the api's own port
-stays on `127.0.0.1`, and `never` is the switch for a network you do not trust.
+An unrecognized setting falls back to `auto`. This setting controls issuance. To invalidate
+previously issued cookies, delete `<workspace>/.ui-session`. With `auto`, a client connecting over the LAN
+needs a token even if the server listens on all interfaces. The development Compose deployment
+uses `always` behind its proxy and trusts clients that can reach its front door.
 
 ### Why a cookie, and why it is not weaker than what it replaced
 
-`HttpOnly` is **strictly safer than the token was**. That one sat in `sessionStorage`, which any
-script on the page can read; this is one no script can, including ours - which is why the app has
-to *ask* whether it has a session rather than look.
-
-`SameSite=Strict` replaces a protection the API had by accident. The absence of CORS blocks most
-cross-site requests, because a JSON body or a `DELETE` provokes a preflight that fails - but
-`POST /sources/images` is `multipart/form-data`, a CORS-simple request needing no preflight, so a
-page nobody here wrote could otherwise push files into a workspace. `Strict` means the credential
-is not attached to a cross-site request at all.
-
-Cookies work in all three of the shapes this project ships because each already funnels through
-**one origin**: the wheel serves the API at `/` and the bundle at `/app`, vite proxies `/api`, and
-nginx proxies both. If the app ever talked cross-origin to the API, this would need
-`SameSite=None`, which is worse - the single-origin property is load-bearing.
-
-`GET /session` is **absent from `openapi.json`**, like `/` and the bundle mount. The spec is the
-contract a *program* codes against, and a program authenticates with a token it minted and can
-revoke; it should never be handed a credential it did not ask for. It is also not a login
-endpoint: it takes no input and trades nothing, so there is nothing to talk it into.
+The browser sends the session cookie automatically on requests to the workspace origin.
+`HttpOnly` keeps it out of page scripts, and `SameSite=Strict` keeps it off cross-site requests.
+The server sets `Secure` for HTTPS requests.
+The packaged app, Vite development proxy, and Compose proxy each serve the app and its API
+through one origin. `GET /session` is an app bootstrap route outside the OpenAPI contract.
 
 ### When the form still appears
 
-The token form is still there, for the cases where the server will not sign a browser in: a LAN
-client of a `--host 0.0.0.0` server, a deployment running `never`, or a loopback server reached by
-a name it does not recognise as itself. It is the standalone application's, not the reusable
-package's — what the reusable package owns is one normalized answer to a refused credential, not
-how one is collected. In the app's rail, the sign-out control reads **"Use a
-token"** while a session is in use, because that is what it does - it cannot delete a cookie it
-cannot read, so it stops using it *here* and a reload signs you back in. On the machine serving
-your own files that is the right behaviour; anywhere else the credential is a token and the button
-says "Sign out".
+The app shows its token form when the server cannot issue a session. This includes LAN
+connections in `auto` mode and all connections in `never` mode. **Use a token** switches from
+automatic sign-in to the form for the current page. Reloading can establish a session again.
+When signed in with an API token, the control reads **Sign out**.
 
 ## What a refusal looks like
 
-A missing header, a non-bearer scheme, an empty credential, an unknown token, a revoked token and
-a session cookie that is not this workspace's are **one answer**, byte for byte:
+When neither credential validates, protected endpoints return the same response for missing,
+malformed, unknown, and revoked credentials:
 
-```
+```http
 HTTP/1.1 401 Unauthorized
 WWW-Authenticate: Bearer
 
 {"code": "UNAUTHORIZED", "message": "Invalid or missing bearer token", "detail": null}
 ```
 
-That uniformity is the point. A 401 that distinguished "no such token" from "revoked" would let
-anyone enumerate a workspace's credentials one request at a time - and one that said *which kind*
-of credential it rejected would say whether this server issues sessions at all.
-
-A failure to *decide* is not a refusal. If the store is unreachable or damaged, `verify` raises
-rather than answering `False`, and the client sees a 503 (`WORKSPACE_BUSY`) or a 500
-(`WORKSPACE_CORRUPT`). Reporting an outage as a bad credential sends an operator hunting for the
-wrong thing.
+A workspace failure is reported separately. For example, contention can return
+`503 WORKSPACE_BUSY` and an unreadable store can return `500 WORKSPACE_CORRUPT`. See
+[REST error handling](api.md#the-error-body).
 
 ## Which workspace the server serves
 
-One, resolved by the same rule the CLI uses - `kernel/services/workspace_service.py::
-resolve_workspace_root`. A server started by import string has no argv of its own, so of the four
-branches it can only reach two: **`VISIONSET_WORKSPACE`**, then the nearest workspace at or above
-the working directory. The precedence table and the argument for why only that last case walks
-upward live in [workspaces.md](workspaces.md#which-workspace-when-nobody-said).
+`visionset server` applies the CLI's workspace selection rules, including `--workspace`, before
+starting the server. When the application is run directly by import string, the server uses
+`VISIONSET_WORKSPACE` if set or looks for the nearest workspace at or above its working directory.
+Read the [workspace resolution rules](workspaces.md#which-workspace-when-nobody-said).
 
-A server started by **`visionset server`** always lands on the first of those. That command applies
-the full precedence itself - including `--workspace`, which no server can see - and then exports the
-answer, so the two resolvers cannot disagree about a workspace one of them was told about and the
-other was not. See [cli.md](cli.md#visionset-server).
-
-It is opened by the first request that needs it and kept for the life of the process - never at
-import time, because `scripts/export_openapi.py` imports the application in a checkout that has no
-workspace.
-
-> **Changed in #26.** A server started *below* a workspace with no `VISIONSET_WORKSPACE` set now
-> serves that workspace, where it used to answer 500 `NOT_A_WORKSPACE`. That is the cost of one
-> resolver instead of two, and the asymmetry that keeps it safe is that a *stated* root - the
-> variable here, `--workspace` at the CLI - is never traded for its parent.
-
-A server pointed at something that is not a workspace answers **500 `NOT_A_WORKSPACE`**, opaque
-body plus an `incident_id`, with the path in the log only. That is a deployment fault, not a
-client error. It arrives *instead of* a 401 even when no token was sent, because the workspace is
-resolved before the credential is looked at - the ordering is what keeps authentication
-overridable in tests.
+A server pointed at an invalid workspace can still answer `GET /health`. A protected request
+returns `500 NOT_A_WORKSPACE` with an `incident_id` if its configured directory is not a
+workspace. The path is available in the server log.
 
 ## For contributors
 
-Build every non-public router with **`protected_router()`**:
+Use `protected_router()` for routes that require a workspace credential. It registers the
+authentication dependency and documents the 401 response together.
+`tests/server/test_openapi_contract.py` checks the generated specification for both public and
+protected operations.
 
-```python
-from visionset.server.dependencies import WorkspaceDep, protected_router
-from visionset.server.errors import ERROR_RESPONSES
-
-router = protected_router(prefix="/projects", tags=["projects"])
-
-
-@router.get("/{project_id}", responses={404: ERROR_RESPONSES[404]})
-def get_project(project_id: UUID, workspace: WorkspaceDep) -> ProjectOut: ...
-```
-
-It carries the dependency *and* the documented 401 together, because a route that declares one
-without the other is a lie in `openapi.json` either way. Do not repeat `Depends(require_token)`
-per route - "everything except `/health`" should be a property of how routers are constructed,
-not something each reviewer has to notice - and do not add 401 to `UNIVERSAL_ERROR_RESPONSES`,
-because `/health` is public and cannot 401.
-`tests/server/test_openapi_contract.py` walks the spec and fails on either mistake.
-
-`/docs`, `/redoc` and `/openapi.json` stay public. They are `include_in_schema=False`, and the
-spec is already a committed artifact in a public repository: a contract you must authenticate to
-read is a contract nobody generates a client from.
-
-**There is no MCP tool for token administration, and that is deliberate.** Every other tool
-operates on *datasets*; one that minted a credential would operate on *access to the workspace* -
-a privilege-escalation primitive pointed at the agent's own sandbox, producing a durable secret
-that outlives the session. The secret is shown exactly once, and an agent's "once" is a
-transcript: `confirm: true` guards accidental mutation, not exfiltration. Whoever launched
-`visionset mcp` already had workspace access, so a second credential adds capability and subtracts
-accountability. `list_tokens` is the only defensible candidate and is still operator surface
-rather than dataset surface. That held when #35 shipped the surface, and still holds: none of the
-tools touches a token, and none needs one - an agent reaching the MCP server is already inside the
-sandbox the workspace defines, so there is nothing further to prove. Authentication is what an
-*HTTP* client owes, because the network is what a token is for.
+`/health`, `/session`, `/docs`, `/redoc`, and `/openapi.json` are public. The app shell can
+load before authentication. Its requests for workspace data use protected API routes. API-token
+administration is a local CLI operation.

@@ -18,9 +18,10 @@ mapping layer is the thing to extend.
 
 ## The repository contract
 
-Every persisted entity has a UUID primary key and **at most one parent** - a Project
-belongs to a Workspace, an Annotation to an Asset. That regularity is why a single
-generic repository serves all eighteen entity types:
+Repositories expose domain records through a shared interface. Each repository with a parent
+uses one identifier to scope its listing, such as a project's workspace or an annotation's
+asset. This scope is independent of the underlying foreign keys. A track observation, for
+example, references its track, occurrence, and annotation.
 
 ```python
 with store.unit_of_work() as uow:
@@ -107,9 +108,9 @@ a third:
 | An immutable value too large for a row | The **blob store**, with the row keeping its hash - `release.manifest_hash`, `asset.thumbnail_hash` | A release manifest lists every asset and every label; megabytes of it in a column would have to be read just to list a dataset's releases. Content-addressed, so it is verifiable and two identical releases share one document. See [releases.md](releases.md). A thumbnail is the same storage decision for a different reason: it is a *cache*, so the row keeps a pointer that may be NULL and losing the bytes costs only the time to render them again. |
 | Timestamps | TEXT holding ISO-8601 **with offset** | SQLite's `DATETIME` storage drops the timezone. Domain timestamps are timezone-aware UTC and a naive value is rejected at construction. |
 
-Foreign keys are declared `ON DELETE CASCADE` - and the store issues
-`PRAGMA foreign_keys = ON` for every connection, because SQLite ships with foreign keys
-**off**. Without that pragma every constraint here would be decorative.
+The store enables `PRAGMA foreign_keys = ON` on every connection. Most foreign keys cascade
+on deletion. Ingest jobs and video import sessions use `ON DELETE SET NULL` for their batch
+reference so that the record survives batch deletion.
 
 ## Connection posture
 
@@ -356,7 +357,8 @@ key inline on the column; `create_all` spells one as a table constraint; the two
 differ. Such a column needs a table rebuild - and under `PRAGMA foreign_keys = ON`, which
 this store sets on every connection, `DROP TABLE` runs an implicit `DELETE` that cascades
 to children **silently, without raising**. So a rebuild has to count the children first,
-and a table that holds real rows cannot be rebuilt at all. `asset` is the standing example
+and a rebuild of a populated table must preserve its rows and all dependent rows. Migration 26
+illustrates how to copy and restore both a table and its dependent rows in one transaction. `asset` is the standing example
 of the second case: four `ON DELETE CASCADE` children and data nobody may lose, which is
 why `asset.source_id` is the one reference in this schema that is not a foreign key.
 
