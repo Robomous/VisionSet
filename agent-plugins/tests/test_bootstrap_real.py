@@ -330,10 +330,9 @@ class RealProcessTest(unittest.TestCase):
         result = self.finish(self.start())
         self.assertFalse(result["reused"])
         self.assertEqual(self.installs(), 2)
-        self.assertFalse(runtime.exists())
-        rebuilt = runtime.with_name(runtime.name.removesuffix("-r1") + "-r2")
-        self.assertEqual(sorted((self.ws.data / "runtimes").iterdir()), [rebuilt])
-        self.assertEqual(cached_prefixes(host=self.ws.host()), [str(rebuilt / "venv")])
+        self.assertTrue((runtime / "ready.json").is_file())
+        self.assertEqual(sorted((self.ws.data / "runtimes").iterdir()), [runtime])
+        self.assertEqual(cached_prefixes(host=self.ws.host()), [str(runtime / "venv")])
 
     def test_an_unreachable_index_fails_clearly_after_one_retry(self) -> None:
         for name in ("PIP_NO_INDEX", "PIP_FIND_LINKS"):
@@ -387,8 +386,9 @@ class RealProcessTest(unittest.TestCase):
             wait_for(lambda: not alive(orphan) or None)
             result, runner = self.ws.bootstrap(lock_timeout=30.0)
             self.assertFalse(result.reused)
-            self.assertTrue(result.prefix.endswith("-r2/venv"))
-            self.assertFalse(runtime.exists())
+            self.assertEqual(result.prefix, str(runtime / "venv"))
+            self.assertTrue((runtime / "ready.json").is_file())
+            self.assertEqual(sorted((self.ws.data / "runtimes").iterdir()), [runtime])
         finally:
             release.set()
             server.shutdown()
@@ -435,6 +435,60 @@ class RealSafetyTest(unittest.TestCase):
                 self.assertIs(raised.exception.code, Code.BAD_PIP_CONFIG)
                 self.assertFalse(elsewhere.exists())
                 self.assertEqual(list((self.ws.data / "runtimes").iterdir()), [])
+
+    def test_a_runtime_reached_through_another_path_spelling_is_reused(self) -> None:
+        real = self.ws.root / "real"
+        real.mkdir()
+        link = self.ws.root / "link"
+        link.symlink_to(real)
+        self.ws.env[DATA_ENV] = str(real / "vs")
+        first, _ = self.ws.bootstrap()
+        self.ws.env[DATA_ENV] = str(link / "vs")
+        second, runner = self.ws.bootstrap()
+        self.assertTrue(second.reused)
+        self.assertEqual(runner.installs(), 0)
+        self.assertEqual(Path(second.prefix).resolve(), Path(first.prefix).resolve())
+        self.assertTrue(Path(first.console_script).is_file())
+        self.assertEqual(len(list((real / "vs" / "runtimes").iterdir())), 1)
+
+    def test_a_quoted_target_in_pip_configuration_is_still_refused(self) -> None:
+        elsewhere = self.ws.root / "out'side"
+        conf = self.ws.root / "pip.conf"
+        conf.write_text(f"[install]\ntarget = {elsewhere}\n", encoding="utf-8")
+        self.ws.env["PIP_CONFIG_FILE"] = str(conf)
+        with self.assertRaises(BootstrapError) as raised:
+            self.ws.bootstrap()
+        self.assertIs(raised.exception.code, Code.BAD_PIP_CONFIG)
+        self.assertFalse(elsewhere.exists())
+
+    def test_a_pip_configuration_pip_cannot_read_fails_closed(self) -> None:
+        conf = self.ws.root / "pip.conf"
+        conf.write_text("[install\ntarget = /tmp/x\n", encoding="utf-8")
+        self.ws.env["PIP_CONFIG_FILE"] = str(conf)
+        with self.assertRaises(BootstrapError) as raised:
+            self.ws.bootstrap()
+        self.assertIn(raised.exception.code, (Code.BAD_PIP_CONFIG, Code.NO_PIP))
+        self.assertEqual(list((self.ws.data / "runtimes").iterdir()), [])
+
+    def test_tokens_of_every_configured_mirror_are_redacted(self) -> None:
+        tokens = ("TOPSECRETPATH1", "SECRETTOKEN123", "OTHERSECRET99")
+        conf = self.ws.root / "pip.conf"
+        conf.write_text(
+            f"[global]\nindex-url = http://127.0.0.1:9/{tokens[0]}/simple\n"
+            f"extra-index-url =\n    http://127.0.0.1:9/{tokens[1]}/simple\n"
+            f"    http://127.0.0.1:9/{tokens[2]}/simple\nretries = 1\ntimeout = 1\n",
+            encoding="utf-8",
+        )
+        for name in ("PIP_NO_INDEX", "PIP_FIND_LINKS"):
+            del self.ws.env[name]
+        self.ws.env["PIP_CONFIG_FILE"] = str(conf)
+        with self.assertRaises(BootstrapError) as raised:
+            self.ws.bootstrap(clock=NoWaitClock())
+        log = "".join(p.read_text(encoding="utf-8") for p in (self.ws.data / "logs").iterdir())
+        self.assertIn("<redacted>", log)
+        for token in tokens:
+            self.assertNotIn(token, str(raised.exception))
+            self.assertNotIn(token, log)
 
     def test_a_requirements_file_in_the_environment_adds_nothing(self) -> None:
         extra = self.ws.wheels / "extrapkg-1.0-py3-none-any.whl"
@@ -483,8 +537,9 @@ class RealSafetyTest(unittest.TestCase):
         (locked / "f").write_text("x", encoding="utf-8")
         locked.chmod(0o555)
         second, _ = self.ws.bootstrap()
-        self.assertTrue(second.prefix.endswith("-r2/venv"))
-        self.assertFalse(runtime.exists())
+        self.assertEqual(second.prefix, first.prefix)
+        self.assertFalse(locked.exists())
+        self.assertTrue((runtime / "ready.json").is_file())
         names = [p.name for p in (self.ws.data / "runtimes").iterdir()]
         self.assertEqual(names, [Path(second.prefix).parent.name])
 

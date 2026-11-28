@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import contextlib
+import gc
 import io
 import json
 import ntpath
@@ -12,6 +13,7 @@ import sys
 import tempfile
 import types
 import unittest
+import warnings
 from collections.abc import Callable, Mapping, Sequence
 from typing import Any
 from unittest import mock
@@ -21,6 +23,7 @@ from bootstrap import (
     DATA_ENV,
     INSTALL_TIMEOUT,
     LOCK_TIMEOUT,
+    MAX_GENERATIONS,
     NO_BOOTSTRAP_ENV,
     PIP_ENV_KEEP,
     RETRY_DELAY,
@@ -31,6 +34,7 @@ from bootstrap import (
     FileLocker,
     Interpreter,
     Lease,
+    OsWritableFileSystem,
     cached_prefixes,
     data_root,
     layout,
@@ -76,6 +80,7 @@ class FakeDisk:
         self.refuse_remove = False
         self.refuse_makedirs = False
         self.corrupt: set[str] = set()
+        self.links: dict[str, str] = {}
 
     def k(self, path: str) -> str:
         return str(self.pm.normcase(self.pm.normpath(path)))
@@ -102,6 +107,10 @@ class FakeDisk:
         return self.k(path) in self.exes
 
     def realpath(self, path: str) -> str:
+        key = self.k(path)
+        for link, target in self.links.items():
+            if self._under(key, link):
+                return str(self.pm.normpath(target + key[len(link) :]))
         return str(self.pm.normpath(path))
 
     def listdir(self, path: str) -> list[str]:
@@ -205,6 +214,7 @@ class FakeLocker:
     def __init__(self) -> None:
         self.busy = False
         self.broken = False
+        self.held: set[str] = set()
         self.acquired: list[tuple[str, float]] = []
         self.released = 0
         self.on_acquire: Callable[[], None] | None = None
@@ -213,7 +223,7 @@ class FakeLocker:
         self.acquired.append((path, timeout))
         if self.broken:
             raise OSError(40, "Too many levels of symbolic links")
-        if self.busy:
+        if self.busy or path in self.held:
             return None
         if self.on_acquire is not None:
             self.on_acquire()
@@ -408,7 +418,7 @@ class BuildTest(unittest.TestCase):
         self.assertEqual((result.prefix, result.console_script), (lay.venv, lay.console_script))
         sentinel = json.loads(self.m.disk.files[lay.ready])
         self.assertEqual(sentinel["key"], lay.key)
-        self.assertEqual(sentinel["console_script"], lay.console_script)
+        self.assertEqual(sentinel["console_script"], "venv/bin/visionset")
         marker = json.loads(self.m.disk.files[lay.owner])
         self.assertEqual((marker["base"], marker["key"]), (lay.base, lay.key))
         self.assertNotIn(lay.ready, self.m.disk.writes)
@@ -479,6 +489,8 @@ class BuildTest(unittest.TestCase):
             self.assertNotIn("PYTHONPATH", env)
             self.assertNotIn("PYTHONHOME", env)
         self.assertEqual(self.m.run.envs[-1]["PIP_INDEX_URL"], INDEX)
+        for name in ("PIP_INDEX_URL", "PIP_FIND_LINKS", "PIP_DEFAULT_TIMEOUT", "PIP_USE_FEATURE"):
+            self.assertIn(name, self.m.run.envs[-1])
 
     def test_every_writing_step_inherits_the_lock_and_no_probe_does(self) -> None:
         self.m.bootstrap()
@@ -581,8 +593,9 @@ class BuildTest(unittest.TestCase):
         del self.m.disk.files[self.m.disk.k(old.ready)]
         self.m.disk.put(old.venv + "/half-written")
         result = self.m.bootstrap()
-        self.assertRegex(result.prefix, r"-r2/venv$")
-        self.assertEqual(self.m.disk.tree(old.runtime), [])
+        self.assertEqual(result.prefix, old.venv)
+        self.assertNotIn(self.m.disk.k(old.venv + "/half-written"), self.m.disk.files)
+        self.assertIn(self.m.disk.k(old.ready), self.m.disk.files)
         self.assertEqual([n for n in self.m.runtimes() if n.startswith(".trash")], [])
         moved = [dst for src, dst in self.m.disk.replaced if src == self.m.disk.k(old.runtime)]
         self.assertEqual(len(moved), 1)
@@ -598,8 +611,11 @@ class BuildTest(unittest.TestCase):
                 self.m.disk.makedirs(old.runtime)
                 for name, text in leftover.items():
                     self.m.disk.put(old.runtime + "/" + name, text)
-                self.m.bootstrap()
-                self.assertEqual(self.m.disk.tree(old.runtime), [])
+                self.assertEqual(self.m.bootstrap().prefix, old.venv)
+                marker = json.loads(self.m.disk.files[self.m.disk.k(old.owner)])
+                self.assertEqual(marker["key"], old.key)
+                self.assertNotIn(self.m.disk.k(old.owner + ".tmp"), self.m.disk.files)
+                self.assertIn(self.m.disk.k(old.ready), self.m.disk.files)
 
     def test_a_directory_this_plugin_does_not_own_is_never_touched(self) -> None:
         self.m.bootstrap()
@@ -631,8 +647,8 @@ class BuildTest(unittest.TestCase):
         self.assertIs(error.code, Code.CLEANUP_FAILED)
         self.assertIn(self.m.disk.k(old.owner), self.m.disk.files)
         self.m.disk.refuse_replace = set()
-        self.assertRegex(self.m.bootstrap().prefix, r"-r2/venv$")
-        self.assertEqual(self.m.disk.tree(old.runtime), [])
+        self.assertEqual(self.m.bootstrap().prefix, old.venv)
+        self.assertIn(self.m.disk.k(old.ready), self.m.disk.files)
 
     def test_trash_that_cannot_be_removed_is_retried_by_a_later_setup(self) -> None:
         self.m.bootstrap()
@@ -643,8 +659,7 @@ class BuildTest(unittest.TestCase):
         [trash] = [n for n in self.m.runtimes() if n.startswith(".trash-")]
         self.assertTrue(any("retries" in line for line in self.m.progress))
         self.m.disk.refuse_remove = False
-        newest = self.m.generation([n for n in self.m.runtimes() if n.endswith("-r2")][0])
-        del self.m.disk.files[self.m.disk.k(newest.ready)]
+        del self.m.disk.files[self.m.disk.k(old.ready)]
         self.m.bootstrap()
         self.assertNotIn(trash, self.m.runtimes())
 
@@ -708,6 +723,105 @@ class BuildTest(unittest.TestCase):
 
     def test_the_lock_wait_outlasts_a_whole_build(self) -> None:
         self.assertGreaterEqual(LOCK_TIMEOUT, INSTALL_TIMEOUT + 4 * VALIDATION_TIMEOUT)
+
+    def test_a_generation_with_any_ready_file_is_never_removed(self) -> None:
+        self.m.bootstrap()
+        old = self.built()
+        kept = [
+            "not json",
+            json.dumps({"schema": 99, "key": old.key}),
+            json.dumps({"schema": 3, "key": old.key, "console_script": "/elsewhere/visionset"}),
+        ]
+        for text in kept:
+            with self.subTest(text=text):
+                self.m.disk.files[self.m.disk.k(old.ready)] = text
+                before = self.m.disk.tree(old.runtime)
+                result = self.m.bootstrap()
+                self.assertFalse(result.reused)
+                self.assertNotEqual(result.prefix, old.venv)
+                self.assertEqual(self.m.disk.tree(old.runtime), before)
+                for name in self.m.runtimes():
+                    if name != old.key:
+                        self.m.disk.remove_tree(self.m.generation(name).runtime)
+
+    def test_a_console_script_that_resolves_outside_its_generation_is_not_used(self) -> None:
+        self.m.bootstrap()
+        old = self.built()
+        self.m.disk.links = {self.m.disk.k(old.venv + "/bin"): "/elsewhere/bin"}
+        before = self.m.disk.tree(old.runtime)
+        result = self.m.bootstrap()
+        self.assertTrue(result.prefix.endswith("-r2/venv"))
+        self.assertEqual(self.m.disk.tree(old.runtime), before)
+
+    def test_a_marker_for_another_generation_of_the_same_base_is_not_ownership(self) -> None:
+        self.m.bootstrap()
+        old = self.built()
+        self.m.disk.remove_tree(old.runtime)
+        marker = {"owner": "visionset-agent-plugin", "base": old.base, "key": old.base + "-r7"}
+        self.m.disk.put(old.owner, json.dumps(marker))
+        self.m.disk.put(old.venv + "/bin/python")
+        before = self.m.disk.tree(old.runtime)
+        self.assertTrue(self.m.bootstrap().prefix.endswith("-r2/venv"))
+        self.assertEqual(self.m.disk.tree(old.runtime), before)
+
+    def test_leftovers_of_other_versions_are_cleared_only_under_their_free_lock(self) -> None:
+        other = "0.0.1b3-py312-deadbeef"
+        runtimes = DATA + "/runtimes/"
+
+        def leave(name: str, ready: bool = False) -> str:
+            path = runtimes + name
+            marker = {"owner": "visionset-agent-plugin", "base": other, "key": name}
+            self.m.disk.put(path + "/.owner", json.dumps(marker))
+            self.m.disk.put(path + "/venv/bin/python")
+            if ready:
+                self.m.disk.put(path + "/ready.json", "{}")
+            return path
+
+        incomplete = leave(other + "-r1")
+        published = leave(other + "-r2", ready=True)
+        trash = leave(f".trash-{other}-0123456789ab")
+        kept_trash = leave(f".trash-{other}-ba9876543210", ready=True)
+        self.m.bootstrap()
+        self.assertNotEqual(self.m.disk.tree(kept_trash), [])
+        self.assertEqual(self.m.disk.tree(incomplete), [])
+        self.assertEqual(self.m.disk.tree(trash), [])
+        self.assertNotEqual(self.m.disk.tree(published), [])
+
+        self.m.locker.held = {DATA + f"/locks/{other}.lock"}
+        incomplete = leave(other + "-r3")
+        for name in self.m.runtimes():
+            if name.startswith("0.0.1b4"):
+                self.m.disk.remove_tree(self.m.generation(name).runtime)
+        self.m.bootstrap()
+        self.assertNotEqual(self.m.disk.tree(incomplete), [])
+
+    def test_generations_stop_at_the_cap_instead_of_reinstalling_forever(self) -> None:
+        for number in range(1, MAX_GENERATIONS + 1):
+            result = self.m.bootstrap()
+            self.assertTrue(result.prefix.endswith(f"-r{number}/venv"))
+            self.m.run.bad[self.m.disk.k(result.console_script)] = ProbeResult(1)
+        installs = len(self.m.run.install_calls())
+        error = self.m.failure()
+        self.assertIs(error.code, Code.GENERATIONS_EXHAUSTED)
+        self.assertEqual(len(self.m.run.install_calls()), installs)
+        self.assertEqual(len(self.m.runtimes()), MAX_GENERATIONS)
+
+    def test_a_progress_sink_that_breaks_does_not_fail_setup(self) -> None:
+        def broken(_: str) -> None:
+            raise BrokenPipeError(32, "Broken pipe")
+
+        result = run_bootstrap(
+            BUNDLE,
+            host=self.m.host(),
+            fs=self.m.disk,
+            run=self.m.run,
+            locker=self.m.locker,
+            clock=self.m.clock,
+            python=PYTHON,
+            plugin_root=None,
+            progress=broken,
+        )
+        self.assertFalse(result.reused)
 
 
 class FailureTest(unittest.TestCase):
@@ -815,6 +929,53 @@ class FailureTest(unittest.TestCase):
         error = self.m.failure()
         for text in (str(error), self.log()):
             self.assertNotIn(token, text)
+
+    def test_pip_configuration_values_in_either_quote_style_are_read(self) -> None:
+        self.m.run.python(PYTHON, probe_output((3, 12, 1)))
+        self.m.run.pip_config = ProbeResult(0, b'install.target="/tmp/out\'side"\n')
+        error = self.m.failure()
+        self.assertIs(error.code, Code.BAD_PIP_CONFIG)
+        self.assertEqual(self.m.run.install_calls(), [])
+
+    def test_unreadable_pip_configuration_fails_closed(self) -> None:
+        self.m.run.python(PYTHON, probe_output((3, 12, 1)))
+        for result in (
+            ProbeResult(1, stderr=b"ERROR: bad config"),
+            ProbeResult(None, timed_out=True),
+            ProbeResult(None, error="Resource temporarily unavailable"),
+            ProbeResult(0, b"install.target=<unparsable>\n"),
+            ProbeResult(0, b"x" * 64, overflow=True),
+        ):
+            with self.subTest(result=result):
+                self.m.run.pip_config = result
+                self.assertIs(self.m.failure().code, Code.BAD_PIP_CONFIG)
+                self.assertEqual(self.m.run.install_calls(), [])
+                self.assert_nothing_published()
+
+    def test_only_sections_pip_install_reads_can_refuse(self) -> None:
+        self.m.run.python(PYTHON, probe_output((3, 12, 1)))
+        config = "freeze.user='yes'\nlist.user='true'\ndownload.prefix='/x'\n"
+        self.m.run.pip_config = ProbeResult(0, config.encode())
+        self.assertFalse(self.m.bootstrap().reused)
+        for line in (":env:.target='/x'", "global.user='1'"):
+            with self.subTest(line=line):
+                self.m.run.pip_config = ProbeResult(0, (line + "\n").encode())
+                for name in self.m.runtimes():
+                    self.m.disk.remove_tree(self.m.generation(name).runtime)
+                self.assertIs(self.m.failure().code, Code.BAD_PIP_CONFIG)
+
+    def test_every_mirror_of_a_multi_line_extra_index_is_redacted(self) -> None:
+        self.m.run.python(PYTHON, probe_output((3, 12, 1)))
+        first, second = "TOKENAAAA11", "TOKENBBBB22"
+        value = f"\\nhttp://m1.example/{first}/simple\\nhttp://m2.example/{second}/simple"
+        self.m.run.pip_config = ProbeResult(0, f"global.extra-index-url='{value}'\n".encode())
+        output = f"ERROR: 403 /{first}/simple and /{second}/simple/visionset/"
+        self.m.run.installs = [ProbeResult(1, stderr=output.encode())]
+        error = self.m.failure()
+        for text in (str(error), self.log()):
+            self.assertNotIn(first, text)
+            self.assertNotIn(second, text)
+        self.assertIn("<redacted>", self.log())
 
     def test_lock_timeout(self) -> None:
         self.m.run.python(PYTHON, probe_output((3, 12, 1)))
@@ -1026,6 +1187,40 @@ class DataRootTest(unittest.TestCase):
         m.env[DATA_ENV] = "/srv/data"
         m.bootstrap(project="/srv/repo/sub")
 
+    def test_the_default_data_directory_is_allowed_when_the_project_is_home(self) -> None:
+        m = self.machine()
+        del m.env[DATA_ENV]
+        m.disk.makedirs(HOME + "/.git")
+        for project in (HOME, HOME + "/work/repo"):
+            with self.subTest(project=project):
+                self.assertTrue(m.bootstrap(project=project).prefix.startswith(HOME + "/.local"))
+
+    def test_a_client_data_directory_inside_the_project_is_refused(self) -> None:
+        m = self.machine()
+        del m.env[DATA_ENV]
+        m.env["CLAUDE_PLUGIN_DATA"] = "/srv/repo/.claude-data"
+        m.disk.makedirs("/srv/repo/.git")
+        self.assertIs(m.failure(project="/srv/repo").code, Code.BAD_DATA_DIR)
+
+    def test_an_interpreter_on_path_inside_an_untrusted_checkout_never_runs(self) -> None:
+        m = Machine()
+        m.disk.makedirs("/srv/repo/.git")
+        planted = "/srv/repo/.venv/bin/python3.12"
+        m.run.python(planted, probe_output((3, 12, 1)))
+        m.env["PATH"] = "/srv/repo/.venv/bin:/usr/bin"
+        error = m.failure(python=None, project="/srv/repo")
+        self.assertIs(error.code, Code.NO_PYTHON)
+        self.assertEqual(m.run.calls, [])
+        m.run.python("/usr/bin/python3.13", probe_output((3, 13, 1)))
+        m.bootstrap(python=None, project="/srv/repo")
+        self.assertNotIn(planted, [call[0] for call in m.run.calls])
+        trusted = Machine()
+        trusted.disk.makedirs("/srv/repo/.git")
+        trusted.run.python(planted, probe_output((3, 12, 1)))
+        trusted.env["PATH"] = m.env["PATH"]
+        trusted.bootstrap(python=None, project="/srv/repo", project_trusted=True)
+        self.assertEqual(trusted.run.calls[0][0], planted)
+
     def test_a_data_directory_others_can_write_is_refused(self) -> None:
         for directory in (DATA, DATA + "/runtimes", DATA + "/locks"):
             with self.subTest(directory=directory):
@@ -1226,10 +1421,32 @@ class PosixLockTest(unittest.TestCase):
 
 
 class OsWritableFileSystemTest(unittest.TestCase):
-    def test_the_owner_marker_is_removed_last(self) -> None:
-        from bootstrap import OsWritableFileSystem
+    def stat(self, uid: int, gid: int, mode: int) -> os.stat_result:
+        return os.stat_result((mode, 0, 0, 0, uid, gid, 0, 0, 0, 0))
 
-        with tempfile.TemporaryDirectory() as scratch:
+    @unittest.skipIf(os.name == "nt", "POSIX ownership")
+    def test_unsafe_reason_follows_ownership_and_write_bits(self) -> None:
+        uid, gid = os.getuid(), os.getgid()
+        cases = [
+            ((uid, gid, 0o40700), None),
+            ((uid, gid, 0o40770), None),
+            ((uid + 1, gid, 0o40700), "is owned by another user"),
+            ((uid, gid, 0o40777), "is writable by every user"),
+            ((uid, gid + 1, 0o40770), "is writable by a shared group"),
+            ((uid, gid + 1, 0o40750), None),
+        ]
+        for (owner, group, mode), expected in cases:
+            with self.subTest(owner=owner, group=group, mode=oct(mode)):
+                fake = self.stat(owner, group, mode)
+                with mock.patch("bootstrap.os.stat", return_value=fake):
+                    self.assertEqual(OsWritableFileSystem().unsafe_reason("/x"), expected)
+
+    def test_the_owner_marker_is_removed_last(self) -> None:
+        with (
+            warnings.catch_warnings(record=True) as caught,
+            tempfile.TemporaryDirectory() as scratch,
+        ):
+            warnings.simplefilter("always")
             runtime = os.path.join(scratch, "k-r1")
             os.makedirs(os.path.join(runtime, "venv", "lib"))
             for name in (".owner", "ready.json.tmp", "zz"):
@@ -1243,6 +1460,8 @@ class OsWritableFileSystemTest(unittest.TestCase):
             self.assertTrue(os.path.exists(os.path.join(runtime, ".owner")))
             OsWritableFileSystem().remove_tree(runtime)
             self.assertFalse(os.path.exists(runtime))
+            gc.collect()
+        self.assertEqual([w for w in caught if issubclass(w.category, ResourceWarning)], [])
 
 
 if __name__ == "__main__":

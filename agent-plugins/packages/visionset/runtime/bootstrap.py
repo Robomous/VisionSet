@@ -22,6 +22,7 @@ nothing to stdout.
 
 from __future__ import annotations
 
+import ast
 import contextlib
 import dataclasses
 import functools
@@ -77,7 +78,8 @@ LOCK_POLL = 0.1
 RETRY_DELAY = 5.0
 PIP_OUTPUT_CAP = 8 * 1024 * 1024
 OWNER = "visionset-agent-plugin"
-SENTINEL_SCHEMA = 2
+SENTINEL_SCHEMA = 3
+MAX_GENERATIONS = 5
 OWNER_ENTRIES = frozenset({".owner", ".owner.tmp"})
 # The only pip variables passed through: where packages come from and how to reach it. Every
 # other PIP_* variable, which could add packages or move the install, is dropped.
@@ -97,6 +99,8 @@ PIP_ENV_KEEP = frozenset(
         "PIP_KEYRING_PROVIDER",
         "PIP_CACHE_DIR",
         "PIP_NO_CACHE_DIR",
+        "PIP_DEFAULT_TIMEOUT",
+        "PIP_USE_FEATURE",
     }
 )
 INDEX_ENV = ("PIP_INDEX_URL", "PIP_EXTRA_INDEX_URL", "PIP_FIND_LINKS")
@@ -105,11 +109,13 @@ _INDEX_KEYS = frozenset({"index-url", "extra-index-url", "find-links"})
 _CONFIG_LOCATION_KEYS = frozenset({"target", "prefix", "root", "requirement", "editable", "src"})
 _CONFIG_LOCATION_KEYS |= {"python"}
 _CONFIG_SWITCH_KEYS = frozenset({"user", "dry-run"})
+# The `pip config list` sections a `pip install` reads.
+_INSTALL_SECTIONS = frozenset({"global", "install", ":env:"})
 _FALSE = frozenset({"0", "false", "no", "off", ""})
 _COMMON_SEGMENTS = frozenset({"simple", "pypi", "index", "packages", "api", "repository", "wheels"})
 _DISTRIBUTION = re.compile(r"[A-Za-z0-9](?:[A-Za-z0-9._-]*[A-Za-z0-9])?")
 _PINNED = re.compile(r"==[0-9][0-9A-Za-z.]*")
-_CONFIG_LINE = re.compile(r"^([\w:.-]+)\.([\w-]+)='(.*)'$")
+_CONFIG_NAME = re.compile(r"([\w:.-]+)\.([\w-]+)")
 _NETWORK = re.compile(
     r"NewConnectionError|ConnectTimeoutError|ReadTimeoutError|Max retries exceeded"
     r"|Temporary failure in name resolution|Name or service not known|nodename nor servname"
@@ -136,6 +142,7 @@ class Code(Enum):
     NO_PIP = "NO_PIP"
     LOCK_TIMEOUT = "LOCK_TIMEOUT"
     CLEANUP_FAILED = "CLEANUP_FAILED"
+    GENERATIONS_EXHAUSTED = "GENERATIONS_EXHAUSTED"
     INDEX_UNAVAILABLE = "INDEX_UNAVAILABLE"
     INSTALL_FAILED = "INSTALL_FAILED"
     INSTALL_TIMEOUT = "INSTALL_TIMEOUT"
@@ -330,13 +337,15 @@ class OsWritableFileSystem(OsFileSystem):
 
     def remove_tree(self, path: str) -> None:
         """Remove everything under path, then its `.owner`, then path itself."""
-        for entry in os.scandir(path):
-            if entry.name == ".owner":
+        with os.scandir(path) as listing:
+            entries = [(e.path, e.name, e.is_dir(follow_symlinks=False)) for e in listing]
+        for full, name, is_dir in entries:
+            if name == ".owner":
                 continue
-            if entry.is_dir(follow_symlinks=False):
-                _rmtree(entry.path)
+            if is_dir:
+                _rmtree(full)
             else:
-                _unlink(entry.path)
+                _unlink(full)
         with contextlib.suppress(FileNotFoundError):
             _unlink(os.path.join(path, ".owner"))
         os.rmdir(path)
@@ -400,15 +409,20 @@ def _absolute(path: str, host: Host) -> bool:
 
 def data_root(host: Host) -> str:
     """`VISIONSET_PLUGIN_DATA`, else `CLAUDE_PLUGIN_DATA`, else the user's data directory."""
+    return _data_root(host)[0]
+
+
+def _data_root(host: Host) -> tuple[str, bool]:
+    """The data root, and whether a variable named it rather than the OS default."""
     pm = _pm(host)
     override = host.get(DATA_ENV)
     if override is not None:
         if not _absolute(override, host):
             raise BootstrapError(Code.BAD_DATA_DIR, f"{DATA_ENV} must be an absolute path")
-        return str(pm.normpath(override))
+        return str(pm.normpath(override)), True
     given = host.get(CLAUDE_DATA_ENV)
     if given is not None and _absolute(given, host):
-        return str(pm.normpath(given))
+        return str(pm.normpath(given)), True
     base: str | None
     if host.windows:
         base = host.get("LOCALAPPDATA")
@@ -426,7 +440,7 @@ def data_root(host: Host) -> str:
             "no user data directory could be determined",
             hint=f"set {DATA_ENV} to an absolute path",
         )
-    return str(pm.join(pm.normpath(base), APP_DIR))
+    return str(pm.join(pm.normpath(base), APP_DIR)), False
 
 
 def runtime_key(version: str, interpreter: Interpreter) -> str:
@@ -439,6 +453,7 @@ def runtime_key(version: str, interpreter: Interpreter) -> str:
 
 
 _GENERATION = re.compile(r"(.+)-r([1-9][0-9]*)")
+_TRASH = re.compile(r"\.trash-(.+)-[0-9a-f]{12}")
 
 
 def layout(root: str, key: str, console_script: str, windows: bool) -> Layout:
@@ -464,7 +479,15 @@ def layout(root: str, key: str, console_script: str, windows: bool) -> Layout:
     )
 
 
-def _parse_ready(text: str | None, lay: Layout) -> dict[str, Any] | None:
+def _relative_console(lay: Layout, windows: bool) -> str:
+    pm = ntpath if windows else posixpath
+    return str(pm.relpath(lay.console_script, lay.runtime))
+
+
+def _parse_ready(
+    text: str | None, lay: Layout, fs: FileSystem, host: Host
+) -> dict[str, Any] | None:
+    """The sentinel when this module can use it; None for anything else, which is kept."""
     if text is None:
         return None
     try:
@@ -473,7 +496,11 @@ def _parse_ready(text: str | None, lay: Layout) -> dict[str, Any] | None:
         return None
     if not isinstance(data, dict) or data.get("schema") != SENTINEL_SCHEMA:
         return None
-    if data.get("key") != lay.key or data.get("console_script") != lay.console_script:
+    if data.get("key") != lay.key:
+        return None
+    if data.get("console_script") != _relative_console(lay, host.windows):
+        return None
+    if not _inside(lay.console_script, lay.runtime, host, fs):
         return None
     fields = ("version", "compatibility", "created", "python")
     if not all(isinstance(data.get(name), str) for name in fields):
@@ -513,7 +540,7 @@ def cached_prefixes(
         if match is None:
             continue
         lay = layout(root, name, console_script, host.windows)
-        sentinel = _parse_ready(fs.read_text(lay.ready), lay)
+        sentinel = _parse_ready(fs.read_text(lay.ready), lay, fs, host)
         if sentinel is not None:
             found.append((sentinel["created"], int(match.group(2)), lay.venv))
     return [prefix for _, _, prefix in sorted(found, reverse=True)]
@@ -551,6 +578,26 @@ def _index_tokens(value: str) -> list[str]:
         ]
         tokens += [part for part in (parts.query, parts.fragment) if part]
     return tokens
+
+
+def _pip_settings(text: str) -> tuple[list[tuple[str, str, str]], bool]:
+    """Parse `pip config list` (`section.key=<repr>`); also report whether a line defied it."""
+    settings: list[tuple[str, str, str]] = []
+    unreadable = False
+    for line in text.splitlines():
+        name, equals, raw = line.strip().partition("=")
+        if not line.strip():
+            continue
+        match = _CONFIG_NAME.fullmatch(name)
+        try:
+            value = ast.literal_eval(raw) if equals else None
+        except (ValueError, SyntaxError):
+            value = None
+        if match is None or not isinstance(value, str):
+            unreadable = True
+            continue
+        settings.append((match.group(1), match.group(2), value))
+    return settings, unreadable
 
 
 def _lease_fds(lease: Lease) -> Sequence[int]:
@@ -594,6 +641,7 @@ class _Job:
         self.manual = f"install it yourself: pipx install '{self.requirement}'"
         self.log: str | None = None
         self.keep_fds: Sequence[int] = ()
+        self.untrusted: str | None = None
 
     def shown(self, text: str) -> str:
         for token in sorted(self.sensitive, key=len, reverse=True):
@@ -602,7 +650,9 @@ class _Job:
         return redact(text, self.host)
 
     def progress(self, message: str) -> None:
-        self.progress_sink(self.shown(message))
+        # A closed stderr must not turn a working setup into a failed one.
+        with contextlib.suppress(OSError, ValueError):
+            self.progress_sink(self.shown(message))
 
     def fail(self, code: Code, message: str, hint: str = "") -> BootstrapError:
         log = self.shown(self.log) if self.log else None
@@ -625,6 +675,8 @@ class _Job:
                 continue
             for candidate in names:
                 path = str(self.pm.join(directory, candidate))
+                if self.untrusted and _inside(path, self.untrusted, self.host, self.fs):
+                    continue
                 if self.fs.is_file(path) and self.fs.is_executable(path):
                     return path
         return None
@@ -785,7 +837,7 @@ class _Job:
 
     def reuse(self, root: str, base: str) -> Bootstrapped | None:
         for _, lay in self.generations(root, base):
-            sentinel = _parse_ready(self.fs.read_text(lay.ready), lay)
+            sentinel = _parse_ready(self.fs.read_text(lay.ready), lay, self.fs, self.host)
             if sentinel is None:
                 continue
             outcome = self.verify(lay)
@@ -798,6 +850,7 @@ class _Job:
         return None
 
     def discard(self, path: str, base: str) -> None:
+        """Move an unpublished generation aside and remove it; callers check `ready.json`."""
         trash = str(self.pm.join(self.pm.dirname(path), f".trash-{base}-{os.urandom(6).hex()}"))
         try:
             self.fs.replace(path, trash)
@@ -816,22 +869,56 @@ class _Job:
         except OSError:
             self.progress(f"could not remove {trash} yet; a later setup retries")
 
-    def tidy(self, root: str, base: str) -> int:
-        """Remove owned incomplete generations and trash; return the next generation number."""
+    def clear(self, root: str, base: str) -> None:
+        """Remove this base's owned trash and owned generations that hold no `ready.json`."""
         runtimes = self.runtimes(root)
         for name in self.fs.listdir(runtimes):
-            if name.startswith(f".trash-{base}-"):
-                path = str(self.pm.join(runtimes, name))
-                if self.owned(path, base, None):
-                    self.remove_trash(path)
-        highest = 0
-        for number, lay in self.generations(root, base):
-            highest = max(highest, number)
-            if _parse_ready(self.fs.read_text(lay.ready), lay) is not None:
+            trash = _TRASH.fullmatch(name)
+            if trash is None or trash.group(1) != base:
+                continue
+            path = str(self.pm.join(runtimes, name))
+            unpublished = not self.fs.lexists(str(self.pm.join(path, "ready.json")))
+            if unpublished and self.owned(path, base, None):
+                self.remove_trash(path)
+        for _, lay in self.generations(root, base):
+            # A generation with any ready.json, readable by this version or not, is kept.
+            if self.fs.lexists(lay.ready):
                 continue
             if self.owned(lay.runtime, base, lay.key):
                 self.progress(f"removing the incomplete runtime {lay.key}")
                 self.discard(lay.runtime, base)
+
+    def tidy(self, root: str, base: str, locker: Locker) -> int:
+        """Clear leftovers of every base whose lock is free; return the next generation number."""
+        self.clear(root, base)
+        others: set[str] = set()
+        for name in self.fs.listdir(self.runtimes(root)):
+            match = _TRASH.fullmatch(name) or _GENERATION.fullmatch(name)
+            if match is not None and match.group(1) != base:
+                others.add(match.group(1))
+        for other in sorted(others):
+            lock = layout(root, other, self.bundle.console_script, self.host.windows).lock
+            try:
+                lease = locker.acquire(lock, 0)
+            except OSError:
+                continue
+            if lease is None:
+                continue
+            try:
+                with contextlib.suppress(BootstrapError, OSError):
+                    self.clear(root, other)
+            finally:
+                lease.release()
+        highest = max((number for number, _ in self.generations(root, base)), default=0)
+        if highest >= MAX_GENERATIONS:
+            raise self.fail(
+                Code.GENERATIONS_EXHAUSTED,
+                f"{MAX_GENERATIONS} runtimes for {base} were built and none of them works "
+                "here any more; no further one is built",
+                hint="check the log, remove the superseded runtimes under "
+                f"{self.runtimes(root)} yourself, or install it yourself: "
+                f"pipx install '{self.requirement}'",
+            )
         return highest + 1
 
     def build(self, root: str, base: str, number: int, interpreter: Interpreter) -> Bootstrapped:
@@ -874,17 +961,22 @@ class _Job:
     def check_pip_config(self, lay: Layout) -> None:
         argv = [lay.python, "-I", "-m", "pip", "config", "list"]
         result = self.step(argv, lay.runtime, PROBE_TIMEOUT, OUTPUT_CAP, log=False)
-        settings: list[tuple[str, str, str]] = []
-        if result.error is None and not result.timed_out and result.returncode == 0:
-            for line in result.stdout.decode("utf-8", "replace").splitlines():
-                match = _CONFIG_LINE.match(line.strip())
-                if match:
-                    settings.append((match.group(1), match.group(2), match.group(3)))
+        settings, unreadable = _pip_settings(result.stdout.decode("utf-8", "replace"))
         for _, key, value in settings:
             if key in _INDEX_KEYS and value:
                 self.sensitive.update(_index_tokens(value))
         self.record(argv, result)
+        ok = result.error is None and not result.timed_out and result.returncode == 0
+        if not ok or unreadable or result.overflow:
+            raise self.fail(
+                Code.BAD_PIP_CONFIG,
+                f"pip's configuration could not be read, so nothing is installed: "
+                f"{self.tail(result)}",
+                hint=f"check pip.conf and PIP_CONFIG_FILE; or {self.manual}",
+            )
         for section, key, value in settings:
+            if section not in _INSTALL_SECTIONS:
+                continue
             location = key in _CONFIG_LOCATION_KEYS and value.strip()
             switch = key in _CONFIG_SWITCH_KEYS and value.strip().casefold() not in _FALSE
             if location or switch:
@@ -961,7 +1053,7 @@ class _Job:
             "distribution": self.bundle.distribution,
             "version": found.version,
             "compatibility": self.bundle.compatibility,
-            "console_script": lay.console_script,
+            "console_script": _relative_console(lay, self.host.windows),
             "python": interpreter.executable,
             "pip_args_digest": digest.hexdigest(),
             "created": created.strftime("%Y-%m-%dT%H:%M:%S.%fZ"),
@@ -969,7 +1061,7 @@ class _Job:
         staged = lay.ready + ".tmp"
         text = json.dumps(sentinel, indent=2, sort_keys=True) + "\n"
         self.disk("write", staged, lambda: self.fs.write_new(staged, text))
-        if _parse_ready(self.fs.read_text(staged), lay) is None:
+        if _parse_ready(self.fs.read_text(staged), lay, self.fs, self.host) is None:
             raise self.fail(Code.VALIDATION_FAILED, "the readiness file did not read back")
         self.disk("publish", lay.ready, lambda: self.fs.replace(staged, lay.ready))
 
@@ -996,6 +1088,7 @@ def bootstrap(
     clock: Clock | None = None,
     python: str | None = sys.executable,
     project: str | None = None,
+    project_trusted: bool = False,
     plugin_root: str | None = str(Path(__file__).resolve().parent.parent),
     lock_timeout: float = LOCK_TIMEOUT,
     install_timeout: float = INSTALL_TIMEOUT,
@@ -1004,7 +1097,8 @@ def bootstrap(
     """Return the plugin-owned runtime for the bundle's range, building it if needed.
 
     `python` is the interpreter tried first, normally the one running this module. `project`
-    is the absolute directory the agent works in, when known. Raises `BootstrapError`; never
+    is the absolute directory the agent works in, when known; no interpreter found on `PATH`
+    inside its checkout is run unless `project_trusted`. Raises `BootstrapError`; never
     writes to stdout.
     """
     host = host or Host.current()
@@ -1017,12 +1111,16 @@ def bootstrap(
     job = _Job(bundle, host, fs, run, clock, progress, install_timeout)
     if _opted_out(host.get(NO_BOOTSTRAP_ENV)):
         raise job.fail(Code.OPTED_OUT, f"{NO_BOOTSTRAP_ENV} is set, so no runtime is created")
-    root = data_root(host)
+    root, explicit = _data_root(host)
     outside = f"set {DATA_ENV} to a directory outside it"
     if plugin_root is not None and _inside(root, plugin_root, host, fs):
         raise job.fail(Code.BAD_DATA_DIR, "the data directory lies inside the plugin", outside)
     if project is not None and _absolute(project, host):
-        for where in {project, checkout_of(project, host, fs)}:
+        checkout = checkout_of(project, host, fs)
+        if not project_trusted:
+            job.untrusted = checkout
+        # The OS default lives under home, which is also where a project at home starts.
+        for where in {project, checkout} if explicit else ():
             if _inside(root, where, host, fs):
                 raise job.fail(
                     Code.BAD_DATA_DIR, "the data directory lies inside the project", outside
@@ -1057,7 +1155,7 @@ def bootstrap(
         if ready is not None:
             return ready
         job.keep_fds = () if host.windows else _lease_fds(lease)
-        number = job.tidy(root, base)
+        number = job.tidy(root, base, locker)
         return job.build(root, base, number, interpreter)
     finally:
         lease.release()

@@ -165,8 +165,10 @@ macOS behaviour is covered by fakes, not by a run on either system.
 - **Where state lives.** The data root is `VISIONSET_PLUGIN_DATA` (absolute, or setup fails),
   else `CLAUDE_PLUGIN_DATA`, else `$XDG_DATA_HOME` or `~/.local/share`, `~/Library/Application
   Support` on macOS, or `%LOCALAPPDATA%` on Windows, each followed by `visionset-agent-plugin`.
-  Setup refuses a root inside the installed plugin, inside the project, or inside the project's
-  checkout. On POSIX it also refuses a root, or its `runtimes`, `locks` or `logs` directory, that
+  Setup refuses a root inside the installed plugin. It refuses a root named by
+  `VISIONSET_PLUGIN_DATA` or `CLAUDE_PLUGIN_DATA` that lies inside the project or its checkout.
+  The OS default is allowed even under a project, because a project at the home directory
+  contains it. On POSIX it also refuses a root, or its `runtimes`, `locks` or `logs` directory, that
   another user owns, that every user can write, or that a group other than the user's primary
   group can write. Failing to create or write any of them is a `BAD_DATA_DIR` error, never a raw
   exception.
@@ -180,14 +182,17 @@ macOS behaviour is covered by fakes, not by a run on either system.
   to `py -3.11`, then `python.exe`. Each candidate is probed with `-c`, so a Microsoft Store alias
   that installs nothing fails the probe while a working Store Python is used. An interpreter needs
   3.11 or newer with both `venv` and `ensurepip`. When none qualifies, the failure says which of
-  these was missing.
+  these was missing. An interpreter found on `PATH` inside the project's checkout (by
+  discovery's definition, so a project at home makes home its checkout) is not run unless the
+  host trusts the project. The interpreter running the bootstrap is exempt.
 - **One build at a time, published last.** An exclusive OS file lock (`flock`, or non-blocking
   `msvcrt` byte locking on Windows) is held with a bounded wait of 1500 s by default, which is
   longer than a whole build. Published generations are checked before the lock and again after
   it, so a waiter that arrives during an install reuses the result. A generation is created at
   its final path, and its `.owner` marker is written to a temporary file and renamed into place.
-  `ready.json` records the console script's path inside the generation. It is staged, read back
-  and renamed into place, and only after `pip --version` works and the console script passes
+  `ready.json` records the console script's path relative to the generation, so the same
+  generation is reused when the data root is reached through a symlink or another spelling. It
+  is staged, read back and renamed into place, and only after `pip --version` works and the console script passes
   discovery's two probes. Two processes starting together install once.
 - **Reuse proves the runtime works.** Before reusing a published generation, bootstrap runs its
   console script's `--version` (which must be inside the range) and `mcp --help`. A runtime is
@@ -195,16 +200,19 @@ macOS behaviour is covered by fakes, not by a run on either system.
   same way twice. A start error such as `EAGAIN`, `ENOMEM` or `EMFILE`, a timeout, or one check
   that passes on retry counts as transient: the runtime is reused. A broken generation is never
   removed or rebuilt in place, because a running server may be using it. A new generation is
-  built beside it, and `cached_prefixes()` lists the newest first. A `ready.json` naming a
-  console script outside its generation is not trusted.
-- **Recovery never takes what it does not own.** Under the lock, an unpublished generation is
-  cleared only when its marker names this base and key, or when it holds nothing but `.owner` or
-  `.owner.tmp`, which is what a setup killed before its marker was complete leaves behind. Such a
+  built beside it, and `cached_prefixes()` lists the newest first. A `ready.json` this version
+  cannot use (unreadable, another schema, a console script that resolves outside its generation)
+  makes the generation unusable but keeps it. At most five generations are built per base: past
+  that, setup fails with `GENERATIONS_EXHAUSTED` instead of reinstalling on every start.
+- **Recovery never takes what it does not own.** A generation holding any `ready.json` is never
+  removed. Under the lock, a generation without one is cleared only when its marker names this
+  base and key, or when it holds nothing but `.owner` or `.owner.tmp`, which is what a setup killed before its marker was complete leaves behind. Such a
   generation is first renamed to `runtimes/.trash-<base>-<nonce>`, then removed with `.owner`
   last. If the rename fails (on Windows, a file in use), setup stops with `CLEANUP_FAILED` and
   the generation stays recoverable. Trash that cannot be removed is left, and a later setup
   removes it. Any other directory is left alone, and the build moves on to the next generation
-  number.
+  number. The same clean-up runs for other versions' bases, but only for a base whose lock it
+  can take at once, so an install in progress is never touched.
 - **No orphan writes under a new build.** Every process that writes into a generation (venv
   creation and pip) inherits the lock's file descriptor, and the bootstrap only closes its own
   copy, never unlocks. On POSIX a pip left running by a killed bootstrap therefore holds the lock
@@ -215,33 +223,38 @@ macOS behaviour is covered by fakes, not by a run on either system.
   must be a bare name pinned with `==`. There is no `--user`, `--upgrade`, `--pre`, extra or
   elevation. Child processes lose `PYTHONPATH`, `PYTHONHOME` and the other interpreter-steering
   variables. They keep only an allow-list of `PIP_*` variables, for the index, extra index,
-  find-links, `--no-index`, trusted hosts, certificates, proxy, retries, timeout, keyring, cache
-  and config file. Every other `PIP_*` variable is dropped, including `PIP_REQUIREMENT`,
-  `PIP_CONSTRAINT`, `PIP_TARGET` and `PIP_PREFIX`. Before installing, `pip config list` is read.
-  A configured `target`, `prefix`, `root`, `requirement`, `editable`, `src` or `python`, or a true
-  `user` or `dry-run`, fails with `BAD_PIP_CONFIG`. Other settings in `pip.conf`, and netrc, are
+  find-links, `--no-index`, trusted hosts, certificates, proxy, retries, timeouts, keyring,
+  cache, `PIP_USE_FEATURE` and config file. Every other `PIP_*` variable is dropped, including `PIP_REQUIREMENT`,
+  `PIP_CONSTRAINT`, `PIP_TARGET` and `PIP_PREFIX`. Before installing, `pip config list` is read,
+  with each value decoded from pip's quoting. If it fails, times out or prints a line that cannot
+  be decoded, setup fails closed with `BAD_PIP_CONFIG`. In the `global`, `install` and `:env:`
+  sections, a configured `target`, `prefix`, `root`, `requirement`, `editable`, `src` or
+  `python`, or a true `user` or `dry-run`, also fails with `BAD_PIP_CONFIG`. Other sections, such
+  as `freeze`, are ignored. Other settings in `pip.conf`, and netrc, are
   honoured. An air-gapped install points `PIP_FIND_LINKS` at a wheel directory.
 - **Failures are bounded and named.** Creating the environment and installing share one deadline
   (900 s by default). A failure that shows a connection error is retried exactly once. A
   resolution error, or output beyond the capture limit, is not retried and never counts as
   success. Each failure raises a `BootstrapError` with a stable code: `OPTED_OUT`,
   `BAD_DATA_DIR`, `BAD_PIP_CONFIG`, `NO_PYTHON`, `PYTHON_TOO_OLD`, `NO_VENV`, `NO_PIP`,
-  `LOCK_TIMEOUT`, `CLEANUP_FAILED`, `INDEX_UNAVAILABLE`, `INSTALL_FAILED`, `INSTALL_TIMEOUT`,
+  `LOCK_TIMEOUT`, `CLEANUP_FAILED`, `GENERATIONS_EXHAUSTED`, `INDEX_UNAVAILABLE`, `INSTALL_FAILED`, `INSTALL_TIMEOUT`,
   `VALIDATION_FAILED` or `INCOMPATIBLE_RESULT`. It also gives the manual command
   (`pipx install 'visionset==<VERSION>'`).
 - **Redaction.** Error text, progress lines and every logged line go through discovery's
   redaction. The full values of `PIP_INDEX_URL`, `PIP_EXTRA_INDEX_URL` and `PIP_FIND_LINKS` are
-  removed as well, and so are the index values `pip config list` reports. For a URL this also
-  covers its user information, path, path segments that look like tokens, and query. Text is
+  removed as well, and so are the index values `pip config list` reports, each line of a
+  multi-line value separately. For a URL this also covers its user information, path, path segments that look like tokens, and query. Text is
   redacted before it is truncated. `ready.json` holds no index setting.
 - **Opt-out and output.** A truthy `VISIONSET_PLUGIN_NO_BOOTSTRAP` refuses before anything is
-  created. Progress goes to stderr, child output is captured, and stdout is never written.
+  created. Progress goes to stderr, and a progress sink that fails (a closed stderr) does not fail
+  setup. Child output is captured, and stdout is never written.
 
 Deviations from the plan reviewed for this slice. There is no `VISIONSET_PLUGIN_FIND_LINKS`,
 because pip's own `PIP_FIND_LINKS` already covers it. A runtime directory without the marker is
 recovered when it holds only the marker files. A group-writable data directory is accepted when
 the group is the user's primary group, as it is with the per-user groups of a `002` umask.
-Trash that cannot be removed does not fail setup. The process tests (two simultaneous starts, a
+Trash that cannot be removed does not fail setup. A generation number freed by clearing an
+incomplete generation is used again, so interrupted setups never count toward the cap. The process tests (two simultaneous starts, a
 kill during install, a kill during a live pip, offline reuse, a second version, a deleted
 package, an unreachable index) install a minimal stand-in wheel so that each run takes seconds.
 Only the clean-install test installs this checkout's own wheel, built with `uv build`, with its
@@ -253,7 +266,8 @@ Known limits.
 - A pip that is still writing output when its bootstrap dies is ended by `SIGPIPE`. Its own
   subprocesses do not inherit the lock.
 - pip's output reaches the log when each step ends, not while it runs.
-- Published generations that were superseded are never pruned.
+- Published generations that were superseded are never pruned, so the cap needs a person to
+  remove them.
 - A pip configured with zero retries reports an unreachable index without a connection error,
   which surfaces as `INSTALL_FAILED`.
 - A dependency without a wheel may build from source.

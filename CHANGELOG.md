@@ -33,7 +33,8 @@ nothing was being distributed. This is the first version that is.
   would install elsewhere is refused. A cross-process lock is inherited by pip, so an orphaned install keeps it. A
   double-checked `ready.json` is published only after the console script passes discovery's probes, so simultaneous
   starts install once. A reused runtime is probed again, and a broken one is superseded by a new generation beside it
-  rather than rebuilt under a running server. Interrupted setups are recovered only from directories the plugin owns.
+  rather than rebuilt under a running server, up to five per version; a runtime holding a readiness file is never
+  removed. Interrupted setups are recovered only from directories the plugin owns.
   Failures carry stable codes, a redacted message and a manual `pipx install` command, with one retry for an
   unreachable index. Stdout is never written, and `VISIONSET_PLUGIN_NO_BOOTSTRAP` turns all of it off. The launcher
   does not call it yet.
