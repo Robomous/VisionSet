@@ -78,6 +78,7 @@ export const sidebar = [
           { slug: "architecture/decisions/three-dimensional-labels-are-calibrated-image-labels" },
           { slug: "architecture/decisions/a-track-observes-frame-occurrences" },
           { slug: "architecture/decisions/an-augmentation-is-a-registered-version" },
+          { slug: "architecture/decisions/an-agent-plugin-wraps-the-installed-cli" },
         ],
       },
     ],
