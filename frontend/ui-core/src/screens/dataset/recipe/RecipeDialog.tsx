@@ -92,11 +92,11 @@ export function RecipeDialog({ projectId, recipe, editor, onRequestClose, onSave
           event.preventDefault();
           (event.currentTarget as HTMLElement | null)?.focus();
         }}
-        // As wide as the view needs: the steps fit 22rem, the saved view's
-        // sentence needs 24rem. The width follows the view with the same 250ms
+        // As wide as the view needs: the steps fit 31rem, the saved view's
+        // sentence reads best at 24rem. The width follows the view with the same 250ms
         // the height does (`steps.tsx`).
         className={cn(
-          "flex max-h-[calc(100dvh-2rem)] w-[22rem] max-w-[calc(100vw-2rem)] flex-col gap-0 overflow-hidden overscroll-contain p-0 text-xs/relaxed outline-none [--vs-label-column:6rem] [--vs-row-height:2.25rem] [--vs-row-pad:0.25rem] sm:max-w-[calc(100vw-2rem)]",
+          "flex max-h-[calc(100dvh-2rem)] w-[31rem] max-w-[calc(100vw-2rem)] flex-col gap-0 overflow-hidden overscroll-contain p-0 text-xs/relaxed outline-none [--vs-label-column:6rem] [--vs-row-height:2.25rem] [--vs-row-pad:0.25rem] sm:max-w-[calc(100vw-2rem)]",
           "has-[[data-testid=recipe-saved]]:w-[24rem]",
           "transition-[width] duration-250 motion-reduce:transition-none",
           EASE_OUT,

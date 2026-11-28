@@ -907,6 +907,56 @@ describe("writing a new recipe", () => {
     expect(within(dialog).getByTestId("recipe-stage-caption").textContent).toBe("Keeps each image at its own size.");
   });
 
+  it("keeps the fit a choice of one while it wraps: one radio per option, the chosen one checked, arrows walk them", async () => {
+    baseline();
+    const dialog = await openNew();
+    await chooseTarget(/YOLO11/);
+    await toResize(dialog);
+
+    const fit = within(dialog).getByTestId("resize-fit");
+    const options = within(fit).getAllByRole("radio");
+    expect(options.map((one) => one.getAttribute("data-testid"))).toEqual(["resize-letterbox", "resize-stretch", "resize-fill", "resize-center_crop", "resize-none"]);
+    expect(options.map((one) => one.getAttribute("aria-checked"))).toEqual(["true", "false", "false", "false", "false"]);
+    // Separate options, not a joined strip: a wrapped strip would draw its joins in mid-row.
+    expect(fit.getAttribute("data-spacing")).not.toBe("0");
+
+    options[0]?.focus();
+    await userEvent.keyboard("{ArrowRight}");
+    expect(document.activeElement).toBe(options[1]);
+    await userEvent.keyboard(" ");
+    expect(options[1]?.getAttribute("aria-checked")).toBe("true");
+    expect(options[0]?.getAttribute("aria-checked")).toBe("false");
+  });
+
+  it("draws Crop's photograph clearly larger than Fill's, so the two fits read apart", async () => {
+    baseline();
+    const dialog = await openNew();
+    await chooseTarget(/YOLO11/);
+    await toResize(dialog);
+    const stage = within(dialog).getByTestId("recipe-stage");
+    const photoScale = (): number => {
+      const transform = stage.querySelectorAll<SVGGElement>("svg > g")[1]?.style.transform ?? "";
+      return Number(/scale\(([\d.]+)/.exec(transform)?.[1]);
+    };
+
+    await userEvent.click(within(dialog).getByTestId("resize-fill"));
+    const fill = photoScale();
+    await userEvent.click(within(dialog).getByTestId("resize-center_crop"));
+    const crop = photoScale();
+    expect(fill).toBeGreaterThan(0);
+    expect(crop / fill).toBeGreaterThanOrEqual(1.2);
+  });
+
+  it("draws the common sizes at the control's own size, not the small one", async () => {
+    baseline();
+    const dialog = await openNew();
+    await chooseTarget(/YOLO11/);
+    await toResize(dialog);
+    const presets = within(within(dialog).getByTestId("resize-presets")).getAllByRole("radio");
+    expect(presets.map((one) => one.textContent)).toEqual(["320", "416", "640", "1024", "1280"]);
+    for (const preset of presets) expect(preset.getAttribute("data-size")).not.toBe("sm");
+  });
+
   it("disables the size where it stands when the fit keeps each image's own size, so nothing can be typed into it", async () => {
     baseline();
     const dialog = await openNew();

@@ -655,7 +655,7 @@ hears *New recipe, step 2 of 3* or *Editing yolo-640, step 2 of 3*. The bottom b
 **Previous and Next, nothing else** — Previous keeps its place, hidden, on the first step, and
 on the last step Next is the save: *Create recipe*, or *Save changes*, shut until something
 changed. Enter in a field is Next. The modal **fits each step**, in both directions: it is as
-wide as the view needs — 22 rem for the steps, 24 rem for the saved view, with a 6 rem label
+wide as the view needs — 31 rem for the steps, 24 rem for the saved view, never wider than the window less 2 rem, with a 6 rem label
 column since every label is short and 36 px rows, so two controls stand 8 px apart — and its height follows the
 step that arrives (measured, so it is exact). Width and height move together (250 ms, strong
 ease-out) and the step settles in with a short blur-fade just behind them, so no step leaves
@@ -703,16 +703,16 @@ browser computes a size. **Changing the model rewrites the suggestion only for f
 typed in**, so a size chosen on purpose survives a change of model (`recipeDraft.ts`,
 `touched`). *Resize* opens on a drawing of what the fit does (`art.tsx`): a wide photograph meeting
 the frame of the size below — shrunk with the rest hatched as padding for Letterbox, bent to fill
-it for Stretch, grown past the frame for Fill, spilling past it unscaled for Crop, unframed for
+it for Stretch, grown past the frame for Fill, drawn well past it on every side at its own size for Crop, unframed for
 Original — on a stage whose caption is what the drawn fit does (*Keeps the shape and pads the rest.*) — the
 fit and the size are the fields under it, so the caption does not repeat them. It
 draws the chosen fit, and the option under the pointer or focus before it is chosen. It is a
-diagram, never the person's images, and hidden from assistive technology. Under it, the fit as a five-way toggle group — Letterbox, Stretch, Fill, Crop, Original; the two cropping fits' lines say that labels cut mostly away are dropped —
+diagram, never the person's images, and hidden from assistive technology. Under it, the fit as a five-way toggle group — Letterbox, Stretch, Fill, Crop, Original, wrapping to a second row rather than clipping a label where the column is narrow; the two cropping fits' lines say that labels cut mostly away are dropped —
 (its line is the stage's caption, and the toggle group's description for a screen reader); the width and height as numeric fields in
-pixels, with the common sizes under them (320 to 1280) as a second toggle group. The pad is not
+pixels, with the common sizes under them (320 to 1280) as a second toggle group, three to a row where the column is narrow. The pad is not
 asked: a letterbox or a crop keeps the grey the recipe has (114 for a new one). *Augmentation* is one row
 per step — *Flip*, *Brightness* (brightness and contrast), *Rotate* (quarter turns) — each a
-switch labelled by its row and nothing else beside it. What it does is said once, in the card of
+switch at the row's end, labelled by its row and nothing else beside it. What it does is said once, in the card of
 the info button beside its label (`ArtTip`): it draws it — original → result, brightness as one
 darker and one lighter result as far apart as its amount — titles it with the answer (*Mirrors
 left to right*) and says the rest in a line. A screen reader hears the same words as the switch's

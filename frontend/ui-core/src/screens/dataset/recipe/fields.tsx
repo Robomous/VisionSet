@@ -2,7 +2,7 @@
  * The recipe's fields, one group per step: the name and the model, then the
  * resize, then the augmentation.
  *
- * Every row is the inspector's (`PropertyRow`): the label in a 7rem column,
+ * Every row is the inspector's (`PropertyRow`): the label in a 6rem column,
  * the control at the value edge, at the app's control height — the grid the
  * class and model sheets use, so the eye runs down one edge of labels and one
  * edge of controls, on every step. Controls fill the value column, so their right edges line
@@ -164,22 +164,24 @@ export function SizeFields({ flow }: { readonly flow: RecipeFlow }): JSX.Element
       {/* What the fit does to an image, at the size below: the option pointed at, else the one chosen,
           with its line as the caption — the fit and the size are the fields under it, not said twice. */}
       <ArtStage caption={FITS.find((one) => one.value === drawn)?.detail ?? ""}>
-        <FitArt fit={drawn} width={width} height={height} className="h-[5.5rem]" />
+        <FitArt fit={drawn} width={width} height={height} className="h-28" />
       </ArtStage>
       <PropertyRow label="Fit" labelId="recipe-fit-label">
         <ToggleGroup
           type="single"
           variant="outline"
-          spacing={0}
+          spacing={1}
           value={flow.draft.strategy}
           // A choice of one: pressing the chosen one again keeps it.
           onValueChange={(next) => next !== "" && flow.setStrategy(next as ResizeChoice)}
           aria-labelledby="recipe-fit-label"
           aria-describedby="recipe-fit-detail"
-          className="w-full"
+          // Wraps rather than clips: an option is never narrower than its label.
+          className="w-full flex-wrap"
+          data-testid="resize-fit"
         >
           {FITS.map((fit) => (
-            <ToggleGroupItem key={fit.value} value={fit.value} className="flex-1" data-testid={`resize-${fit.value}`} {...on(fit.value)}>
+            <ToggleGroupItem key={fit.value} value={fit.value} className="min-w-fit flex-1" data-testid={`resize-${fit.value}`} {...on(fit.value)}>
               {fit.label}
             </ToggleGroupItem>
           ))}
@@ -199,23 +201,25 @@ export function SizeFields({ flow }: { readonly flow: RecipeFlow }): JSX.Element
             </span>
             <Px id="recipe-height" label="Height" testId="resize-height" value={flow.draft.height} onChange={flow.setHeight} invalid={problem?.startsWith("Height") === true} disabled={!sized} />
           </div>
-          <ToggleGroup
-            type="single"
-            variant="outline"
-            spacing={0}
-            size="sm"
-            disabled={!sized}
-            value={preset === undefined ? "" : String(preset)}
-            onValueChange={(next) => next !== "" && flow.setSize(next, next)}
-            aria-label="Common sizes"
-            className="w-full"
-          >
-            {SIZES.map((size) => (
-              <ToggleGroupItem key={size} value={String(size)} aria-label={`${size} × ${size}`} className="flex-1 tabular-nums">
-                {size}
-              </ToggleGroupItem>
-            ))}
-          </ToggleGroup>
+          <div className="@container">
+            <ToggleGroup
+              type="single"
+              variant="outline"
+              spacing={1}
+              disabled={!sized}
+              value={preset === undefined ? "" : String(preset)}
+              onValueChange={(next) => next !== "" && flow.setSize(next, next)}
+              aria-label="Common sizes"
+              className="grid w-full grid-cols-3 @min-[17rem]:grid-cols-5"
+              data-testid="resize-presets"
+            >
+              {SIZES.map((size) => (
+                <ToggleGroupItem key={size} value={String(size)} aria-label={`${size} × ${size}`} className="tabular-nums">
+                  {size}
+                </ToggleGroupItem>
+              ))}
+            </ToggleGroup>
+          </div>
         </fieldset>
       </PropertyRow>
     </>
@@ -306,7 +310,7 @@ function OpRow({ op, flow, children }: { readonly op: (typeof OPS)[number]; read
         }
       >
         {/* Only the switch: what it does is the info card's, said once. A screen reader hears it with the switch. */}
-        <div className="flex min-w-0 items-center">
+        <div className="flex min-w-0 items-center justify-end">
           <Switch
             id={`augment-${op.op}`}
             data-testid={`augment-${op.op}`}
@@ -377,7 +381,7 @@ function Amount({ flow }: { readonly flow: RecipeFlow }): JSX.Element {
         onValueChange={(next) => flow.setAmount((next[0] ?? amount).toFixed(2))}
         className="flex-1"
       />
-      <span className="w-9 text-end tabular-nums text-muted-foreground">±{Math.round(amount * 100)}%</span>
+      <span className="w-10 shrink-0 text-end tabular-nums" data-testid="augment-amount-value">±{Math.round(amount * 100)}%</span>
     </div>
   );
 }

@@ -633,6 +633,13 @@ nothing was being distributed. This is the first version that is.
   digits, and both `dota` and `yolo-obb` keep a small box whose corners lie within two units of that precision per
   axis, up from one; on DOTA v1.5 that refuses 0.44%. Every kept fit is still a `geometry` loss, and the sixth-of-the-
   shorter-side test is unchanged (#1208).
+- **The recipe dialog fits its controls at every width.** The steps were a fixed 22 rem, so on a phone the
+  *Fit* options *Letterbox* and *Original* were clipped, the common sizes were squeezed into 42 px cells at the
+  small type size, and the *Resize* drawing's card ran 8 px past the dialog's edge. The dialog is now 31 rem, never
+  wider than the window less 2 rem; the fit's options wrap to a second row rather than clip, keeping their radio
+  semantics and arrow keys; the common sizes are three to a row when the column is narrow, at the control's own
+  type size; the drawing's card ends at the dialog's edge and its drawing is larger, with Crop drawn clearly larger
+  than Fill; and each augmentation's switch sits at the row's end, so the switches line up in one column (#1277).
 - **A mask is decoded once per write and not again on read.** Writing a `mask` annotation decoded its counts about
   six times, plus once more for every mask already on the asset; reading one back decoded it twice. A write now
   decodes the new mask once, and a mask read back from the workspace store is trusted as the canonical form the

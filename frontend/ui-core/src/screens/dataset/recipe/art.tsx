@@ -22,6 +22,9 @@ import type { AugmentOp, ResizeChoice } from "../../recipeDraft";
 const PW = 90;
 const PH = 60;
 
+/** How much larger Crop's photograph is drawn than Fill's. */
+const CROP_OVER_FILL = 1.3;
+
 /** A photograph with one labelled object, centred on 0,0 at 90 × 60. */
 function Photo({ clip }: { readonly clip: string }): JSX.Element {
   return (
@@ -49,7 +52,8 @@ function moved(transform: string, opacity = 1): CSSProperties {
  * A wide photograph meeting the size the recipe trains at. Letterbox: it
  * shrinks to fit and the rest is padding, hatched. Stretch: it fills the
  * frame, and its box bends with it. Fill: it grows to cover the frame and
- * spills past it. Crop: it keeps its size and spills past the frame.
+ * spills past it. Crop: it keeps its own size, drawn well past the frame on
+ * every side so it never reads as Fill.
  * Original: there is no frame.
  */
 export function FitArt({ fit, width, height, className }: { readonly fit: ResizeChoice; readonly width?: number; readonly height?: number; readonly className?: string }): JSX.Element {
@@ -57,11 +61,12 @@ export function FitArt({ fit, width, height, className }: { readonly fit: Resize
   const aspect = width !== undefined && height !== undefined ? Math.min(1.8, Math.max(0.6, width / height)) : 1;
   const fw = Math.min(84, 56 * aspect);
   const fh = fw / aspect;
+  const cover = Math.max(fw / PW, fh / PH);
   const scale = {
     letterbox: `scale(${Math.min(fw / PW, fh / PH)})`,
     stretch: `scale(${fw / PW}, ${fh / PH})`,
-    fill: `scale(${Math.max(fw / PW, fh / PH)})`,
-    center_crop: "scale(1)",
+    fill: `scale(${cover})`,
+    center_crop: `scale(${cover * CROP_OVER_FILL})`,
     none: "scale(1)",
   }[fit];
   const frame = fit === "none" ? 0 : 1;
@@ -92,13 +97,14 @@ export function FitArt({ fit, width, height, className }: { readonly fit: Resize
  */
 export function ArtStage({ caption, children }: { readonly caption: string; readonly children: ReactNode }): JSX.Element {
   return (
-    <div aria-hidden="true" className="relative mx-4 mt-1 mb-1.5 h-32 overflow-hidden rounded-xl bg-stage" data-testid="recipe-stage">
-      {/* 12px outside, 8px on the surface: its corner sits inside the panel's. */}
-      <div className="vs-recipe-art-surface absolute top-4 -right-6 -bottom-6 left-5 rounded-lg bg-card">
-        <span key={caption} className="vs-recipe-label block truncate px-3 pt-2 text-[11px] text-muted-foreground" data-testid="recipe-stage-caption">
+    <div aria-hidden="true" className="relative mx-4 mt-1 mb-1.5 h-40 overflow-hidden rounded-xl bg-stage" data-testid="recipe-stage">
+      {/* 12px outside, 8px on the surface: its corner sits inside the panel's. It runs off the
+          stage by the stage's own 16px inset, so it ends at the dialog's edge and never past it. */}
+      <div className="vs-recipe-art-surface absolute top-4 -right-4 -bottom-4 left-5 rounded-lg bg-card" data-testid="recipe-stage-surface">
+        <span key={caption} className="vs-recipe-label block truncate ps-3 pe-7 pt-2 text-[11px] text-muted-foreground" data-testid="recipe-stage-caption">
           {caption}
         </span>
-        <div className="absolute inset-x-0 top-7 bottom-6 flex items-center justify-center pe-6">{children}</div>
+        <div className="absolute inset-x-0 top-7 bottom-4 flex items-center justify-center pe-4">{children}</div>
       </div>
     </div>
   );
