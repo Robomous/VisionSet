@@ -506,9 +506,10 @@ selected it is the schema's union. A `mask` class can be declared, and the strip
 Mask button carrying the reason, because the annotator has no tool to draw or edit one; stored masks
 are kept as they are. A `keypoints` class gets a disabled Keypoints button likewise: the annotator
 draws its labels read-only and has no tool to place or move their points yet. A visible keypoint is
-a filled dot in the class colour, an occluded one a hollow dot with a dashed outline, and an
-unlabeled one is not drawn; the class's skeleton edges join drawn points, dashed where an end is
-occluded, and no edge reaches an unlabeled point. Keypoints are
+a filled dot in the class colour, an occluded one a hollow dot whose outline is six even dashes,
+and an unlabeled one is not drawn; the class's skeleton edges join drawn points at full opacity,
+dashed where an end is occluded, and no edge reaches an unlabeled point. Every point and edge sits
+on the dark halo a shape's label carries, so it reads at any zoom on any picture. Keypoints are
 listed in the panel and hidden there or by the rail like any object, but never selected, and a
 save never sends them. Switching to a class that forbids the active tool never
 strands it — the derived tool resolves to the class's first allowed shape — and the route to

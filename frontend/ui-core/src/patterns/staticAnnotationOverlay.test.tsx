@@ -95,7 +95,7 @@ describe("StaticAnnotationOverlay", () => {
       render(<StaticAnnotationOverlay width={640} height={480} src="blob:picture" alt="frame 1" annotations={[pose]} classes={[FACE]} />);
       const group = screen.getByTestId("keypoint-layer").querySelector("[data-keypoints-id='pose']");
       if (group === null) throw new Error("the keypoints were not drawn");
-      return { dots: [...group.querySelectorAll("circle")], edges: [...group.querySelectorAll("polyline")] };
+      return { dots: [...group.querySelectorAll("circle[data-keypoint]")], edges: [...group.querySelectorAll("line[data-keypoint-edge]")] };
     }
 
     it("fills a visible point, rings an occluded one and leaves an unlabeled one out", () => {
@@ -111,15 +111,17 @@ describe("StaticAnnotationOverlay", () => {
       const { edges } = drawnKeypoints();
 
       // `nose`–`chin` and `chin`–`left_eye` reach the unlabeled chin, so two of four remain.
-      expect(edges.map((edge) => edge.getAttribute("points"))).toEqual(["10,10 30,10", "30,10 20,20"]);
+      const ends = (edge: Element): string =>
+        ["x1", "y1", "x2", "y2"].map((name) => edge.getAttribute(name)).join(",");
+      expect(edges.map(ends)).toEqual(["10,10,30,10", "30,10,20,20"]);
       expect(edges.every((edge) => edge.getAttribute("data-occluded") === "true")).toBe(true);
     });
 
     it("draws the points and no edges for a class with no spec", () => {
       render(<StaticAnnotationOverlay width={640} height={480} src="blob:picture" alt="frame 1" annotations={[pose]} classes={[{ ...FACE, keypoints: null }]} />);
 
-      expect(screen.getByTestId("keypoint-layer").querySelectorAll("circle")).toHaveLength(3);
-      expect(screen.getByTestId("keypoint-layer").querySelectorAll("polyline")).toHaveLength(0);
+      expect(screen.getByTestId("keypoint-layer").querySelectorAll("circle[data-keypoint]")).toHaveLength(3);
+      expect(screen.getByTestId("keypoint-layer").querySelectorAll("line")).toHaveLength(0);
     });
 
     it("skips malformed keypoints rather than failing the picture", () => {
