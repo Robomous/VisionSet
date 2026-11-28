@@ -4,8 +4,9 @@
 The kernel owns every coordinate an export writes: the pixel driver moves
 bytes, this module moves annotations, and the two agree because both read the
 same arithmetic — :func:`letterbox_fit` is the single spelling of where
-letterboxed content lands, and the per-variant draws come from
-:mod:`visionset.kernel.domain.preprocessing`. :func:`transform_manifest`
+letterboxed content lands, and each variant's draws are one
+:class:`~visionset.kernel.domain.preprocessing_plan.VariantPlan`, the value
+the pixel driver reads too. :func:`transform_manifest`
 produces a :class:`TransformedView`: one entry per file the export will write,
 with the transformed size, the transformed labels, and where the bytes come
 from. It is a view over the manifest, never a manifest — the manifest's shape
@@ -38,15 +39,18 @@ from visionset.kernel.domain.geometry import (
 )
 from visionset.kernel.domain.preprocessing import (
     CROPPING_STRATEGIES,
-    SHOWCASE_SEED,
     THREE_D,
-    AugmentOp,
     AugmentStep,
     RecipeSpec,
     ResizeStep,
     recipe_hash,
-    rot90_quarter_turns,
-    variant_seed,
+)
+from visionset.kernel.domain.preprocessing_plan import (
+    BrightnessContrastDraw,
+    HflipDraw,
+    Rot90Draw,
+    VariantPlan,
+    sample_plan,
 )
 from visionset.kernel.domain.raster_mask import mask_mirrored, mask_resampled, mask_rotated_once
 from visionset.kernel.domain.release import (
@@ -292,7 +296,8 @@ def transform_manifest(
     that augments requires ``folds``. Base images are emitted for every asset
     whatever its fold, resized when the spec says so.
 
-    ``showcase`` replaces every variant's seed with :data:`SHOWCASE_SEED`, so
+    Each variant's draws are its :func:`sample_plan`, the same value the pixel
+    driver reads. ``showcase`` samples every plan from :data:`SHOWCASE_SEED`, so
     each augmentation lands at its declared strength rather than one draw of
     it — a preview's way of showing what a step does. An export never sets it.
 
@@ -324,8 +329,14 @@ def transform_manifest(
         if fold != "train":
             continue
         for k in range(1, spec.variants_per_asset + 1):
-            seed = SHOWCASE_SEED if showcase else variant_seed(spec_hash, asset.content_hash, k)
-            files.append(_variant_file(asset, resize, augments, variant=k, seed=seed))
+            plan = sample_plan(
+                spec,
+                content_hash=asset.content_hash,
+                variant=k,
+                showcase=showcase,
+                spec_hash=spec_hash,
+            )
+            files.append(_variant_file(asset, resize, augments, plan))
     return TransformedView(files=tuple(files))
 
 
@@ -381,26 +392,32 @@ def _variant_file(
     asset: ManifestAsset,
     resize: ResizeStep | None,
     augments: tuple[AugmentStep, ...],
-    *,
-    variant: int,
-    seed: bytes,
+    plan: VariantPlan,
 ) -> TransformedFile:
+    variant = plan.variant
     placed = _placed(asset, resize)
     annotations = [annotation for annotation, _ in placed.labels]
     geometries = [geometry for _, geometry in placed.labels]
     width, height = placed.width, placed.height
     for step in augments:
         _refuse_unsupported(asset, step, geometries)
-        if step.op is AugmentOp.HFLIP:
-            if _any_coordinates(geometries):
-                mirror_width = float(_known_width(width, asset, step.name))
-                geometries = [_mirrored(geometry, mirror_width) for geometry in geometries]
-        elif step.op is AugmentOp.ROT90:
-            for _ in range(rot90_quarter_turns(seed)):
+        match plan.draw_for(step):
+            case HflipDraw():
                 if _any_coordinates(geometries):
-                    turn_width = float(_known_width(width, asset, step.name))
-                    geometries = [_rotated_once(geometry, turn_width) for geometry in geometries]
-                width, height = height, width
+                    mirror_width = float(_known_width(width, asset, step.name))
+                    geometries = [_mirrored(geometry, mirror_width) for geometry in geometries]
+            case Rot90Draw(quarter_turns=turns):
+                for _ in range(turns):
+                    if _any_coordinates(geometries):
+                        turn_width = float(_known_width(width, asset, step.name))
+                        geometries = [
+                            _rotated_once(geometry, turn_width) for geometry in geometries
+                        ]
+                    width, height = height, width
+            case BrightnessContrastDraw():
+                pass
+            case unreachable:
+                assert_never(unreachable)
     return TransformedFile(
         asset_id=asset.asset_id,
         content_hash=asset.content_hash,

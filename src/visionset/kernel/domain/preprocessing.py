@@ -14,6 +14,14 @@ geometry transform and the pixel driver read the same positions, which is what
 keeps a variant's annotations on its pixels. Byte stability is promised within
 one environment only; the geometry arithmetic here is exact everywhere.
 
+What each augmentation *is* lives in one registry, :data:`AUGMENT_OPERATIONS`:
+an :class:`AugmentOperation` per ``(op, version)`` declaring its typed
+parameters, the modalities, geometries and trainer tasks it can serve, what it
+does to a label's meaning, whether it can lose a label, which built-in driver
+applies it and whether a preview can show it. Nothing about an operation is
+inferred from the code that happens to run it; a capability the registry does
+not declare is one the operation does not have.
+
 A preview that wants to *show* a step rather than one draw of it passes
 :data:`SHOWCASE_SEED` where a variant seed goes: both draw functions answer it
 with the step at its declared strength — one quarter turn, brightness and
@@ -32,15 +40,27 @@ arithmetic happens to handle it.
 from __future__ import annotations
 
 import hashlib
-from collections.abc import Mapping
+import math
+from collections.abc import Iterable, Mapping
 from datetime import datetime
 from enum import StrEnum
-from typing import Annotated, Final, Literal
+from typing import Annotated, Final, Literal, TypeVar
 from uuid import UUID, uuid4
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    StrictBool,
+    StrictFloat,
+    StrictInt,
+    ValidationInfo,
+    field_validator,
+    model_validator,
+)
 
-from visionset.kernel.domain.export_target import ResizeStrategy
+from visionset.kernel.domain.calibration import Modality
+from visionset.kernel.domain.export_target import ResizeStrategy, Task
 from visionset.kernel.domain.release import canonical_bytes, sha256_hex
 from visionset.kernel.domain.schema import GeometryType
 
@@ -140,24 +160,341 @@ AUGMENT_GEOMETRIES: Final[Mapping[AugmentOp, frozenset[GeometryType]]] = {
 """Which geometries each augmentation can transform, per :class:`AugmentOp`."""
 
 
+ParameterValue = float | int | bool
+"""What one augmentation parameter can hold: a JSON number or a boolean."""
+
+
+class ParameterKind(StrEnum):
+    """The JSON type an augmentation parameter takes."""
+
+    FLOAT = "float"
+    INT = "int"
+    BOOL = "bool"
+
+
+class AugmentParameter(BaseModel):
+    """One typed parameter an augmentation declares, with its range and default.
+
+    ``minimum`` and ``maximum`` bound a number inclusively unless
+    ``exclusive_minimum`` says the lower bound is open. ``inert`` marks a
+    parameter the step carries and validates but the operation never reads:
+    ``amount`` is a field of every :class:`AugmentStep`, so ``hflip`` and
+    ``rot90`` must say what it means to them, and what it means is nothing.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    name: str
+    kind: ParameterKind
+    default: ParameterValue
+    minimum: float | int | None = None
+    maximum: float | int | None = None
+    exclusive_minimum: bool = False
+    inert: bool = False
+    description: str
+
+    def checked(self, value: object, operation: str) -> ParameterValue:
+        """``value`` as this parameter holds it, or the reason it cannot.
+
+        A float parameter given an integer holds it as a float, so ``1`` and
+        ``1.0`` cannot hash a recipe two ways.
+
+        Raises:
+            ValueError: the value has the wrong type or lies outside the range.
+        """
+        where = f"{operation} parameter {self.name!r}"
+        if self.kind is ParameterKind.BOOL:
+            if not isinstance(value, bool):
+                raise ValueError(f"{where} is a boolean, not {value!r}")
+            return value
+        if isinstance(value, bool) or not isinstance(value, int | float):
+            raise ValueError(f"{where} is a number, not {value!r}")
+        if self.kind is ParameterKind.INT:
+            if not isinstance(value, int):
+                raise ValueError(f"{where} is a whole number, not {value!r}")
+            number: float | int = value
+        else:
+            number = float(value)
+            if not math.isfinite(number):
+                raise ValueError(f"{where} must be finite, not {value!r}")
+        below = self.minimum is not None and (
+            number <= self.minimum if self.exclusive_minimum else number < self.minimum
+        )
+        if below or (self.maximum is not None and number > self.maximum):
+            raise ValueError(f"{where} must lie in {self.range_text()}, not {value!r}")
+        return number
+
+    def range_text(self) -> str:
+        """The range in interval notation, the way a refusal states it."""
+        opening = "(" if self.exclusive_minimum else "["
+        low = "-inf" if self.minimum is None else repr(self.minimum)
+        high = "inf" if self.maximum is None else repr(self.maximum)
+        return f"{opening}{low}, {high}]"
+
+
+class AugmentFamily(StrEnum):
+    """Whether an augmentation moves pixels or only changes their values."""
+
+    SPATIAL = "spatial"
+    PHOTOMETRIC = "photometric"
+
+
+class SemanticEffect(StrEnum):
+    """What an augmentation does to what a label *means*, beyond where it is.
+
+    ``preserves`` changes no meaning. ``mirrors`` swaps the frame's handedness,
+    so a class or keypoint named for a side — ``left_turn``, ``right_eye`` —
+    now names the other one. ``reorients`` turns the frame's axes, so a class
+    whose meaning is tied to up, down or reading direction may not survive it.
+    A compatibility check reads this; the operation never renames anything.
+    """
+
+    PRESERVES = "preserves"
+    MIRRORS = "mirrors"
+    REORIENTS = "reorients"
+
+
+class LossPolicy(StrEnum):
+    """Whether an augmentation can cut a label it supports down or away.
+
+    ``lossless`` never does, over every geometry it declares. ``lossy`` may,
+    and a recipe holding it asks for the same explicit consent a cropping
+    resize does.
+    """
+
+    LOSSLESS = "lossless"
+    LOSSY = "lossy"
+
+
+_Ordered = TypeVar("_Ordered", GeometryType, Task)
+
+
+def _in_declaration_order(
+    members: Iterable[_Ordered], vocabulary: type[_Ordered]
+) -> tuple[_Ordered, ...]:
+    chosen = set(members)
+    return tuple(member for member in vocabulary if member in chosen)
+
+
+class AugmentOperation(BaseModel):
+    """What one version of one augmentation is, declared rather than inferred.
+
+    ``geometries`` is read from :data:`AUGMENT_GEOMETRIES`, the table every
+    step's ``supported_geometries`` and the geometry transform's refusal
+    already read, so the registry restates nothing. ``modalities`` and
+    ``tasks`` are what the operation can serve; a modality or task not listed
+    is unsupported, never assumed. ``drivers`` names the built-in drivers that
+    apply it, and ``preview`` says whether a preview's ``showcase`` can show it
+    at its declared strength. Every collection is a tuple in its vocabulary's
+    declaration order, so the serialized registry is byte-stable.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    op: AugmentOp
+    version: int = Field(ge=1)
+    family: AugmentFamily
+    parameters: tuple[AugmentParameter, ...]
+    modalities: tuple[Modality, ...]
+    geometries: tuple[GeometryType, ...]
+    tasks: tuple[Task, ...]
+    semantics: SemanticEffect
+    loss: LossPolicy
+    drivers: tuple[str, ...]
+    preview: bool
+
+    def parameter(self, name: str) -> AugmentParameter | None:
+        """The declared parameter of that name, if the operation has one."""
+        return next((one for one in self.parameters if one.name == name), None)
+
+    def checked_params(self, params: Mapping[str, object]) -> dict[str, ParameterValue]:
+        """``params`` as a step holds them, in name order, or the reason they are refused.
+
+        ``amount`` is a field of the step itself, never a member of ``params``.
+
+        Raises:
+            ValueError: a name the operation does not declare, ``amount``, or a
+                value its parameter refuses.
+        """
+        checked: dict[str, ParameterValue] = {}
+        for name in sorted(params):
+            declared = self.parameter(name)
+            if name == AMOUNT.name or declared is None:
+                accepted = sorted(one.name for one in self.parameters if one.name != AMOUNT.name)
+                raise ValueError(
+                    f"{self.op.value} has no parameter {name!r} in params; "
+                    f"it accepts {', '.join(map(repr, accepted)) or 'none'}"
+                    + (" (amount is the step's own field)" if name == AMOUNT.name else "")
+                )
+            checked[name] = declared.checked(params[name], self.op.value)
+        return checked
+
+
+AMOUNT: Final = AugmentParameter(
+    name="amount",
+    kind=ParameterKind.FLOAT,
+    default=0.2,
+    minimum=0.0,
+    maximum=0.5,
+    exclusive_minimum=True,
+    description="Brightness and contrast factors are each drawn from [1 - amount, 1 + amount].",
+)
+"""The one parameter every legacy step carries, as a field of :class:`AugmentStep`."""
+
+_INERT_AMOUNT: Final = AMOUNT.model_copy(
+    update={
+        "inert": True,
+        "description": "Carried and validated; this operation reads nothing from it.",
+    }
+)
+
+#: Every trainer task a step that moves no label coordinate can serve. ``depth``
+#: is absent: no label the system carries is a depth map, so whether an
+#: augmentation keeps one is unknown, and unknown is unsupported.
+_COORDINATE_FREE_TASKS: Final = frozenset(Task) - {Task.DEPTH}
+
+#: A step that moves pixels cannot serve ``pose`` until keypoints declare which
+#: point becomes which under a mirror or a turn, and no geometry does.
+_SPATIAL_TASKS: Final = _COORDINATE_FREE_TASKS - {Task.POSE}
+
+
+def _operation(
+    op: AugmentOp,
+    *,
+    family: AugmentFamily,
+    amount: AugmentParameter,
+    tasks: frozenset[Task],
+    semantics: SemanticEffect,
+) -> AugmentOperation:
+    return AugmentOperation(
+        op=op,
+        version=1,
+        family=family,
+        parameters=(amount,),
+        modalities=("image",),
+        geometries=_in_declaration_order(AUGMENT_GEOMETRIES[op], GeometryType),
+        tasks=_in_declaration_order(tasks, Task),
+        semantics=semantics,
+        loss=LossPolicy.LOSSLESS,
+        drivers=("pillow",),
+        preview=True,
+    )
+
+
+AUGMENT_OPERATIONS: Final[Mapping[tuple[AugmentOp, int], AugmentOperation]] = {
+    (operation.op, operation.version): operation
+    for operation in (
+        _operation(
+            AugmentOp.HFLIP,
+            family=AugmentFamily.SPATIAL,
+            amount=_INERT_AMOUNT,
+            tasks=_SPATIAL_TASKS,
+            semantics=SemanticEffect.MIRRORS,
+        ),
+        _operation(
+            AugmentOp.BRIGHTNESS_CONTRAST,
+            family=AugmentFamily.PHOTOMETRIC,
+            amount=AMOUNT,
+            tasks=_COORDINATE_FREE_TASKS,
+            semantics=SemanticEffect.PRESERVES,
+        ),
+        _operation(
+            AugmentOp.ROT90,
+            family=AugmentFamily.SPATIAL,
+            amount=_INERT_AMOUNT,
+            tasks=_SPATIAL_TASKS,
+            semantics=SemanticEffect.REORIENTS,
+        ),
+    )
+}
+"""Every registered version of every augmentation, keyed ``(op, version)``.
+
+Ordered by :class:`AugmentOp` and then version, and exhaustive: every op has
+at least one version, which a test holds. A version, once registered, is never
+removed or changed — a stored recipe names it, and the recipe's hash and every
+variant it drew depend on it staying what it was. A behaviour change is a new
+version beside it.
+"""
+
+
+def augment_operations() -> tuple[AugmentOperation, ...]:
+    """The registry in its stable order: by op as :class:`AugmentOp` declares them, then version."""
+    return tuple(AUGMENT_OPERATIONS.values())
+
+
+def augment_operation(op: AugmentOp, version: int = 1) -> AugmentOperation:
+    """The registered operation for ``(op, version)``.
+
+    Raises:
+        ValueError: no such version of the op is registered.
+    """
+    operation = AUGMENT_OPERATIONS.get((op, version))
+    if operation is None:
+        known = sorted(v for o, v in AUGMENT_OPERATIONS if o is op)
+        raise ValueError(
+            f"{op.value} has no version {version}; registered versions: "
+            f"{', '.join(map(str, known)) or 'none'}"
+        )
+    return operation
+
+
 class AugmentStep(BaseModel):
     """One augmentation in a recipe.
 
     ``amount`` bounds the brightness and contrast factors — each is drawn
     uniformly from ``[1 - amount, 1 + amount]`` — and means nothing to
     ``hflip``, which always mirrors, or ``rot90``, whose draw has no magnitude.
+
+    ``version`` names which registered :class:`AugmentOperation` the step
+    runs and ``params`` holds the parameters that operation declares beyond
+    ``amount``; an unknown version, an undeclared parameter or a value out of
+    range is refused. Both are left out of the serialized step while they hold
+    their legacy values — version 1, no params — which is what keeps every
+    recipe written before they existed at the same canonical bytes and hash.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     kind: Literal["augment"] = "augment"
     op: AugmentOp
-    amount: float = Field(default=0.2, gt=0, le=0.5)
+    amount: float = Field(default=AMOUNT.default, gt=AMOUNT.minimum, le=AMOUNT.maximum)
+    version: int = Field(default=1, ge=1, exclude_if=lambda value: value == 1)
+    params: dict[str, StrictBool | StrictInt | StrictFloat] = Field(
+        default_factory=dict, exclude_if=lambda value: not value
+    )
+
+    @field_validator("version")
+    @classmethod
+    def _version_is_registered(cls, value: int, info: ValidationInfo) -> int:
+        op = info.data.get("op")
+        if isinstance(op, AugmentOp):
+            augment_operation(op, value)
+        return value
+
+    @field_validator("params")
+    @classmethod
+    def _params_are_declared(
+        cls, value: dict[str, ParameterValue], info: ValidationInfo
+    ) -> dict[str, ParameterValue]:
+        op, version = info.data.get("op"), info.data.get("version")
+        if not isinstance(op, AugmentOp) or not isinstance(version, int):
+            return value
+        return augment_operation(op, version).checked_params(value)
+
+    def __hash__(self) -> int:
+        return hash(
+            (self.kind, self.op, self.amount, self.version, tuple(sorted(self.params.items())))
+        )
 
     @property
     def name(self) -> str:
         """What a refusal calls this step: its augmentation op."""
         return self.op.value
+
+    @property
+    def operation(self) -> AugmentOperation:
+        """The registered operation this step runs."""
+        return augment_operation(self.op, self.version)
 
     @property
     def supported_geometries(self) -> frozenset[GeometryType]:
