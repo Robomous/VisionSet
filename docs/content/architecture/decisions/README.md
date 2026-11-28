@@ -59,3 +59,9 @@ browser runs. They were written together, and they are easiest to read in this o
 | Page | The rule |
 | --- | --- |
 | [An augmentation is a registered version](an-augmentation-is-a-registered-version.md) | A recipe step names one registered `(op, version)`, which never changes once registered; fields added later are invisible at their legacy values, so stored hashes hold; a variant's draws are one plan both the geometry and the pixels read. |
+
+## Agent integration
+
+| Page | The rule |
+| --- | --- |
+| [An agent plugin wraps the installed CLI](an-agent-plugin-wraps-the-installed-cli.md) | A plugin is a generated adapter around one bundle that finds or provisions a compatible `visionset` and runs `visionset mcp`; it adds no logic, never mutates an environment it did not create, and claims a client only with evidence. |
