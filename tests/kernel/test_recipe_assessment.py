@@ -8,6 +8,7 @@ the counts against what an export writes. Nothing here restates a rule.
 
 from __future__ import annotations
 
+import tempfile
 import time
 from collections.abc import Iterator
 from io import BytesIO
@@ -15,6 +16,7 @@ from pathlib import Path
 from uuid import UUID, uuid4
 
 import pytest
+from pydantic import ValidationError
 from tests.fixtures.calibration import calibration
 from tests.formats.test_kitti_export import Released
 from tests.formats.test_ultralytics import Fixture
@@ -31,6 +33,7 @@ from visionset.kernel.domain import (
     GEOMETRY_TASKS,
     Annotation,
     Asset,
+    AugmentationResolution,
     AugmentStep,
     BboxGeometry,
     ClassExportStatus,
@@ -47,6 +50,8 @@ from visionset.kernel.domain import (
     PolygonGeometry,
     PolylineGeometry,
     PreprocessingHints,
+    RecipeAssessment,
+    RecipeCounts,
     RecipeRefusal,
     RecipeSpec,
     Release,
@@ -225,7 +230,22 @@ def _agrees(
             )
         assert str(consented.value) == str(checked)
         return
-    assert assessment.refusal is None
+    if assessment.refusal is not None:
+        # Pre-flight never runs the plugin; the export does, and refuses the same.
+        with tempfile.TemporaryDirectory() as scratch, pytest.raises(VisionSetError) as exported:
+            releases.export(
+                release_id,
+                exporter,
+                Path(scratch) / "out",
+                allow_lossy=True,
+                target=target,
+                recipe=recipe,
+                drivers=drivers,
+            )
+        assert assessment.refusal == RecipeRefusal(
+            code=error_code(exported.value) or "", message=str(exported.value)
+        )
+        return
     assert assessment.counts is not None
     releases.require_export_consent(
         release_id, exporter, allow_lossy=True, target=target, recipe=recipe, drivers=drivers
@@ -343,40 +363,60 @@ def _counted(
     dest: Path,
     target: ExportTarget | None = None,
 ) -> None:
+    """Assert the assessment counts what an export of the same recipe writes, fold by fold."""
     drivers = _drivers()
     assessment = releases.assess_recipe(
         release_id, exporter, recipe, target=target, drivers=drivers
     )
-    result = releases.export(
-        release_id,
-        exporter,
-        dest,
-        allow_lossy=True,
-        target=target,
-        recipe=recipe,
-        drivers=drivers,
-    )
+    try:
+        result = releases.export(
+            release_id,
+            exporter,
+            dest,
+            allow_lossy=True,
+            target=target,
+            recipe=recipe,
+            drivers=drivers,
+        )
+    except VisionSetError as refused:
+        assert assessment.refusal == RecipeRefusal(
+            code=error_code(refused) or "", message=str(refused)
+        )
+        return
+    assert assessment.refusal is None
     counts = assessment.counts
     assert counts is not None
-    assert counts.source_files == result.source_file_count
-    assert counts.augmented_files == result.augmented_file_count
+    assert (counts.source_files, counts.augmented_files) == (
+        result.source_file_count,
+        result.augmented_file_count,
+    )
     assert result.preprocessing is not None
     assert counts.dropped_labels == result.preprocessing.dropped_annotations
     assert counts.clipped_labels == result.preprocessing.clipped_annotations
     folds = (counts.train_images, counts.val_images, counts.test_images)
-    if releases.get(release_id).split is None:
+    release = releases.get(release_id)
+    if release.split is None:
         assert folds == (None, None, None)
-    else:
-        assert sum(one or 0 for one in folds) == result.source_file_count + (
-            result.augmented_file_count
+        return
+    assignment = releases.assignment(release_id)
+    hashes = {asset.asset_id: asset.content_hash for asset in releases.manifest(release_id).assets}
+    fold_of = {
+        hashes[asset_id]: fold
+        for fold, members in (
+            ("train", assignment.train),
+            ("val", assignment.val),
+            ("test", assignment.test),
         )
-        images = {
-            asset.asset_id
-            for asset in releases.manifest(release_id).assets
-            if asset.modality == "image"
-        }
-        train = len(images & set(releases.assignment(release_id).train))
-        assert counts.train_images == train * (1 + recipe.variants_per_asset)
+        for asset_id in members
+    }
+    mapping = result.preprocessing.mapping
+    if len(mapping) == result.source_file_count + result.augmented_file_count:
+        written = [fold_of[row.source_content_hash] for row in mapping]
+        assert folds == tuple(written.count(fold) for fold in ("train", "val", "test"))
+    else:
+        assert sum(one or 0 for one in folds) == (
+            result.source_file_count + result.augmented_file_count
+        )
 
 
 @pytest.mark.parametrize("recipe", [*RESIZES, *OPS], ids=lambda one: str(one.steps[0].name))
@@ -412,6 +452,69 @@ def test_counts_equal_a_real_formats_export_through_a_cropping_resize(
     )
     assert assessment.counts is not None
     assert assessment.counts.dropped_labels + assessment.counts.clipped_labels > 0
+
+
+UNEVEN = SplitRecipe(train=0.5, val=0.3, test=0.2, seed=7)
+
+
+class Sparse(Fixture):
+    """Ten images, four labelled: boxes and a tag, a polygon, a tag alone; folds of unequal size."""
+
+    def __init__(self, tmp_path: Path) -> None:
+        super().__init__(tmp_path, images=10, classes=tuple(KINDS.values()))
+        box, tag = _label(GeometryType.BBOX), _label(GeometryType.CLASSIFICATION_TAG)
+        self.label(
+            {
+                0: [box, tag],
+                1: [_label(GeometryType.BBOX), _label(GeometryType.CLASSIFICATION_TAG)],
+                2: [_label(GeometryType.POLYGON)],
+                3: [_label(GeometryType.CLASSIFICATION_TAG)],
+            }
+        )
+        self.split_id = self.publish("split", split=UNEVEN)
+        self.whole_id = self.publish("whole")
+
+
+@pytest.fixture(scope="module")
+def sparse(tmp_path_factory: pytest.TempPathFactory) -> Iterator[Sparse]:
+    fixture = Sparse(tmp_path_factory.mktemp("sparse"))
+    yield fixture
+    fixture.close()
+
+
+def test_the_sparse_release_has_folds_of_three_sizes(sparse: Sparse) -> None:
+    folds = sparse.releases.assignment(sparse.split_id)
+    assert len({len(folds.train), len(folds.val), len(folds.test)}) == 3
+
+
+FLIP = OPS[0]
+CROP = RecipeSpec(
+    target=None, steps=(ResizeStep(strategy=ResizeStrategy.CENTER_CROP, width=32, height=32),)
+)
+EMPTY = RecipeSpec(target=None, steps=())
+EVERY_ADDRESS = sorted(
+    (
+        (name, target)
+        for name, exporter in exporters().items()
+        for target in (None, *sorted(exporter.targets, key=lambda one: one.name))
+    ),
+    key=lambda pair: (pair[0], "" if pair[1] is None else pair[1].name),
+)
+
+
+@pytest.mark.parametrize("split", [True, False], ids=["split", "whole"])
+@pytest.mark.parametrize(
+    ("name", "target"),
+    EVERY_ADDRESS,
+    ids=[f"{name}-{'format' if target is None else target.name}" for name, target in EVERY_ADDRESS],
+)
+def test_counts_equal_what_every_shipped_format_writes(
+    sparse: Sparse, name: str, target: ExportTarget | None, split: bool, tmp_path: Path
+) -> None:
+    release_id = sparse.split_id if split else sparse.whole_id
+    for index, recipe in enumerate((FLIP, CROP, EMPTY, RESIZES[0])):
+        exporter = exporters()[name]
+        _counted(sparse.releases, release_id, exporter, recipe, tmp_path / str(index), target)
 
 
 def test_counts_leave_out_an_asset_the_format_does_not_open(tmp_path: Path) -> None:
@@ -474,11 +577,13 @@ def test_assessing_changes_nothing_about_the_release(kinds: AllKinds) -> None:
 
 # --- cost ---------------------------------------------------------------------
 
-#: Tens of thousands of assets at the variants cap. Measured at about 7 s on a
-#: desktop core, nearly all of it materializing the variants' labels; the bound
-#: leaves room for a slower runner and still catches a tenfold regression.
+#: Tens of thousands of assets at the variants cap. Measured at about 28 s on a
+#: desktop core: about 7 s placing the variants' labels, and the rest the dry run
+#: that counts what the plugin reads, building the manifest it is handed and
+#: letting it write into scratch. The bound leaves room for a slower runner and
+#: still catches a fourfold regression.
 _LARGE_ASSETS = 20_000
-_LARGE_BOUND_SECONDS = 60.0
+_LARGE_BOUND_SECONDS = 120.0
 
 
 def _large_manifest() -> tuple[Release, Manifest]:
@@ -540,3 +645,36 @@ def test_an_assessment_of_a_large_release_at_the_variants_cap_is_measured() -> N
     assert assessment.counts.augmented_files == 8 * (assessment.counts.train_images // 9)
     print(f"assessed {_LARGE_ASSETS} assets at 8 variants in {elapsed:.2f}s")
     assert elapsed < _LARGE_BOUND_SECONDS
+
+
+def test_each_fold_is_counted_apart(sparse: Sparse) -> None:
+    folds = sparse.releases.assignment(sparse.split_id)
+
+    assessment = sparse.releases.assess_recipe(
+        sparse.split_id, ImageWriter(), FLIP, drivers=_drivers()
+    )
+
+    assert assessment.counts is not None
+    assert (
+        assessment.counts.train_images,
+        assessment.counts.val_images,
+        assessment.counts.test_images,
+    ) == (
+        len(folds.train) * (1 + FLIP.variants_per_asset),
+        len(folds.val),
+        len(folds.test),
+    )
+
+
+@pytest.mark.parametrize("both", [True, False], ids=["both", "neither"])
+def test_an_assessment_carries_counts_or_a_refusal_and_never_both(both: bool) -> None:
+    counts = RecipeCounts(source_files=1, augmented_files=0)
+    refusal = RecipeRefusal(code="EXPORT_SOURCE_UNREADABLE", message="no")
+    with pytest.raises(ValidationError, match="either counts or a refusal"):
+        RecipeAssessment(
+            release_id=uuid4(),
+            format_name="dummy",
+            resolution=AugmentationResolution(entries=()),
+            counts=counts if both else None,
+            refusal=refusal if both else None,
+        )
