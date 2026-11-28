@@ -909,6 +909,51 @@ describe("export, and the third gate word", () => {
     );
   });
 
+  it("counts the assets a lossy export leaves out whole: untagged, and a modality the format cannot write", async () => {
+    baseline();
+    handlers.push((request) =>
+      request.method === "POST" && request.url.includes("/export")
+        ? {
+            status: 409,
+            body: {
+              code: "LOSSY_EXPORT_NOT_CONSENTED",
+              message: "server wording",
+              detail: {
+                compatibility: {
+                  release_id: RELEASE,
+                  format: "ultralytics",
+                  target: "yolov10",
+                  compatible: false,
+                  format_is_lossy: true,
+                  excluded_annotations: 9,
+                  excluded_assets: 14,
+                  degraded_annotations: 0,
+                  degraded_assets: 0,
+                  dropped_modalities: [{ modality: "point_cloud", assets: 2, annotations: 9, reason: "no scans" }],
+                  untagged_assets: 12,
+                  classes: [
+                    { label_class: "car", geometry: "bbox", status: "supported", annotations: 40, assets: 9, reason: null },
+                  ],
+                },
+              },
+            },
+          }
+        : undefined,
+    );
+
+    renderWithData(<DatasetScreen projectId={PROJECT} />);
+    await openReleaseExport();
+    await userEvent.click(screen.getByTestId("export-target"));
+    await userEvent.click(await screen.findByRole("option", { name: /YOLOv10/ }));
+    await userEvent.click(screen.getByTestId("export-submit"));
+
+    const consent = await screen.findByTestId("lossy-consent");
+    expect(consent.textContent).toContain("2 point clouds would be left out, with their 9 annotations.");
+    expect(consent.textContent).toContain("12 assets carry no tag and would be left out.");
+    expect(consent.textContent).not.toContain("server wording");
+    expect(within(consent).queryByTestId("lossy-classes")).toBeNull();
+  });
+
   it("forgets a consent once the question changes: another recipe, another target", async () => {
     baseline();
     handlers.push((request) =>

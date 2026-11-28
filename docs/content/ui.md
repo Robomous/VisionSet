@@ -793,8 +793,11 @@ is attempted; the dialog does not call it. Consent here is attempt-shaped: attem
 compatibility report as `detail.compatibility`, judged for the chosen target, and the
 consent banner reads it twice over: one sentence naming the target, what it accepts and
 how much of this release it would drop or degrade — *YOLOv10 accepts boxes only — 1,204
-polygons would be dropped.* — and beneath it the classes lost, each with its annotation
-and asset counts and the exporter's own reason. So the question names what is lost rather
+polygons would be dropped.* — followed by the assets left out whole, which no class row
+counts: one sentence per modality the format cannot write (`dropped_modalities`) and one
+for the untagged (`untagged_assets`) — *12 assets carry no tag and would be left out.* —
+and beneath it the classes lost, each with its annotation and asset counts and the
+exporter's own reason. So the question names what is lost rather
 than only that something is. `FormatOut.lossy`, read through the target's format, makes
 the question predictable in advance, because lossiness is declared by the **format** — a
 bbox-only format loses a polygon whether or not today's dataset holds one.
