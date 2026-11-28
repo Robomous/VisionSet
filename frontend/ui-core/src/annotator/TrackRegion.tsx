@@ -16,6 +16,7 @@ import { Button, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMe
 import { ChevronLeft, ChevronRight, Plus } from "lucide-react";
 import { useEffect, type JSX } from "react";
 
+import { asApiError } from "../data/errors";
 import { REFUSAL_PROSE, refusalProse } from "../data/refusals";
 import { Withheld } from "./Withheld";
 import {
@@ -46,13 +47,25 @@ export interface TrackFocus {
   readonly passed: number;
 }
 
-/** The one object a track write would name: selected alone, drawn, and 2D. */
+/** The one object a track write would name: selected alone, and drawn: a 2D shape on an image, a 3D label on a scan. */
 export interface TrackCandidate {
   readonly localId: string;
   readonly labelClass: string;
   /** The object's geometry type, as the wire spells it. */
   readonly geometry: string;
+  /** Why no track may follow this object, or null when one may. */
+  readonly untrackable: string | null;
 }
+
+/** Why a scan's polyline cannot be on a track: the kernel follows a scan's cuboids only. */
+export const SCAN_UNTRACKABLE_REASON = "A track follows a scan's cuboids only — a polyline cannot be on one.";
+
+/**
+ * A track write refused `INVALID_ANNOTATION`: the object is not one a track may follow. Said here
+ * rather than in the product-wide vocabulary, where the same code also refuses edits no track names.
+ */
+export const TRACK_INVALID_ANNOTATION_PROSE =
+  "That object cannot be on a track — a track follows an image's 2D shapes or a scan's cuboids only.";
 
 export interface TrackRegionProps {
   readonly jobId: string;
@@ -66,7 +79,7 @@ export interface TrackRegionProps {
   readonly withheld: string | null;
   /** Why adding an object to a track is withheld on this frame, or null when the wire declares `observe`. */
   readonly observeWithheld: string | null;
-  /** How many objects are selected, and the one object when it is exactly one drawn 2D shape. */
+  /** How many objects are selected, and the one object when it is exactly one drawn shape. */
   readonly selectionCount: number;
   readonly candidate: TrackCandidate | null;
   /** The server's id for a shape on this frame, or null while it is not stored. */
@@ -109,7 +122,10 @@ export function TrackRegion(props: TrackRegionProps): JSX.Element {
   const candidateOn = candidateServerId === null ? null : observationOf(tracks, candidateServerId);
 
   function failed(cause: unknown): void {
-    setOutcome({ tone: "error", text: refusalProse(cause) });
+    setOutcome({
+      tone: "error",
+      text: asApiError(cause).code === "INVALID_ANNOTATION" ? TRACK_INVALID_ANNOTATION_PROSE : refusalProse(cause),
+    });
   }
 
   /** Save, then hand over the object's stored id; a save that stored nothing stops here, with its own notice. */
@@ -454,6 +470,7 @@ function startWithheld(input: WithheldInputs & { readonly selectionCount: number
   if (input.candidate === null) {
     return input.selectionCount === 0 ? "Select an object to start a track from it" : "Select one drawn object to start a track from it";
   }
+  if (input.candidate.untrackable !== null) return input.candidate.untrackable;
   if (input.candidateOn !== null) return `That object is already on ${input.label(input.candidateOn.track)}`;
   if (input.here.length === 0) return "This frame is not a position of its source";
   return input.busy ? "Working…" : null;
@@ -472,6 +489,7 @@ function addWithheld(
 ): string | null {
   if (input.withheld !== null) return input.withheld;
   if (input.candidate === null) return "Select one drawn object to add it";
+  if (input.candidate.untrackable !== null) return input.candidate.untrackable;
   if (input.candidate.labelClass !== input.track.label_class) return `This track follows “${input.track.label_class}”`;
   const kind = input.track.geometry_kind;
   if (kind != null && trackGeometryKind(input.candidate.geometry) !== kind) return REFUSAL_PROSE.TRACK_GEOMETRY_MISMATCH ?? null;

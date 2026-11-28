@@ -97,6 +97,12 @@ nothing was being distributed. This is the first version that is.
   and polygons, is 409 `TRACK_GEOMETRY_MISMATCH`, and an import keeps such a label untracked with an `attribute`
   loss. A rotated box counts as a box, so a track may still mix the two, and a track that mixed other types before
   is judged only on a write that adds an observation or changes one's type. A camera-calibrated 3D label on an image and a `polyline_3d` on a scan stay `INVALID_ANNOTATION` (#1189).
+- **Tracks on a scan in the annotation workspace.** A scan of a point-cloud sequence shows its sequence's tracks in the
+  Tracks region, named by source when it sits in more than one, and a selected cuboid can be added to a track, start
+  one, or be removed from one, with the same refusals and reasons as an image's shape. A cuboid row carries the track
+  badge, a step along a track or a press of that badge selects the cuboid it follows once, keeping a selection made
+  first, and a selected polyline is withheld from both writes with the reason. A track write refused
+  `INVALID_ANNOTATION` is said as the track's rule (#1233).
 
 - **Apple Create ML object-detection JSON import and export as `createml`.** Only the object-detection annotation
   schema: an array of `{"image", "annotations": [{"label", "coordinates": {"x", "y", "width", "height"}}]}` with

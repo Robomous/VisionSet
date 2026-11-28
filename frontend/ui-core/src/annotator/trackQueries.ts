@@ -58,16 +58,10 @@ function assetOccurrencesQuery(client: VisionSetDataClient, projectId: string, a
   };
 }
 
-/**
- * The asset's occurrences in every sequence source it sits in. `null` is "no
- * asset to ask about": a scan, which no track follows.
- */
-export function useAssetOccurrences(
-  projectId: string,
-  assetId: string | null,
-): UseQueryResult<readonly FrameOccurrence[], Error> {
+/** The asset's occurrences in every sequence source it sits in, an image's or a scan's alike. */
+export function useAssetOccurrences(projectId: string, assetId: string): UseQueryResult<readonly FrameOccurrence[], Error> {
   const client = useApiClient();
-  return useQuery({ ...assetOccurrencesQuery(client, projectId, assetId ?? "none"), enabled: assetId !== null });
+  return useQuery(assetOccurrencesQuery(client, projectId, assetId));
 }
 
 /**
@@ -308,6 +302,25 @@ export function sequenceTrackLabel(track: Track, sequences: readonly TrackSequen
   const sequence = sequences.find((one) => one.sourceId === track.source_id);
   const name = trackName(track, sequence?.tracks ?? [track]);
   return sequence?.name == null ? name : `${name} in ${sequence.name}`;
+}
+
+/**
+ * The local id of the annotation `trackId` observes on `assetId` at `position`, or null. A label
+ * saved on this frame keeps its local id while the server knows it by the one it minted.
+ */
+export function observedLocalId(
+  tracks: readonly Track[],
+  at: { readonly trackId: string; readonly position: number; readonly assetId: string },
+  holds: (localId: string) => boolean,
+  minted: ReadonlyMap<string, string>,
+): string | null {
+  const seen = tracks
+    .find((one) => one.id === at.trackId)
+    ?.observations.find((one) => one.position === at.position && one.asset_id === at.assetId);
+  if (seen === undefined) return null;
+  if (holds(seen.annotation_id)) return seen.annotation_id;
+  for (const [local, server] of minted) if (server === seen.annotation_id && holds(local)) return local;
+  return null;
 }
 
 /** Which track observes this annotation, and where. An annotation is observed at most once. */

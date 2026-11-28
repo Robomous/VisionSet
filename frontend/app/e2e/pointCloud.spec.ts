@@ -13,7 +13,7 @@
 import { expect, test, type Locator, type Page, type Request } from "@playwright/test";
 
 import { assetActions, type Wire } from "./_wire";
-import { BATCH, JOB, PROJECT, openedWorld, progressStore, serveApi, type Lifecycle } from "./_wireApiStub";
+import { BATCH, JOB, PROJECT, openedWorld, progressStore, serveApi, type Lifecycle, type TrackWorld } from "./_wireApiStub";
 
 const REQUIRE_ENV = "VISIONSET_REQUIRE_WEBGL";
 const SOURCE = "44444444-4444-4444-8444-444444444444";
@@ -81,9 +81,9 @@ function bufferOf(points: readonly (readonly [number, number, number])[]): ScanB
 
 const SCAN = scanBuffer();
 
-function scanAsset(lifecycle: Lifecycle): Wire["BatchAssetOut"] {
+function scanAsset(lifecycle: Lifecycle, id = "asset-1"): Wire["BatchAssetOut"] {
   return {
-    id: "asset-1",
+    id,
     project_id: PROJECT,
     modality: "point_cloud",
     point_cloud: {
@@ -147,6 +147,10 @@ interface ScanWorld {
   readonly scan?: ScanBuffer;
   /** While `failing` holds, the source request is refused. */
   readonly source?: { failing: boolean };
+  /** The source as a `point_cloud_sequence` of two scans, asset-1 and asset-2, with these tracks. */
+  readonly tracks?: TrackWorld;
+  /** The labels stored before the page opens; absent, the one car on asset-1. */
+  readonly seeded?: readonly Wire["AnnotationOut"][];
 }
 
 async function openScan(page: Page, world: ScanWorld = {}): Promise<Request[]> {
@@ -157,17 +161,20 @@ async function openScan(page: Page, world: ScanWorld = {}): Promise<Request[]> {
 /** The scan's job, served and opened; the stub moves `lifecycle` as the page starts things. */
 async function serveScan(page: Page, lifecycle: Lifecycle, world: ScanWorld = {}): Promise<Request[]> {
   const sent: Request[] = [];
-  await serveApi(page, sent, progressStore({ "asset-1": "unannotated" }), lifecycle, undefined, [CAR]);
+  const scans = world.tracks === undefined ? ["asset-1"] : ["asset-1", "asset-2"];
+  const progress = progressStore(Object.fromEntries(scans.map((id) => [id, "unannotated" as const])));
+  await serveApi(page, sent, progress, lifecycle, undefined, world.seeded ?? [CAR], undefined, undefined, world.tracks);
   // Registered after the shared stub, so it is asked first and hands everything else back.
   await page.route("**/api/**", async (route) => {
     const path = new URL(route.request().url()).pathname.replace(/^\/api/, "");
     if (path.endsWith("/assets") && path.startsWith("/batches")) {
-      return route.fulfill({ json: { items: [scanAsset(lifecycle)], total: 1 } satisfies Wire["BatchAssetPage"] });
+      const items = scans.map((id) => scanAsset(lifecycle, id));
+      return route.fulfill({ json: { items, total: items.length } satisfies Wire["BatchAssetPage"] });
     }
     if (world.schema !== undefined && path.endsWith("/schema/versions/3")) {
       return route.fulfill({ json: world.schema });
     }
-    if (path === `/projects/${PROJECT}/assets/asset-1/points`) {
+    if (scans.some((id) => path === `/projects/${PROJECT}/assets/${id}/points`)) {
       return route.fulfill({ contentType: "application/octet-stream", body: (world.scan ?? SCAN).body });
     }
     if (path === `/sources/${SOURCE}`) {
@@ -178,7 +185,7 @@ async function serveScan(page: Page, lifecycle: Lifecycle, world: ScanWorld = {}
         json: {
           id: SOURCE,
           project_id: PROJECT,
-          kind: "point_cloud_directory",
+          kind: world.tracks === undefined ? "point_cloud_directory" : "point_cloud_sequence",
           name: "sweeps",
           registered_at: "2026-11-01T00:00:00Z",
           frame: world.frame === undefined ? "lidar_flu" : world.frame,
@@ -1074,4 +1081,79 @@ test("a scan whose source request fails says so with a retry, and never that it 
   await expect(page.getByTestId("point-cloud-summary")).toContainText("lidar_flu");
   await page.getByTestId("scan-edit-toggle").click();
   await expect(page.getByTestId("point-cloud-canvas")).toHaveAttribute("data-editing", "on");
+});
+
+/** Scan 1 holds the tracked car and a second car; scan 2 holds another car, then the tracked car one position on. */
+const SCAN_OCCURRENCES: readonly Wire["FrameOccurrenceOut"][] = [
+  { id: "scan-occ-1", source_id: SOURCE, position: 1, timestamp: 0.1, asset_id: "asset-1" },
+  { id: "scan-occ-2", source_id: SOURCE, position: 2, timestamp: 0.2, asset_id: "asset-2" },
+];
+
+const OTHER_CAR: Wire["AnnotationOut"] = { ...CAR, id: "car-3d-b", geometry: { type: "cuboid_3d", center: [-8, 4, 0], size: [4, 2, 1.6], yaw: 0 } };
+const CAR_LATER: Wire["AnnotationOut"] = { ...CAR, id: "car-3d-later", asset_id: "asset-2" };
+const PARKED_LATER: Wire["AnnotationOut"] = { ...OTHER_CAR, id: "car-3d-parked", asset_id: "asset-2" };
+
+function scanTracks(): TrackWorld {
+  const at = (occurrence: Wire["FrameOccurrenceOut"], annotationId: string): Wire["TrackObservationOut"] => ({
+    occurrence_id: occurrence.id,
+    position: occurrence.position,
+    timestamp: occurrence.timestamp,
+    asset_id: occurrence.asset_id,
+    annotation_id: annotationId,
+  });
+  return {
+    sourceId: SOURCE,
+    occurrences: SCAN_OCCURRENCES,
+    tracks: [
+      {
+        id: "track-1",
+        source_id: SOURCE,
+        label_class: "vehicle",
+        external_id: "scene-1-car",
+        geometry_kind: "cuboid_3d",
+        observations: [at(SCAN_OCCURRENCES[0]!, CAR.id), at(SCAN_OCCURRENCES[1]!, CAR_LATER.id)],
+      },
+    ],
+  };
+}
+
+test("a scan of a sequence lists its tracks, steps to the next scan on its cuboid, and its cuboids join and leave a track", async ({ page }) => {
+  await requireWebGl2(page);
+  const sent = await serveScan(page, openedWorld(), { schema: CUBOID_SCHEMA, tracks: scanTracks(), seeded: [CAR, OTHER_CAR, PARKED_LATER, CAR_LATER] });
+
+  await expect(page.getByTestId("track-region")).toBeVisible();
+  await expect(page.getByTestId("track-row-track-1")).toContainText("vehicle scene-1-car");
+  await expect(page.getByTestId("track-row-track-1")).toContainText("2 frames");
+  await expect(page.getByTestId("object-track-0")).toBeVisible();
+  await expect(page.getByTestId("object-track-1")).toHaveCount(0);
+
+  await page.getByTestId("object-track-0").click();
+  await expect(page.getByTestId("track-where")).toHaveText("On this frame at 1");
+  await page.getByTestId("track-next").click();
+  await expect(page.getByTestId("asset-position")).toContainText("2/2");
+  await expect(page.getByTestId("track-where")).toHaveText("On this frame at 2");
+  await expect(page.getByTestId("object-row-1")).toHaveAttribute("data-selected", "true");
+  await expect(page.getByTestId("object-row-0")).toHaveAttribute("data-selected", "false");
+
+  await page.getByTestId("track-unobserve-2").click();
+  await expect(page.getByTestId("track-done")).toContainText("the object stays");
+  await expect(page.getByTestId("object-track-1")).toHaveCount(0);
+
+  await page.getByTestId("track-previous").click();
+  await expect(page.getByTestId("asset-position")).toContainText("1/2");
+  await page.getByTestId("object-select-1").click();
+  await expect(page.getByTestId("track-observe")).toHaveAttribute("data-reason", "The track already follows an object on this frame");
+  await page.getByTestId("track-start").click();
+  await expect(page.getByTestId("track-done")).toHaveText("Started a track at frame 1");
+  await expect(page.getByTestId("object-track-1")).toBeVisible();
+
+  const writes = sent
+    .filter((one) => one.method() !== "GET" && one.url().includes("/tracks"))
+    .map((one) => `${one.method()} ${new URL(one.url()).pathname.replace(/^\/api/, "")}`);
+  expect(writes).toEqual([
+    `DELETE /jobs/${JOB}/tracks/track-1/observations/scan-occ-2`,
+    `POST /jobs/${JOB}/tracks`,
+  ]);
+  const start = sent.filter((one) => one.method() === "POST" && one.url().endsWith(`/jobs/${JOB}/tracks`)).at(-1)!;
+  expect(JSON.parse(start.postData() ?? "{}")).toEqual({ occurrence_id: "scan-occ-1", annotation_id: OTHER_CAR.id });
 });
