@@ -22,6 +22,8 @@ from visionset.kernel.domain import (
     ImportedSequence,
     ImportLoss,
     ImportLossKind,
+    KeypointsGeometry,
+    KeypointSpec,
     PolygonGeometry,
     ScanFrame,
     ScanLayout,
@@ -103,6 +105,29 @@ def test_a_label_must_name_a_declared_class_with_its_geometry() -> None:
                 ),
             ),
         )
+
+
+def test_a_keypoint_spec_needs_the_keypoints_geometry() -> None:
+    spec = KeypointSpec(names=("a", "b"))
+    with pytest.raises(ValidationError, match="does not accept the keypoints geometry"):
+        ImportedClass(name="face", geometries=(GeometryType.BBOX,), keypoints=spec)
+    assert ImportedClass(name="face", geometries=(GeometryType.KEYPOINTS,), keypoints=spec)
+
+
+def test_a_keypoints_label_carries_one_point_per_name_of_its_class_spec() -> None:
+    face = ImportedClass(
+        name="face", geometries=(GeometryType.KEYPOINTS,), keypoints=KeypointSpec(names=("a", "b"))
+    )
+
+    def dataset(points: list[tuple[float, float]]) -> ImportedDataset:
+        label = ImportedLabel(class_name="face", geometry=KeypointsGeometry(points=points))
+        return ImportedDataset(
+            classes=(face,), images=(ImportedImage(path="a.png", labels=(label,)),)
+        )
+
+    assert dataset([(1, 1), (2, 2)])
+    with pytest.raises(ValidationError, match="names 2 keypoints"):
+        dataset([(1, 1), (2, 2), (3, 3)])
 
 
 def test_an_image_and_a_class_are_each_listed_once() -> None:

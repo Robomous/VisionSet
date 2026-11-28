@@ -35,8 +35,18 @@ pixel dimensions that are required rather than defaulted to ``(1, 1)``. See
 counts are the stored ones, so an export read back is the same mask pixel for
 pixel.
 
+**Keypoints are COCO's keypoint rows**, written beside the other classes in the
+same file. A class with a keypoint spec carries its ``keypoints`` names and its
+``skeleton`` as 1-based pairs on its category; a keypoints class without a spec
+gets the names ``kp1`` to ``kpN``, and is refused if its labels disagree about
+``N``, because a category names one list. A row is ``(x, y, v)`` per point, ``v``
+the visibility (``2`` for every point of a label that records none), and an
+unlabeled point is written ``0, 0, 0`` as COCO writes one. ``num_keypoints``
+counts the labeled points; ``bbox`` is their tight extent clamped to the image,
+since the domain keeps no box beside the points, and ``area`` is that box's.
+
 **This format is not lossy, and that is the point of having it.**
-``supported_geometries`` is ``{bbox, polygon, mask}``, and everything COCO has no field
+``supported_geometries`` is ``{bbox, polygon, mask, keypoints}``, and everything COCO has no field
 for — attributes, confidence, provenance, the annotation's own id — is carried in
 a ``"visionset"`` object on each annotation. COCO is JSON and every reader
 tolerates keys it does not know; one nested object cannot collide with a future
@@ -54,6 +64,7 @@ from pathlib import Path
 from typing import Any, Final, assert_never
 
 from visionset import __version__
+from visionset.formats._keypoints import labeled_extent, states
 from visionset.formats._layout import (
     FOLDS,
     IMAGES_DIRNAME,
@@ -79,6 +90,7 @@ from visionset.kernel.domain import (
     PolylineGeometry,
     Release,
     SplitAssignment,
+    VertexVisibility,
     mask_area,
     mask_enclosing_box,
 )
@@ -123,11 +135,13 @@ class CocoExporter:
     #: consent, which is the contrast with the YOLO dialects and the reason both exist.
     lossy = False
 
-    #: The three geometries COCO instances describe. A classification tag has no
+    #: The geometries COCO instances and keypoints describe. A classification tag has no
     #: location, and COCO has no place for a label that is about the whole image —
     #: that is a different task with a different file — so the compatibility
     #: report is what refuses a release holding one, by class and with a count.
-    supported_geometries = frozenset({GeometryType.BBOX, GeometryType.POLYGON, GeometryType.MASK})
+    supported_geometries = frozenset(
+        {GeometryType.BBOX, GeometryType.POLYGON, GeometryType.MASK, GeometryType.KEYPOINTS}
+    )
 
     #: Empty, and it is the interesting empty set of the four: COCO writes a
     #: polygon *as a polygon*, with the shoelace area rather than the box's, and a
@@ -147,7 +161,7 @@ class CocoExporter:
         content: ContentReader,
         assignment: SplitAssignment | None,
     ) -> None:
-        categories = _categories(manifest)
+        categories = _categories(manifest, _keypoint_names(manifest))
         category_of = {declared["name"]: declared["id"] for declared in categories}
         folds = folds_of(manifest, assignment)
 
@@ -211,7 +225,44 @@ class CocoExporter:
             _write_json(target / f"instances_{fold}.json", document)
 
 
-def _categories(manifest: Manifest) -> list[dict[str, Any]]:
+def _keypoint_names(manifest: Manifest) -> dict[str, tuple[str, ...]]:
+    """The keypoint names each keypoints class's category carries.
+
+    A class's spec when it has one, else ``kp1`` to ``kpN`` for the one count
+    its labels share. A class whose labels disagree with its spec, or with each
+    other when it has none, cannot be one category and is refused before
+    anything is written.
+    """
+    counts: dict[str, set[int]] = {}
+    for asset in manifest.assets:
+        for annotation in asset.annotations:
+            if isinstance(annotation.geometry, KeypointsGeometry):
+                counts.setdefault(annotation.label_class, set()).add(
+                    len(annotation.geometry.points)
+                )
+    names: dict[str, tuple[str, ...]] = {}
+    for declared in manifest.classes:
+        seen = counts.get(declared.name, set())
+        if declared.keypoints is not None:
+            names[declared.name] = declared.keypoints.names
+            expected = {len(declared.keypoints.names)}
+        elif seen:
+            expected = {min(seen)}
+            names[declared.name] = tuple(f"kp{index}" for index in range(1, min(seen) + 1))
+        else:
+            continue
+        if seen - expected:
+            shown = ", ".join(str(count) for count in sorted(seen))
+            raise ExportSourceUnreadable(
+                f"class {declared.name!r} has keypoints labels of {shown} points, and a COCO "
+                f"category names one list of {next(iter(expected))} keypoints"
+            )
+    return names
+
+
+def _categories(
+    manifest: Manifest, keypoint_names: dict[str, tuple[str, ...]]
+) -> list[dict[str, Any]]:
     """Every class the release's frozen schema declares, in its authored order.
 
     **Not the classes the annotations happen to use.** v1 built this list by
@@ -227,11 +278,23 @@ def _categories(manifest: Manifest) -> list[dict[str, Any]]:
     ``supercategory`` is the class name repeated, because VisionSet has no notion
     of a class hierarchy and the field is required by enough readers to be worth
     filling honestly rather than omitting.
+
+    A keypoints class adds ``keypoints``, its point names, and ``skeleton``, its
+    spec's edges as 1-based pairs, which is how COCO numbers them.
     """
-    return [
-        {"id": index, "name": declared.name, "supercategory": declared.name}
-        for index, declared in enumerate(manifest.classes, start=1)
-    ]
+    categories: list[dict[str, Any]] = []
+    for index, declared in enumerate(manifest.classes, start=1):
+        category: dict[str, Any] = {
+            "id": index,
+            "name": declared.name,
+            "supercategory": declared.name,
+        }
+        if declared.name in keypoint_names:
+            category["keypoints"] = list(keypoint_names[declared.name])
+            skeleton = declared.keypoints.skeleton if declared.keypoints is not None else ()
+            category["skeleton"] = [[first + 1, second + 1] for first, second in skeleton]
+        categories.append(category)
+    return categories
 
 
 def _info(release: Release, manifest: Manifest) -> dict[str, Any]:
@@ -278,6 +341,7 @@ def _annotation(
         )
 
     geometry = annotation.geometry
+    keypoints: dict[str, Any] = {}
     match geometry:
         case BboxGeometry():
             box = _rounded((geometry.x, geometry.y, geometry.width, geometry.height))
@@ -309,11 +373,16 @@ def _annotation(
             )
             segmentation = {"size": list(geometry.size), "counts": geometry.counts}
             area = float(mask_area(geometry))
+        case KeypointsGeometry():
+            extent = labeled_extent(geometry, *dimensions_of(asset))
+            box = _rounded(extent)
+            segmentation = []
+            area = round(extent[2] * extent[3], PRECISION)
+            keypoints = _keypoint_fields(geometry)
         case (
             ObbGeometry()
             | ClassificationGeometry()
             | PolylineGeometry()
-            | KeypointsGeometry()
             | Polyline3DGeometry()
             | Cuboid3DGeometry()
         ):
@@ -330,6 +399,7 @@ def _annotation(
         # the domain cannot represent — a polygon or a mask here is one object,
         # and saying otherwise would have every evaluation ignore it.
         "iscrowd": 0,
+        **keypoints,
         "visionset": {
             "annotation_id": str(annotation.id),
             "schema_version": annotation.schema_version,
@@ -339,6 +409,19 @@ def _annotation(
             "attributes": annotation.attributes,
         },
     }
+
+
+def _keypoint_fields(geometry: KeypointsGeometry) -> dict[str, Any]:
+    """``keypoints`` as ``(x, y, v)`` triplets and ``num_keypoints``, the labeled count."""
+    flat: list[float | int] = []
+    labeled = 0
+    for (x, y), state in zip(geometry.points, states(geometry), strict=True):
+        if state is VertexVisibility.UNLABELED:
+            flat.extend((0, 0, 0))
+            continue
+        labeled += 1
+        flat.extend((round(x, PRECISION), round(y, PRECISION), int(state)))
+    return {"keypoints": flat, "num_keypoints": labeled}
 
 
 def _shoelace(points: Sequence[tuple[float, float]]) -> float:

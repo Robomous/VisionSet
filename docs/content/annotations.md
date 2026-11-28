@@ -336,8 +336,8 @@ whose only point inside the frame is unlabeled (`0`) passes. Other points may li
 polyline's may. It is
 a 2D shape: a point-cloud scan refuses it like any other pixel shape.
 
-No exporter writes keypoints yet: every export reports each one dropped (see
-[releases](releases.md#the-manifests-own-format-version)). `hflip` mirrors the coordinates only and
+`coco` writes keypoints as keypoint rows and `ultralytics` as a pose dataset; every other export
+reports each one dropped (see [releases](releases.md#the-manifests-own-format-version)). `hflip` mirrors the coordinates only and
 does not swap left- and right-named keypoints, because no metadata says which pairs mirror each
 other; see [pre-processing](preprocessing.md).
 

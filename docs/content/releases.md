@@ -182,9 +182,10 @@ whose classes carries a keypoint spec, keeps the version, bytes and hash it had;
 either under a version below 12 does not load, and a build that predates them refuses a version-12
 manifest. The spec is part of each class in the manifest, omitted when unset, and the release gate
 re-checks every keypoints label's count against the active schema (see
-[schemas](schemas.md#a-keypoints-class-may-name-its-points-and-join-them)). No exporter writes
-keypoints: every export reports each such class **dropped**, never degraded, and needs lossy consent
-for it.
+[schemas](schemas.md#a-keypoints-class-may-name-its-points-and-join-them)). Two exporters write
+keypoints whole: [`coco`](#the-coco-format) as keypoint rows and [`ultralytics`](#ultralytics) as a
+pose dataset. Every other export reports each such class **dropped**, never degraded, and needs
+lossy consent for it.
 
 Publishing content that needs a newer version than an older build wrote still produces a
 different manifest hash, because the version number is part of the document.
@@ -577,7 +578,7 @@ The catalog this build ships, generated from the declarations by
 | `bdd100k-lane` | bdd100k-lane | `other` | `bdd100k-lane` | — | polyline | — | — |
 | `classification` | classification | `other` | `classification` | — | classification_tag | — | — |
 | `classification-dir` | classification-dir | `other` | `classification-dir` | — | classification_tag | — | — |
-| `coco` | coco | `other` | `coco` | — | bbox, mask, polygon | — | — |
+| `coco` | coco | `other` | `coco` | — | bbox, keypoints, mask, polygon | — | — |
 | `coco-panoptic` | coco-panoptic | `other` | `coco-panoptic` | — | mask, polygon | — | — |
 | `createml` | createml | `other` | `createml` | — | bbox | — | — |
 | `culane` | culane | `other` | `culane` | — | polyline | — | — |
@@ -595,16 +596,16 @@ The catalog this build ships, generated from the declarations by
 | `tusimple` | tusimple | `other` | `tusimple` | — | polyline | — | — |
 | `voc` | voc | `other` | `voc` | — | bbox | — | — |
 | `yolo-obb` | yolo-obb | `other` | `yolo-obb` | — | obb | — | — |
-| `yolo11` | YOLO11 | `ultralytics-yolo` | `ultralytics` | classify, detect, obb, pose, segment | bbox, classification_tag, polygon | 640×640 | letterbox |
-| `yolo12` | YOLO12 | `ultralytics-yolo` | `ultralytics` | classify, detect, obb, pose, segment | bbox, classification_tag, polygon | 640×640 | letterbox |
-| `yolo26` | YOLO26 | `ultralytics-yolo` | `ultralytics` | classify, depth, detect, obb, pose, segment, semantic | bbox, classification_tag, polygon | 640×640 | letterbox |
+| `yolo11` | YOLO11 | `ultralytics-yolo` | `ultralytics` | classify, detect, obb, pose, segment | bbox, classification_tag, keypoints, polygon | 640×640 | letterbox |
+| `yolo12` | YOLO12 | `ultralytics-yolo` | `ultralytics` | classify, detect, obb, pose, segment | bbox, classification_tag, keypoints, polygon | 640×640 | letterbox |
+| `yolo26` | YOLO26 | `ultralytics-yolo` | `ultralytics` | classify, depth, detect, obb, pose, segment, semantic | bbox, classification_tag, keypoints, polygon | 640×640 | letterbox |
 | `yolov10` | YOLOv10 | `ultralytics-yolo` | `ultralytics` | detect | bbox | 640×640 | letterbox |
 | `yolov3` | YOLOv3 | `ultralytics-yolo` | `ultralytics` | detect | bbox | 640×640 | letterbox |
 | `yolov4` | YOLOv4 | `community-yolo` | `darknet` | detect | bbox | 416×416 | stretch |
 | `yolov5` | YOLOv5 | `ultralytics-yolo` | `ultralytics` | classify, detect, segment | bbox, classification_tag, polygon | 640×640 | letterbox |
 | `yolov6` | YOLOv6 | `ultralytics-yolo` | `ultralytics` | detect | bbox | 640×640 | letterbox |
 | `yolov7` | YOLOv7 | `community-yolo` | `yolov5-yaml` | detect | bbox | 640×640 | letterbox |
-| `yolov8` | YOLOv8 | `ultralytics-yolo` | `ultralytics` | classify, detect, obb, pose, segment | bbox, classification_tag, polygon | 640×640 | letterbox |
+| `yolov8` | YOLOv8 | `ultralytics-yolo` | `ultralytics` | classify, detect, obb, pose, segment | bbox, classification_tag, keypoints, polygon | 640×640 | letterbox |
 | `yolov9` | YOLOv9 | `ultralytics-yolo` | `ultralytics` | detect, segment | bbox, polygon | 640×640 | letterbox |
 <!-- export-targets:end -->
 
@@ -705,6 +706,7 @@ resolved image path, not a configured location, so those two directory names are
 **The task is derived from the release, never chosen.** One export is written for one of the
 trainer's tasks:
 
+- `pose` when the release holds any keypoints label - see [below](#a-pose-export);
 - `segment` when the release holds any polygon - every polygon is written as its vertices and
   every box as its four corners, so nothing located is reduced;
 - `classify` when the release holds classification tags and no box or polygon - the export is
@@ -713,7 +715,7 @@ trainer's tasks:
   no `data.yaml`;
 - `detect` otherwise - `class cx cy w h` per box, clamped into the image.
 
-`supported_geometries` is `{bbox, polygon, classification_tag}` and `degraded_geometries` is
+`supported_geometries` is `{bbox, polygon, classification_tag, keypoints}` and `degraded_geometries` is
 empty, so a rotated box is dropped: the oriented-box layout ultralytics reads is
 [`yolo-obb`](#yolo-obb), a format of its own. A tag beside a located label has no layout to land in and is not written, so the format
 also declares `solitary_geometries = {classification_tag}`: whenever a box or polygon reaches the
@@ -721,6 +723,44 @@ output, the report lists every tag row as **dropped** and counts it in `excluded
 which is what the label files hold. `lossy = True`, so consent is always asked. An asset with nothing on it gets an **empty** label file rather than
 none: ultralytics reads a missing file as "nobody looked" and an empty one as "somebody looked and
 there is nothing here", and a detector needs the second.
+
+##### A pose export
+
+When the release holds a keypoints label, every label row is
+`class cx cy w h x1 y1 v1 ... xN yN vN`, normalized and clamped into the image, and the
+descriptor adds `kpt_shape: [N, 3]`:
+
+```yaml
+path: .
+train: images/train
+val: images/val
+kpt_shape: [17, 3]
+names:
+  0: "person"
+```
+
+- **The box is derived.** The domain keeps a keypoints label as its points alone, so the box is
+  the tight extent of the labeled points (visibility `1` or `2`), clamped to the image; a label
+  with no labeled point has an empty box at the origin. On import the row's box is a `geometry`
+  loss, never a second label.
+- **Visibility is COCO's.** `v` is the stored `0`, `1` or `2`; a label recording no visibility
+  writes `2` for every point, and an unlabeled point is written `0 0 0`.
+- **No point names, no skeleton, no `flip_idx`.** The format has a slot for none of the first
+  two, and the domain records no left-right pairing for the third, so a trainer's flip
+  augmentation needs a `flip_idx` added by hand. That is part of why `lossy = True`.
+- **Keypoints only, one count.** `kpt_shape` is one count for the whole file and a pose row has
+  one shape, so the export is refused with `409 EXPORT_SOURCE_UNREADABLE`, before anything is
+  written, when a box or polygon is beside the keypoints or two keypoint counts are present; the
+  message names the classes. A tag beside them is dropped and reported, as beside a box. To write
+  the boxes of such a release instead, address the export to a target without pose
+  (`yolov5`, `yolov9`, ...), which drops the keypoints and derives `detect` or `segment`.
+- **Which targets carry it.** `yolo26`, `yolo12`, `yolo11` and `yolov8`, the ones whose trainer
+  has a pose task, list `keypoints` in their geometries; every other target drops it.
+
+Read back by the `ultralytics` importer, a pose export keeps the class index, the point order,
+the visibility and the coordinates to the writer's six decimals of a normalized side (within
+half a millionth of the image's width or height); the point names come back as `kp1` to `kpN`
+and the skeleton is lost.
 
 #### `yolov5-yaml`
 
@@ -856,8 +896,25 @@ around its pixels and `area` its pixel count, the two numbers `pycocotools` comp
 RLE. An export reads back pixel for pixel. A mask not the size of its picture refuses the export by
 asset rather than being written against the wrong frame.
 
+**Keypoints are COCO keypoint rows, in the same file as everything else.** A keypoints class's
+category carries `keypoints`, its spec's point names in order, and `skeleton`, its spec's edges as
+**1-based** pairs (the spec's are 0-based); a keypoints class without a spec gets the names `kp1` to
+`kpN` and an empty skeleton, and is refused with `409 EXPORT_SOURCE_UNREADABLE` when its labels
+disagree about `N`, because a category names one list. A row carries `keypoints` as one
+`x, y, v` triplet per point, `num_keypoints` (the points whose `v` is `1` or `2`), `bbox` (the tight
+extent of those points, clamped to the image: the domain keeps no box beside the points),
+`area` (that box's), an empty `segmentation` and `iscrowd` `0`. `v` is the stored visibility; a
+label recording none writes `2` for every point, and an unlabeled point is written `0, 0, 0`, so
+its stored position is not kept - nobody judged it. A release may mix classes freely: a box class
+and a keypoints class land in the same `instances_<fold>.json`.
+
+Read back, a keypoints row is one keypoints label - class, point order, coordinates to four
+decimals, visibility and spec all as written - and its box and any segmentation are a `geometry`
+loss on import rather than a second label. A label recording no visibility reads back with every
+point `2`, and a class without a spec reads back with the `kp1` to `kpN` one.
+
 **This format is not lossy, and that is the point of having a second one.**
-`supported_geometries` is `{bbox, polygon, mask}`, and everything COCO has no field for - attributes,
+`supported_geometries` is `{bbox, polygon, mask, keypoints}`, and everything COCO has no field for - attributes,
 confidence, provenance, the annotation's own id - rides in a `"visionset"` object on each
 annotation. COCO is JSON and every reader tolerates keys it does not know; one nested object
 cannot collide with a future COCO field the way four top-level keys could. So a release of boxes
@@ -1611,7 +1668,7 @@ carries the identical body under `detail.compatibility`.
 | `CalibrationMissing` | An asset carrying a 3D label has no calibration, neither its own nor its source's. 409. |
 | `CalibrationResolutionMismatch` | An asset carrying a 3D label has a calibration measured at another size than the asset. 422. |
 | `WorkspaceCorrupt` | The manifest blob is gone, or is not a readable manifest, or the trunk holds an asset that is not stored. All are guarantees failing rather than entities missing. |
-| `ExportSourceUnreadable` | The release names bytes an export cannot use - the blob is gone, no longer matches its content hash, is not an image the format can write, or is a scan `kitti` cannot decode; also a recipe given for an export that writes scans. **409, not 500**: the request is fine and the stored state is not, so the message names the asset and reaches the caller. For a missing or altered blob the remedy is `verify` and then restoring it; for the recipe, exporting without it. A previous generation of this tool swallowed this and shipped a training set one image short. |
+| `ExportSourceUnreadable` | The release names bytes an export cannot use - the blob is gone, no longer matches its content hash, is not an image the format can write, or is a scan `kitti` cannot decode; also a recipe given for an export that writes scans, and a release the format has no layout for, such as an `ultralytics` pose export holding boxes too or two keypoint counts, or a `coco` keypoints class without a spec whose labels disagree about the count. **409, not 500**: the request is fine and the stored state is not, so the message names the asset and reaches the caller. For a missing or altered blob the remedy is `verify` and then restoring it; for the recipe, exporting without it. A previous generation of this tool swallowed this and shipped a training set one image short. |
 | `ExportDestinationRefused` | The export directory is relative, inside or containing the workspace, a file, or cannot be created or read. Not overridable; the remedy is another path. |
 | `ExportDestinationNotEmpty` | The export directory already holds files and the caller has not passed `allow_non_empty`. Overridable; the files are then kept and counted. |
 | `ExportFormatNotFound` | Nothing is installed under that format name. Raised by the registry in `visionset.formats`, not by this service - the kernel never sees a name. |

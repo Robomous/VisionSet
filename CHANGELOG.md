@@ -13,6 +13,40 @@ nothing was being distributed. This is the first version that is.
 
 ### Added
 
+- **Agent-plugin discovery finds an installed `visionset`.** `agent-plugins/packages/visionset/runtime/discover.py`
+  resolves the `VISIONSET_PLUGIN_EXECUTABLE` override, then user installs (`PATH` outside the project, pipx, uv tool,
+  `pip --user`), then project installs (an active virtual or conda environment, `UV_PROJECT_ENVIRONMENT`, `.venv` and
+  `venv` up to the checkout root), then plugin-cached runtimes. The tier comes from where a candidate was found, so a
+  user install wins even with a project environment first on `PATH`. A candidate must report a version inside the
+  bundle's range and answer `mcp --help`, under bounded argument-list probes; a binary inside a checkout the host has
+  not trusted is never run, an invalid override fails without falling back, and skip reasons are redacted. Nothing
+  calls it yet: the bootstrap and the launcher are later work.
+- **The agent-plugin tree.** `agent-plugins/packages/visionset/` is one plugin root for Claude Code and Codex. The
+  client manifests, the per-client server declarations and `runtime/bundle.json` are generated from
+  `agent-plugins/metadata.json` and `VERSION` by `agent-plugins/tools/render_manifests.py`, committed, and
+  drift-checked. Manifests carry the frontend packages' semver spelling (`0.0.1-beta.4`), and the compatibility range
+  is exactly the current version. Hand-written schemas under `agent-plugins/schemas/` validate the generated files.
+  The launcher is a standard-library stub that exits without starting a server, and no marketplace lists the plugin
+  yet. `bash scripts/check.sh agent-plugins` and the `agent plugins` CI job run the contract tests on a bare Python
+  3.11. The sdist now leaves `agent-plugins/` out, and the wheel never carried it. [An agent plugin wraps the
+  installed CLI](docs/content/architecture/decisions/an-agent-plugin-wraps-the-installed-cli.md) records what an
+  install check of both clients settled.
+- **COCO keypoints and Ultralytics YOLO pose, both directions.** `coco` writes a keypoints class's spec on its
+  category (`keypoints` names, `skeleton` as 1-based pairs; `kp1` to `kpN` for a class without a spec, refused when
+  its labels disagree about the count) and each keypoints label as a row of `x, y, v` triplets with `num_keypoints`,
+  a `bbox` that is the tight extent of the labeled points clamped to the image, and that box's `area`; an unlabeled
+  point is written `0, 0, 0` and a label without visibility writes `2` for every point. Keypoints classes mix freely
+  with the others in one instances file, and the format stays lossless. `ultralytics` derives a `pose` task when the
+  release holds a keypoints label: rows `class cx cy w h` then `x y v` per point, `kpt_shape: [N, 3]` and no
+  `flip_idx`; a box or polygon beside the keypoints, or two keypoint counts, refuses the export with
+  `EXPORT_SOURCE_UNREADABLE` naming the classes. `yolo26`, `yolo12`, `yolo11` and `yolov8` carry keypoints; every
+  other target drops them. On import, a COCO category's keypoints and skeleton become the class's keypoint spec and
+  a row carrying `keypoints` becomes one keypoints label (a `person_keypoints_*` file is read when no instances file
+  is present), and an `ultralytics` dataset with `kpt_shape` reads every row as a keypoints label named `kp1` to
+  `kpN`. Each row's box (and COCO segmentation) is a `geometry` loss and `flip_idx` an `attribute` loss; a
+  malformed or wrong-length row is a `label` loss; a malformed COCO spec, or a `kpt_shape` most rows disagree with,
+  refuses the source. `ImportedClass` gains an optional `keypoints` spec, which a schema the import derives carries
+  (#1159).
 - **2D keypoints: the `keypoints` geometry and the class keypoint spec.** A class may declare `keypoints`, an ordered
   list of at least one finite `[x, y]` point in asset pixels, with the polyline's optional per-point `visibility`
   (`0` unlabeled, `1` occluded, `2` visible, strict integers, absent when unknown). Position is the keypoint's
@@ -25,7 +59,7 @@ nothing was being distributed. This is the first version that is.
   is destructive for the class's keypoints annotations; removing it or changing only the skeleton is additive.
   `stretch`, `letterbox`, `hflip` and `rot90` move keypoints and the preview's size cap scales them, keeping order
   and visibility; `fill` and `center_crop` refuse them. `hflip` mirrors coordinates only and does not swap
-  left- and right-named keypoints. No exporter writes keypoints: every export reports them dropped. The SDK, REST
+  left- and right-named keypoints. An exporter that does not write keypoints reports them dropped. The SDK, REST
   and MCP carry them; the annotator draws them read-only and has no tool to place them yet. A release holding a
   keypoints label or a class with a spec is a version-12 manifest; every other release keeps its version, bytes
   and hash (#1158).

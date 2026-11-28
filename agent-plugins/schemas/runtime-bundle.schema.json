@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$comment": "This bundle's own file: what the launcher reads from inside the plugin root, since metadata.json is outside it and not copied by the clients.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "distribution",
+    "console_script",
+    "version",
+    "compatibility",
+    "requires_python"
+  ],
+  "properties": {
+    "distribution": {
+      "type": "string",
+      "minLength": 1
+    },
+    "console_script": {
+      "type": "string",
+      "minLength": 1
+    },
+    "version": {
+      "type": "string",
+      "pattern": "^\\d+\\.\\d+\\.\\d+((a|b|rc)\\d+|\\.dev\\d+)?$"
+    },
+    "compatibility": {
+      "type": "string",
+      "pattern": "^==\\d+\\.\\d+\\.\\d+((a|b|rc)\\d+|\\.dev\\d+)?$"
+    },
+    "requires_python": {
+      "type": "string",
+      "pattern": "^>=3\\.\\d+$"
+    }
+  }
+}

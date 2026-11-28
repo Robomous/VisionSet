@@ -4,8 +4,10 @@
 The inverse of :class:`UltralyticsExporter`, which writes one of two layouts.
 With a ``data.yaml`` (or a single YAML file at the top of the source), the
 pictures under ``images/`` and their label rows are read through the shared
-YOLO reader: a five-number row is a box, a longer even one a polygon, and a
-pose dataset's keypoints are reported and its box kept. Without one, the
+YOLO reader: a five-number row is a box, a longer even one a polygon. A pose
+dataset, one whose descriptor gives ``kpt_shape``, is read row by row as
+keypoints labels named ``kp1`` to ``kpN``, each row's box reported lost and a
+``flip_idx`` reported unread. Without one, the
 ``train``/``val``/``test`` class tree is read: every class directory is a tag
 class, and a picture copied under several class directories, which is how the
 exporter writes an image with several tags, is one image carrying each tag;
@@ -32,7 +34,12 @@ from visionset.formats._reading import (
     relative,
     to_dataset,
 )
-from visionset.formats._yolo_reader import descriptor_file, read_label_layout, yaml_descriptor
+from visionset.formats._yolo_reader import (
+    descriptor_file,
+    read_label_layout,
+    read_pose_layout,
+    yaml_descriptor,
+)
 from visionset.formats._yolo_writer import DATA_FILENAME
 from visionset.kernel.domain import (
     ClassificationGeometry,
@@ -57,7 +64,10 @@ class UltralyticsImporter:
     def read(self, src: Path) -> ImportedDataset:
         descriptor = descriptor_file(src, DATA_FILENAME, _LABEL)
         if descriptor is not None:
-            return read_label_layout(src, yaml_descriptor(descriptor), _LABEL)
+            parsed = yaml_descriptor(descriptor)
+            if parsed.keypoints is not None:
+                return read_pose_layout(src, parsed, _LABEL)
+            return read_label_layout(src, parsed, _LABEL)
         folds = [src / fold for fold in FOLDS if (src / fold).is_dir()]
         if folds and not (src / IMAGES_DIRNAME).exists():
             return _class_tree(src, folds)

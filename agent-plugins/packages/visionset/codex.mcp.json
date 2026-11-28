@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "visionset": {
+      "command": "python3",
+      "args": [
+        "./runtime/launch.py"
+      ],
+      "cwd": "."
+    }
+  }
+}

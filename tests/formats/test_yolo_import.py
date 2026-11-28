@@ -183,15 +183,21 @@ def test_a_picture_that_cannot_be_measured_loses_its_labels(tmp_path: Path) -> N
     assert _losses(src) == [("label", 1)]
 
 
-def test_a_pose_row_keeps_its_box_and_reports_the_keypoints(tmp_path: Path) -> None:
+def test_a_yolov5_pose_row_keeps_its_box_and_reports_the_keypoints(tmp_path: Path) -> None:
     descriptor = NAMES + "kpt_shape: [2, 3]\n"
     rows = (
         "0 0.5 0.5 0.25 0.5 0.4 0.4 2 0.6 0.6 2\n0 0.5 0.5 0.25 0.5 0 0 0 0 0 0\n0 .5 .5 .1 .1 1\n"
     )
     src = _source(tmp_path, rows, descriptor=descriptor)
+    dataset = Yolov5YamlImporter().read(src)
 
-    assert sorted(_losses(src)) == [("geometry", 1), ("label", 1)]
-    assert _labels(src) == [BboxGeometry(x=12, y=6, width=8, height=12)] * 2
+    assert sorted((loss.kind.value, loss.count) for loss in dataset.losses) == [
+        ("geometry", 1),
+        ("label", 1),
+    ]
+    assert [label.geometry for image in dataset.images for label in image.labels] == [
+        BboxGeometry(x=12, y=6, width=8, height=12)
+    ] * 2
 
 
 # --- the descriptor -----------------------------------------------------------

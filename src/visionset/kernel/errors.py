@@ -996,7 +996,9 @@ class ExportSourceUnreadable(VisionSetError):
     For a missing or corrupt blob the remedy is ``ReleaseService.verify``, which
     says which, and then restoring it. For a pre-processing recipe given to an
     export that writes scans, the remedy is to export without the recipe; for
-    a scan the format cannot decode, another format. A release is immutable, so the
+    a scan the format cannot decode, or a release the format has no layout for
+    (a pose export holding boxes too, or two keypoint counts), another format
+    or target. A release is immutable, so the
     export cannot route around the asset — and it must not: a training set that
     is quietly one image short is worse than one that refused to be written, and
     that exact silence is what a previous generation of this tool shipped, an

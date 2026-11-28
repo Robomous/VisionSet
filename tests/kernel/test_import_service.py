@@ -25,6 +25,7 @@ from visionset.kernel import (
     ImportSourceUnreadable,
     InvalidAnnotation,
     InvalidSchema,
+    KeypointCountMismatch,
     LabelClassNotInSchema,
     StaleWrite,
 )
@@ -46,6 +47,8 @@ from visionset.kernel.domain import (
     ImportedSequence,
     ImportLoss,
     ImportLossKind,
+    KeypointsGeometry,
+    KeypointSpec,
     LabelClass,
     PolygonGeometry,
 )
@@ -313,6 +316,37 @@ def _attributed(**attributes: bool | float | str) -> ImportedLabel:
 
 def _attribute_losses(losses: tuple[ImportLoss, ...]) -> dict[tuple[str, str, str], int]:
     return {(one.kind.value, one.subject, one.reason): one.count for one in losses}
+
+
+def _faces(spec: KeypointSpec) -> ImportedDataset:
+    face = ImportedClass(name="face", geometries=(GeometryType.KEYPOINTS,), keypoints=spec)
+    points = KeypointsGeometry(points=[(2.0, 2.0), (4.0, 4.0)])
+    return ImportedDataset(
+        classes=(face,),
+        images=(_image("a.png", ImportedLabel(class_name="face", geometry=points)),),
+    )
+
+
+def test_with_no_schema_the_source_keypoint_spec_is_published(world: World) -> None:
+    spec = KeypointSpec(names=("left", "right"), skeleton=((0, 1),))
+    world.imports.commit(world.project.id, FakeImporter(_faces(spec)), world.src)
+
+    (schema,) = world.schemas.list_versions(world.project.id)
+    (face,) = schema.classes
+    assert face.keypoints == spec
+
+
+def test_an_existing_spec_of_another_count_refuses_the_keypoints(world: World) -> None:
+    three = KeypointSpec(names=("a", "b", "c"))
+    world.schemas.create_version(
+        world.project.id,
+        [LabelClass(name="face", geometries=(GeometryType.KEYPOINTS,), keypoints=three)],
+    )
+    importer = FakeImporter(_faces(KeypointSpec(names=("left", "right"))))
+
+    assert world.imports.inspect(world.project.id, importer, world.src).conflicts
+    with pytest.raises(KeypointCountMismatch):
+        world.imports.commit(world.project.id, importer, world.src)
 
 
 def test_with_no_schema_the_source_definitions_are_published_and_judge_its_values(

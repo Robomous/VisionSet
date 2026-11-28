@@ -163,7 +163,7 @@ def test_the_shipped_catalog_names_every_yolo_target_and_the_dialect_each_resolv
     assert rows["yolo11"]["format"] == "ultralytics"
     assert rows["yolo11"]["family"] == "ultralytics-yolo"
     assert rows["yolo11"]["tasks"] == ["classify", "detect", "obb", "pose", "segment"]
-    assert rows["yolo11"]["geometries"] == ["bbox", "classification_tag", "polygon"]
+    assert rows["yolo11"]["geometries"] == ["bbox", "classification_tag", "keypoints", "polygon"]
     assert rows["yolo11"]["hints"] == {
         "recommended_size": [640, 640],
         "recommended_strategy": "letterbox",

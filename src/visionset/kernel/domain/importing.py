@@ -23,9 +23,9 @@ from visionset.kernel.domain.calibration import (
     geometry_fits_modality,
     geometry_reference,
 )
-from visionset.kernel.domain.geometry import Geometry
+from visionset.kernel.domain.geometry import Geometry, KeypointsGeometry
 from visionset.kernel.domain.names import normalize_name
-from visionset.kernel.domain.schema import Attribute, AttributeValue, GeometryType
+from visionset.kernel.domain.schema import Attribute, AttributeValue, GeometryType, KeypointSpec
 from visionset.kernel.errors import InvalidName
 
 
@@ -68,8 +68,9 @@ def _class_name(value: str) -> str:
 class ImportedClass(BaseModel):
     """A class the source declares, and the attributes it defines for its labels.
 
-    ``attributes`` become the class's definitions when the import derives the
-    project's first schema; against an existing schema they are not consulted.
+    ``attributes`` and ``keypoints`` become the class's definitions when the
+    import derives the project's first schema; against an existing schema they
+    are not consulted, and the schema's own spec judges each label's count.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
@@ -77,6 +78,7 @@ class ImportedClass(BaseModel):
     name: str
     geometries: tuple[GeometryType, ...] = Field(min_length=1)
     attributes: tuple[Attribute, ...] = ()
+    keypoints: KeypointSpec | None = None
 
     _named = field_validator("name")(_class_name)
 
@@ -90,6 +92,15 @@ class ImportedClass(BaseModel):
         names = [attribute.name.casefold() for attribute in self.attributes]
         if len(set(names)) != len(names):
             raise ValueError(f"class {self.name!r} has two attributes with the same name")
+        return self
+
+    @model_validator(mode="after")
+    def _keypoint_spec_needs_keypoints(self) -> ImportedClass:
+        if self.keypoints is not None and GeometryType.KEYPOINTS not in self.geometries:
+            raise ValueError(
+                f"class {self.name!r} declares a keypoint spec but does not accept the "
+                f"keypoints geometry"
+            )
         return self
 
 
@@ -346,6 +357,16 @@ class ImportedDataset(BaseModel):
                     raise ValueError(
                         f"class {owner.name!r} does not declare {label.geometry.type.value}, "
                         f"but {what} {str(item.path)!r} has one"
+                    )
+                if (
+                    isinstance(label.geometry, KeypointsGeometry)
+                    and owner.keypoints is not None
+                    and len(label.geometry.points) != len(owner.keypoints.names)
+                ):
+                    raise ValueError(
+                        f"class {owner.name!r} names {len(owner.keypoints.names)} keypoints, "
+                        f"but {what} {str(item.path)!r} has a label of "
+                        f"{len(label.geometry.points)}"
                     )
                 if what == "scan" and not geometry_fits_modality(
                     label.geometry, modality="point_cloud"

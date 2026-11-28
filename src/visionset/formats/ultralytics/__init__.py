@@ -28,13 +28,21 @@ divides by one and writes pixels where a fraction was promised.
 cannot collide.
 
 **The task is derived, never chosen.** One export is written for exactly one
-of the trainer's tasks: ``segment`` when the manifest carries any polygon,
+of the trainer's tasks: ``pose`` when the manifest carries any keypoints label,
+``segment`` when it carries any polygon,
 ``classify`` when it carries classification tags and no box or polygon, and
 ``detect`` otherwise. A segment export writes every polygon as its vertices
 and every box as its four corners, so nothing located is reduced; a classify
 export is the class tree the trainer reads, one copy of an image per tag it
 carries. What one export cannot carry — a tag beside a box, an attribute, a
 confidence — is what ``lossy = True`` says, and why consent is always asked.
+
+**A pose export is keypoints only.** Every row is ``class cx cy w h`` and one
+``x y v`` per point, the box the labeled points' tight extent, ``kpt_shape``
+``[N, 3]`` and no ``flip_idx``. A box or polygon beside the keypoints, or two
+keypoint counts, has no pose layout, so the export is refused naming the
+classes rather than written partly; a target without pose drops the keypoints
+instead and writes the rest.
 """
 
 from __future__ import annotations
@@ -51,6 +59,8 @@ from visionset.formats._yolo_writer import (
     class_names,
     derive_task,
     detect_rows,
+    pose_keypoint_count,
+    pose_rows,
     segment_rows,
     write_data_yaml,
     write_label_layout,
@@ -82,7 +92,7 @@ __all__ = [
 #: The tasks this dialect can lay out. A target narrower than this still gets
 #: the layout its task set allows; a target wider than this is a promise the
 #: format cannot keep, which ``validate_targets`` refuses.
-TASKS: Final = frozenset({Task.DETECT, Task.SEGMENT, Task.CLASSIFY})
+TASKS: Final = frozenset({Task.DETECT, Task.SEGMENT, Task.CLASSIFY, Task.POSE})
 
 _HINTS: Final = PreprocessingHints(
     recommended_size=(640, 640),
@@ -93,6 +103,7 @@ _HINTS: Final = PreprocessingHints(
 
 _LOCATED: Final = frozenset({GeometryType.BBOX, GeometryType.POLYGON})
 _EVERYTHING: Final = _LOCATED | {GeometryType.CLASSIFICATION_TAG}
+_WITH_POSE: Final = _EVERYTHING | {GeometryType.KEYPOINTS}
 
 
 def _target(
@@ -110,9 +121,10 @@ def _target(
 
 #: The models this dialect writes for, with the task each accepts.
 #:
-#: ``tasks`` is the trainer's whole vocabulary — pose, obb, semantic and depth
+#: ``tasks`` is the trainer's whole vocabulary — obb, semantic and depth
 #: included — while ``supported_geometries`` carries only what VisionSet can
 #: produce today; a task with no geometry behind it is absence, not a drop.
+#: Keypoints ride exactly on the targets whose trainer has a pose task.
 TARGETS: Final[frozenset[ExportTarget]] = frozenset(
     {
         _target(
@@ -129,19 +141,19 @@ TARGETS: Final[frozenset[ExportTarget]] = frozenset(
                     Task.OBB,
                 }
             ),
-            _EVERYTHING,
+            _WITH_POSE,
         ),
         _target(
             "yolo12",
             "YOLO12",
             frozenset({Task.DETECT, Task.SEGMENT, Task.CLASSIFY, Task.POSE, Task.OBB}),
-            _EVERYTHING,
+            _WITH_POSE,
         ),
         _target(
             "yolo11",
             "YOLO11",
             frozenset({Task.DETECT, Task.SEGMENT, Task.CLASSIFY, Task.POSE, Task.OBB}),
-            _EVERYTHING,
+            _WITH_POSE,
         ),
         _target("yolov10", "YOLOv10", frozenset({Task.DETECT}), frozenset({GeometryType.BBOX})),
         _target("yolov9", "YOLOv9", frozenset({Task.DETECT, Task.SEGMENT}), _LOCATED),
@@ -149,7 +161,7 @@ TARGETS: Final[frozenset[ExportTarget]] = frozenset(
             "yolov8",
             "YOLOv8",
             frozenset({Task.DETECT, Task.SEGMENT, Task.CLASSIFY, Task.POSE, Task.OBB}),
-            _EVERYTHING,
+            _WITH_POSE,
         ),
         _target("yolov6", "YOLOv6", frozenset({Task.DETECT}), frozenset({GeometryType.BBOX})),
         _target(
@@ -175,9 +187,10 @@ class UltralyticsExporter:
     lossy = True
 
     #: Boxes and polygons arrive intact — a box in a segment export is its own
-    #: four corners, which loses nothing — and a tag arrives intact in the class
-    #: tree a tags-only release is written as (see ``solitary_geometries``).
-    supported_geometries = _EVERYTHING
+    #: four corners, which loses nothing — a tag arrives intact in the class
+    #: tree a tags-only release is written as (see ``solitary_geometries``), and
+    #: keypoints arrive intact in a pose export.
+    supported_geometries = _WITH_POSE
 
     #: Nothing is written in a reduced form: a polygon in this dialect is
     #: always written as its vertices, because its presence is what selects
@@ -206,10 +219,17 @@ class UltralyticsExporter:
         if task is Task.CLASSIFY:
             _write_class_tree(manifest, dest, content, assignment)
             return
-        rows = segment_rows if task is Task.SEGMENT else detect_rows
+        keypoints = pose_keypoint_count(manifest) if task is Task.POSE else None
+        rows = (
+            pose_rows
+            if task is Task.POSE
+            else segment_rows
+            if task is Task.SEGMENT
+            else detect_rows
+        )
         folds = write_label_layout(manifest, dest, content, assignment, rows)
         if folds:
-            write_data_yaml(dest / DATA_FILENAME, class_names(manifest), folds)
+            write_data_yaml(dest / DATA_FILENAME, class_names(manifest), folds, keypoints=keypoints)
 
 
 def _write_class_tree(

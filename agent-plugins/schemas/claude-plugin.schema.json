@@ -1,0 +1,60 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$comment": "Hand-written for the fields this bundle emits, from https://code.claude.com/docs/en/plugins/manifest-reference (read 2026-11-27). Claude Code publishes no machine-readable schema for .claude-plugin/plugin.json; `claude plugin validate` is authoritative. Both clients accepted a PEP 440 version during the 2026-11-27 install check; the semver pattern is this bundle's own rule.",
+  "type": "object",
+  "required": [
+    "name",
+    "version",
+    "description",
+    "author",
+    "license"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "name": {
+      "type": "string",
+      "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$"
+    },
+    "version": {
+      "type": "string",
+      "pattern": "^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)(-[0-9A-Za-z-]+(\\.[0-9A-Za-z-]+)*)?$"
+    },
+    "description": {
+      "type": "string",
+      "minLength": 1
+    },
+    "author": {
+      "type": "object",
+      "required": [
+        "name"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "email": {
+          "type": "string",
+          "minLength": 1
+        },
+        "url": {
+          "type": "string",
+          "pattern": "^https://"
+        }
+      }
+    },
+    "homepage": {
+      "type": "string",
+      "pattern": "^https://"
+    },
+    "repository": {
+      "type": "string",
+      "pattern": "^https://"
+    },
+    "license": {
+      "type": "string",
+      "minLength": 1
+    }
+  }
+}
