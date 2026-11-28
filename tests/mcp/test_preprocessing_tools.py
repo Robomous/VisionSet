@@ -222,3 +222,31 @@ def test_assessing_takes_exactly_one_address_and_refuses_an_unknown_target(
 
     assert "exactly one of target and format" in neither["message"]
     assert unknown["code"] == "EXPORT_TARGET_NOT_FOUND"
+
+
+def test_an_assessment_by_target_answers_for_that_target(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    named = promoted(monkeypatch, tmp_path)
+    payload(call("publish_release", project=named, tag="v1.0"))
+
+    assessed = payload(
+        call("assess_recipe", project=named, tag="v1.0", target="dummy", spec=LETTERBOX)
+    )
+
+    assert assessed["target"] == "dummy"
+    assert assessed["refusal"] is None
+
+
+def test_an_assessment_judges_drivers_by_what_is_installed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    named = promoted(monkeypatch, tmp_path)
+    payload(call("publish_release", project=named, tag="v1.0"))
+    monkeypatch.setattr("visionset.mcp.releases.preprocessing_registry.drivers", dict)
+
+    assessed = payload(
+        call("assess_recipe", project=named, tag="v1.0", format="dummy", spec=LETTERBOX)
+    )
+
+    assert assessed["refusal"]["code"] == "PREPROCESSING_DRIVER_NOT_FOUND"

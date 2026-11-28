@@ -957,8 +957,10 @@ def test_a_draft_recipe_is_assessed_with_its_counts_and_creates_no_job(
     body = response.json()
     assert (body["release_id"], body["format"], body["target"]) == (release, "writing", None)
     assert body["refusal"] is None
+    # `writing` lists the assets it is handed without reading one, and an
+    # export counts the images a format reads.
     assert body["counts"] == {
-        "source_files": 3,
+        "source_files": 0,
         "augmented_files": 0,
         "train_images": None,
         "val_images": None,
@@ -1017,3 +1019,19 @@ def test_the_assessment_takes_the_exports_address_and_refuses_what_it_refuses(
     ):
         assert response.status_code == status, response.text
         assert response.json()["code"] == code
+
+
+def test_the_assessment_judges_drivers_by_what_is_installed(
+    client: TestClient, release: str
+) -> None:
+    from visionset.server.dependencies import get_drivers
+
+    with_exporters(client.app, WritingExporter())
+    client.app.dependency_overrides[get_drivers] = lambda: {}  # type: ignore[attr-defined]
+    try:
+        response = _assessed(client, release, LETTERBOX, format="writing")
+    finally:
+        client.app.dependency_overrides.pop(get_drivers)  # type: ignore[attr-defined]
+
+    assert response.status_code == 200, response.text
+    assert response.json()["refusal"]["code"] == "PREPROCESSING_DRIVER_NOT_FOUND"

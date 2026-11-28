@@ -370,3 +370,49 @@ def test_assess_takes_exactly_one_of_target_and_format(root: Path, tmp_path: Pat
 
     assert neither.exit_code == 2, neither.output
     assert "exactly one of --target and --format" in usage_error(neither)
+
+
+def test_assess_by_target_answers_for_that_target(root: Path, tmp_path: Path) -> None:
+    name, _ = _labeled_release(root, tmp_path)
+
+    assessed = payload(
+        root,
+        "recipe",
+        "assess",
+        "-p",
+        name,
+        "--release",
+        "v1.0",
+        "--target",
+        "yolo11",
+        "--resize",
+        "letterbox:64x64",
+    )
+
+    assert (assessed["target"], assessed["format"]) == ("yolo11", "ultralytics")
+    assert assessed["refusal"] is None
+
+
+def test_assess_judges_drivers_by_what_is_installed(
+    root: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    name, _ = _labeled_release(root, tmp_path)
+    monkeypatch.setattr("visionset.cli.preprocessing.preprocessing_registry.drivers", dict)
+
+    result = run(
+        root,
+        "recipe",
+        "assess",
+        "-p",
+        name,
+        "--release",
+        "v1.0",
+        "-f",
+        "dummy",
+        "--resize",
+        "letterbox:64x64",
+        "--json",
+    )
+
+    assert result.exit_code == 1, result.output
+    assert json.loads(result.stdout)["refusal"]["code"] == "PREPROCESSING_DRIVER_NOT_FOUND"
