@@ -83,7 +83,8 @@ nothing was being distributed. This is the first version that is.
   supported is refused, text and panoptic labels are gated rows refused for every op, and the target judged is the
   export's, never the recipe's hint; without a target, or for one with no trainer, the format alone is judged as
   before. A label is judged by the tasks its geometry feeds, so `hflip` and `rot90` are refused over keypoints a
-  target trains for pose, and every op under a depth-only target. `check_export`, `require_export_consent` and
+  target trains for pose - which now includes the Ultralytics YOLO targets over a release with keypoints, where
+  `hflip` and `rot90` ran before - and every op under a depth-only target. `check_export`, `require_export_consent` and
   `export` refuse by the same resolution: a missing split, an unmovable geometry, a scan and a missing driver keep
   their refusals, messages and first offender, and every other reason is the new 409 `AUGMENTATION_INCOMPATIBLE`
   carrying every refused entry in `detail.offenders`. A cropping resize is `conditional` and still flows through the

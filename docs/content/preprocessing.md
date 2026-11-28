@@ -238,7 +238,9 @@ overflows and is cropped - and the per-variant draws come from one seed.
 `hflip` mirrors a keypoints label's coordinates and nothing else. It does not swap the points a
 class's spec names left and right, because no metadata says which pairs mirror each other yet, so a
 flipped `left_eye` is still point `1` and now sits on the right of the picture. A dataset whose
-keypoints are handed (left and right limbs) should not use `hflip` until that exists.
+keypoints are handed (left and right limbs) should not use `hflip` until that exists. An export to a
+target that trains pose, the Ultralytics YOLO targets among them, refuses `hflip` and `rot90` over
+keypoints for that reason.
 
 A step declares what it can transform, and a geometry it cannot is a **typed refusal, never a
 consent**: `PreprocessingStepUnsupportedGeometry` names the step, the geometry and the first asset
